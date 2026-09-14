@@ -62,20 +62,25 @@ void Renderer::collectEffects() {
     vec3f pos = toLocal(sim::scaleToLength(e.n, e.r));
     bool mine = e.kind == sim::EffectKind::PLAYER_HIT ||
                 e.kind == sim::EffectKind::PLAYER_DRAINED;
-    int count = 3;
-    if (e.kind == sim::EffectKind::PLAYER_DRAINED ||
-        e.kind == sim::EffectKind::ENEMY_DRAINED) {
-      count = 4;
-    } else {
+    int count = 2;
+    if (e.kind != sim::EffectKind::PLAYER_DRAINED &&
+        e.kind != sim::EffectKind::ENEMY_DRAINED) {
       int k = sim::log2Floor((uint32_t)(e.size > 0 ? e.size : 1));
-      count = 3 + (k > 5 ? 5 : k) / 2;
+      count = 1 + (k > 5 ? 5 : k) / 3;
     }
     spawnDebris(pos, count, base * 0.6f, mine ? DEBRIS_RED : DEBRIS_GRAY);
+    // ... and the body flashes white
+    if (e.entity >= 0 && e.entity < sim::MAX_ENTITIES) {
+      flash_[e.entity] = 0.12f;
+    }
   }
 }
 
 void Renderer::updateEffects(float dt) {
   if (dt > 0.1f) dt = 0.1f;
+  for (int i = 0; i < sim::MAX_ENTITIES; i++) {
+    if (flash_[i] > 0) flash_[i] -= dt;
+  }
   // Debris: fly, slow down, spin, shrink and vanish
   for (int i = 0; i < debrisCount_;) {
     Debris &d = debris_[i];

@@ -42,9 +42,10 @@ enum class EffectKind : uint8_t {
 
 struct EffectEvent {
   EffectKind kind;
-  Vec3 n;        // unit normal of the position
-  int32_t r;     // distance from the center
-  int32_t size;  // magnitude hint (damage or size transferred)
+  int16_t entity;  // the entity that was hit / drained (flashes)
+  Vec3 n;          // unit normal of the position
+  int32_t r;       // distance from the center
+  int32_t size;    // magnitude hint (damage or size transferred)
 };
 
 // Counters for tuning and tests (never reset except by reset())
@@ -118,7 +119,8 @@ class Game {
   DebugStats stats_ = {};
   EffectEvent effects_[MAX_EFFECTS];
   int effectCount_ = 0;
-  void pushEffect(EffectKind kind, const Vec3 &n, int32_t r, int32_t size);
+  void pushEffect(EffectKind kind, int entity, const Vec3 &n, int32_t r,
+                  int32_t size);
 
   // Indices sorted by n.z (for neighbor queries)
   int16_t entityOrder_[MAX_ENTITIES];

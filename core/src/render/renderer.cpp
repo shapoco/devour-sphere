@@ -15,6 +15,7 @@ static constexpr float Z_NEAR = 0.4f;    // FU
 static constexpr float Z_FAR = 1800.0f;  // FU
 static constexpr float SPHERE_R = (float)sim::SPHERE_RADIUS / FU;
 static constexpr float BRAD_TO_RAD = 2.0f * PI / 65536.0f;
+static constexpr float TILT_MAX = 35.0f * PI / 180.0f;  // fragment dihedral
 
 static g3::colorf toColorf(g2::Color c) {
   return {g2::colorR(c) / 255.0f, g2::colorG(c) / 255.0f,
@@ -66,6 +67,7 @@ void Renderer::init(int width, int height, void *arena, size_t arenaSize) {
   palette_[PAL_LASER_PLAYER] = addMaterial(g2::makeColor(255, 190, 80), 1.0f);
   palette_[PAL_LINE] = vertexColorMaterial(false);
   palette_[PAL_LINE_ADD] = vertexColorMaterial(true);
+  palette_[PAL_FRAGMENT_GRAY] = flatMaterial(g2::makeColor(105, 110, 120));
 
   camValid_ = false;
   originValid_ = false;
@@ -73,6 +75,7 @@ void Renderer::init(int width, int height, void *arena, size_t arenaSize) {
   dustCount_ = 0;
   dustSpawnAcc_ = 0;
   lastEffectTick_ = 0xFFFFFFFFu;
+  for (int i = 0; i < sim::MAX_ENTITIES; i++) flash_[i] = 0;
   time_ = 0;
 }
 
@@ -350,39 +353,39 @@ void Renderer::drawEntity(const sim::Entity &c, const vec3f &pos, float px,
     right = rotateAroundAxis(right, fwd, bank);
     up = rotateAroundAxis(up, fwd, bank);
   }
-  // Seen from a shallow angle, tilt the body towards the camera so that the
-  // flat wings do not degenerate into a line
-  {
-    vec3f toCam = g3::normalize(cam_.eye - pos);
-    float elev = g3::dot(toCam, up);
-    if (elev < 0) elev = -elev;
-    float t = (0.55f - elev) / 0.55f;
-    if (t > 0) {
-      if (t > 1) t = 1;
-      up = g3::normalize(up + toCam * (t * 0.8f));
-      fwd = g3::normalize(fwd - up * g3::dot(fwd, up));
-      right = g3::cross(fwd, up);
-    }
-  }
+  // Hit flash: the whole body turns white for a moment
+  int idx = (int)(&c - game_->entities);
+  bool flashing = idx >= 0 && idx < sim::MAX_ENTITIES && flash_[idx] > 0;
+  const g3::Material &bodyMat = flashing ? palette_[PAL_CORE] : m;
 
   if (blink) {
     entitiesDrawn_++;
     return;
   }
   if (full) {
+    // Dihedral: fragments tilt outwards (around the heading) the farther
+    // they are from the body's axis, so the body looks like it has volume
+    float bodyR = c.bodyRadius * k * 1.4f;
+    if (bodyR < 0.1f) bodyR = 0.1f;
     for (int i = 0; i < c.fragmentCount; i++) {
       const sim::Fragment &p = c.fragments[i];
       float s = sim::fragmentHalfSize(p.sizeLog2) * k;
       float lx = p.x * k * 1.4f, ly = p.y * k;  // widen like wings
       for (int side = -1; side <= 1; side += 2) {
         float x = lx * side;
+        float t = std::fabs(x) / bodyR;
+        if (t > 1) t = 1;
+        // rotating +right around fwd by a positive angle moves it towards
+        // -up, so the sign follows the side to raise the outer edge
+        float tilt = -side * t * TILT_MAX;
+        vec3f rightT = rotateAroundAxis(right, fwd, tilt);
         float dx = x, dy = ly - focusY;
         float len = std::sqrt(dx * dx + dy * dy);
         if (len < 1e-4f) dx = 0, dy = -1, len = 1;
         dx /= len, dy /= len;
-        vec3f dir = right * dx + fwd * dy;
-        vec3f perp = right * (-dy) + fwd * dx;
-        putKite(pos + right * x + fwd * ly, dir, perp, s, s * 2.5f, m);
+        vec3f dir = rightT * dx + fwd * dy;
+        vec3f perp = rightT * (-dy) + fwd * dx;
+        putKite(pos + right * x + fwd * ly, dir, perp, s, s * 2.5f, bodyMat);
       }
     }
     // Core (white, pointing forward)
@@ -406,11 +409,15 @@ void Renderer::drawEntity(const sim::Entity &c, const vec3f &pos, float px,
 
 void Renderer::drawFloatingFragments() {
   const sim::Game &g = *game_;
-  const g3::Material &m = palette_[PAL_FRAGMENT];
   g2::Color pointColor = hueColor(sim::FRAGMENT_HUE, 200, 200);
+  g2::Color grayPoint = g2::makeColor(105, 110, 120);
+  uint32_t playerSize = g.player().size;
   for (int i = 0; i < sim::MAX_FLOATING_FRAGMENTS; i++) {
     const sim::FloatingFragment &fp = g.floatingFragments[i];
     if (!fp.alive) continue;
+    // Fragments the player cannot eat are gray
+    bool edible = (1u << fp.sizeLog2) * sim::FOOD_NOTICE_RATIO >= playerSize;
+    const g3::Material &m = palette_[edible ? PAL_FRAGMENT : PAL_FRAGMENT_GRAY];
     vec3f up = q30ToF(fp.n);
     if (g3::dot(up, camUnit_) < cosHorizon_ - 0.01f) continue;
     vec3f pos = toLocal(sim::scaleToLength(fp.n, fp.r));
@@ -420,7 +427,7 @@ void Renderer::drawFloatingFragments() {
     float s = sim::fragmentHalfSize(fp.sizeLog2) / (float)FU;
     float px = s * focalPx_ / (d > 0.1f ? d : 0.1f);
     if (px < 1.0f) {
-      putPoint3(pos, pointColor, palette_[PAL_LINE]);
+      putPoint3(pos, edible ? pointColor : grayPoint, palette_[PAL_LINE]);
       continue;
     }
     // Tangent frame spun by the fragment's own angle, tilted a little

@@ -131,6 +131,7 @@ class Renderer {
   int dustCount_ = 0;
   float dustSpawnAcc_ = 0;
   uint32_t lastEffectTick_ = 0xFFFFFFFFu;
+  float flash_[sim::MAX_ENTITIES] = {};  // seconds left of the white flash
 
   // Materials
   enum Palette : int {
@@ -144,6 +145,7 @@ class Renderer {
     PAL_LASER_PLAYER,
     PAL_LINE,      // vertex colored lines and points (wireframe, stars, debris)
     PAL_LINE_ADD,  // vertex colored additive lines (dash dust)
+    PAL_FRAGMENT_GRAY,  // floating fragments the player cannot eat
   };
   g3::Material palette_[PALETTE_SIZE];
 

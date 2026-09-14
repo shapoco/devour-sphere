@@ -61,8 +61,9 @@ static void testFixed() {
   CHECK(std::abs(dotQ30(o, o) - Q30_ONE) < 8);
 
   CHECK(fragmentHalfSize(0) == FU / 2);
-  CHECK(fragmentHalfSize(2) == FU);
-  CHECK(std::abs(fragmentHalfSize(1) - 181) <= 1);
+  CHECK(fragmentHalfSize(4) == FU);
+  CHECK(std::abs(fragmentHalfSize(2) - 181) <= 1);
+  CHECK(fragmentHalfSize(8) == 2 * FU);
 }
 
 static uint8_t scriptedInput(uint32_t t) {

@@ -100,6 +100,8 @@ void Game::updateAi(int idx) {
       const FloatingFragment &fp = floatingFragments[fragmentOrder_[k]];
       if (fp.n.z > zHi) break;
       int64_t d2;
+      // Fragments beneath notice (see handleEating) are not worth chasing
+      if ((1u << fp.sizeLog2) * FOOD_NOTICE_RATIO < c.size) continue;
       if (!tangentialDist2(c.frame.n, fp.n, sight, d2)) continue;
       if (d2 < foodD2) food = fragmentOrder_[k], foodD2 = d2;
     }

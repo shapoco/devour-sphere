@@ -11,14 +11,14 @@ using g3::vec3f;
 using sim::FU;
 
 static constexpr float SPHERE_R = (float)sim::SPHERE_RADIUS / FU;
-static constexpr float ICO_EDGE = 1.0515f;  // edge length of a unit icosahedron
-static constexpr float SUBDIVIDE_PX =
-    72.0f;  // subdivide edges longer than this
 static constexpr float FADE_NEAR = 60.0f, FADE_FAR = 900.0f;  // FU
-// Budget of the triangle buffer for the wireframe: near the limit the faces
-// stop subdividing (coarser but complete), at the limit edges are dropped
+// Subdivision: fixed levels chosen by the distance from the player's
+// position on the surface (not by the screen size, which would make the
+// mesh flicker as the camera moves)
+static constexpr int BASE_LEVEL = 4;  // edges of ~34 FU
+static constexpr float LEVEL5_RADIUS = 60.0f, LEVEL6_RADIUS = 22.0f;  // FU
+// Budget of the triangle buffer for the wireframe
 static constexpr int MAX_WIRE_LINES = 720;
-static constexpr int WIRE_COARSE_LIMIT = MAX_WIRE_LINES - 160;
 
 static const vec3f ICO_VERTS[12] = {
     {-0.525731f, 0.850651f, 0},  {0.525731f, 0.850651f, 0},
@@ -58,7 +58,20 @@ static g2::Color wireColor(float d, int level) {
 
 void Renderer::emitEdge(const vec3f &a, const vec3f &b, int level) {
   if (lineCount_ >= MAX_WIRE_LINES) return;
-  uint32_t ha = hashVec(a), hb = hashVec(b);
+  // Clip against the horizon: the far side of the sphere is never drawn
+  float da = g3::dot(a, camUnit_) - cosHorizon_;
+  float db = g3::dot(b, camUnit_) - cosHorizon_;
+  if (da < 0 && db < 0) return;
+  vec3f ua = a, ub = b;
+  if (da < 0 || db < 0) {
+    float t = da / (da - db);  // where the chord crosses the horizon plane
+    vec3f m = g3::normalize(g3::lerp(a, b, t));
+    if (da < 0)
+      ua = m;
+    else
+      ub = m;
+  }
+  uint32_t ha = hashVec(ua), hb = hashVec(ub);
   uint32_t key = ha < hb ? (ha * 2654435761u) ^ hb : (hb * 2654435761u) ^ ha;
   if (key == 0) key = 1;
   constexpr uint32_t MASK = 2047;
@@ -72,8 +85,8 @@ void Renderer::emitEdge(const vec3f &a, const vec3f &b, int level) {
     }
     slot = (slot + 1) & MASK;
   }
-  vec3f pa = sphereCenter_ + a * SPHERE_R;
-  vec3f pb = sphereCenter_ + b * SPHERE_R;
+  vec3f pa = sphereCenter_ + ua * SPHERE_R;
+  vec3f pb = sphereCenter_ + ub * SPHERE_R;
   putLine3(pa, pb, wireColor(g3::length(pa - cam_.eye), level),
            wireColor(g3::length(pb - cam_.eye), level), palette_[PAL_LINE]);
 }
@@ -84,15 +97,19 @@ void Renderer::subdivideFace(const vec3f &a, const vec3f &b, const vec3f &c,
   vec3f center = g3::normalize(a + b + c);
   // Horizon: skip faces entirely on the far side of the sphere
   if (g3::dot(center, camUnit_) < cullCos_[level]) return;
-  vec3f worldCenter = sphereCenter_ + center * SPHERE_R;
-  vec3f rel = worldCenter - cam_.eye;
-  float edgeLen = ICO_EDGE * SPHERE_R / (float)(1 << level);
-  // Faces entirely behind the camera
-  if (g3::dot(rel, viewDir_) < -edgeLen) return;
-  float d = g3::length(rel);
-  float px = edgeLen * focalPx_ / (d > 1.0f ? d : 1.0f);
-  if (level < MAX_SPHERE_LEVEL && px > SUBDIVIDE_PX &&
-      lineCount_ < WIRE_COARSE_LIMIT) {
+  // Level wanted here: finer near the player's position on the surface
+  vec3f playerUnit = g3::normalize(sphereCenter_ * -1.0f);
+  float cosDist = g3::dot(center, playerUnit);
+  float faceAngle = 0.6524f / (float)(1 << level);  // angular radius
+  float ang = std::acos(cosDist > 1 ? 1 : (cosDist < -1 ? -1 : cosDist));
+  float dist = (ang - faceAngle) * SPHERE_R;  // FU to the nearest point
+  int want = BASE_LEVEL;
+  if (dist < LEVEL6_RADIUS) {
+    want = BASE_LEVEL + 2;
+  } else if (dist < LEVEL5_RADIUS) {
+    want = BASE_LEVEL + 1;
+  }
+  if (level < want && level < MAX_SPHERE_LEVEL) {
     vec3f ab = g3::normalize(a + b);
     vec3f bc = g3::normalize(b + c);
     vec3f ca = g3::normalize(c + a);

@@ -93,6 +93,9 @@ constexpr int32_t FRAGMENT_MERGE_DIST_NUM = 5,
 constexpr int32_t LAYOUT_NEAR_FU =
     90;  // full-rate fragment physics within this distance of the player
 
+// A fragment smaller than size / FOOD_NOTICE_RATIO cannot be eaten
+constexpr uint32_t FOOD_NOTICE_RATIO = 32;
+
 // --- Floating fragments and sparks ------------------------------------------
 constexpr int32_t SPARK_LIFETIME = 12 * TICK_RATE;  // ticks
 constexpr int32_t SPARK_IMMUNE_TICKS =

@@ -351,9 +351,10 @@ void Game::tick(uint8_t buttons) {
   checkTransitions();
 }
 
-void Game::pushEffect(EffectKind kind, const Vec3 &n, int32_t r, int32_t size) {
+void Game::pushEffect(EffectKind kind, int entity, const Vec3 &n, int32_t r,
+                      int32_t size) {
   if (effectCount_ >= MAX_EFFECTS) return;
-  effects_[effectCount_++] = {kind, n, r, size};
+  effects_[effectCount_++] = {kind, (int16_t)entity, n, r, size};
 }
 
 // FNV-1a over the raw state (all arrays are zeroed before use, so padding is

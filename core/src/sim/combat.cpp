@@ -150,9 +150,9 @@ void Game::damageEntity(int idx, int32_t dmg, int attacker) {
   c.hp -= dmg;
   if (c.isPlayer) {
     events_ |= Event::PLAYER_HIT;
-    pushEffect(EffectKind::PLAYER_HIT, c.frame.n, c.r, dmg);
+    pushEffect(EffectKind::PLAYER_HIT, idx, c.frame.n, c.r, dmg);
   } else if (attacker == playerIndex_) {
-    pushEffect(EffectKind::ENEMY_HIT, c.frame.n, c.r, dmg);
+    pushEffect(EffectKind::ENEMY_HIT, idx, c.frame.n, c.r, dmg);
   }
   // The lost health becomes sparks flying out of the body
   int pieces = dmg >= 256 ? 3 : (dmg >= 64 ? 2 : 1);
@@ -183,7 +183,9 @@ void Game::killEntity(int idx) {
       Vec3 dir = off;
       if (dir.x == 0 && dir.y == 0 && dir.z == 0) dir = right;
       dir = normalizeQ30(dir);
-      int32_t sp = FU / 8 + rng_.range(0, FU / 8);
+      // Scatter briskly, bigger bodies burst wider
+      int32_t sp =
+          (FU / 2 + rng_.range(0, FU / 2)) * (8 + log2Floor(c.size)) / 8;
       Vec3 drift = scaleToLength(dir, sp);
       spawnFloatingFragment(normalizeQ30(center + off), c.r, p.sizeLog2, drift);
     }
@@ -221,9 +223,9 @@ void Game::transferSize(int from, int to) {
   if (B.isPlayer) events_ |= Event::PLAYER_ATE_FRAGMENT;
   if ((tickCount_ % 5) == 0) {
     if (S.isPlayer)
-      pushEffect(EffectKind::PLAYER_DRAINED, S.frame.n, S.r, (int32_t)t);
+      pushEffect(EffectKind::PLAYER_DRAINED, from, S.frame.n, S.r, (int32_t)t);
     if (B.isPlayer)
-      pushEffect(EffectKind::ENEMY_DRAINED, S.frame.n, S.r, (int32_t)t);
+      pushEffect(EffectKind::ENEMY_DRAINED, from, S.frame.n, S.r, (int32_t)t);
   }
 }
 
@@ -406,7 +408,7 @@ void Game::handleEating() {
       if (fp.n.z > c.frame.n.z + dz) break;
       if (!fp.alive) continue;
       // Fragments smaller than 1/32 of the body are beneath notice
-      if ((1u << fp.sizeLog2) * 32 < c.size) continue;
+      if ((1u << fp.sizeLog2) * FOOD_NOTICE_RATIO < c.size) continue;
       int32_t lim = c.bodyRadius + fragmentHalfSize(fp.sizeLog2);
       int64_t d2;
       if (!tangentialDist2(c.frame.n, fp.n, lim, d2)) continue;
