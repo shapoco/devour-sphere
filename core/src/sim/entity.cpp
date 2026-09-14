@@ -260,7 +260,7 @@ void Game::updateLayout(Entity &c) {
   for (int i = 0; i < c.fragmentCount; i++) {
     Fragment &p = c.fragments[i];
     int32_t s = half[i];
-    int32_t A = s >> 3;
+    int32_t A = s >> 4;
     if (A < 1) A = 1;
     int64_t fx = 0, fy = 0;
     addForce(fx, fy, p.x, p.y, 0, c.coreY, (coreHalf + s) * 9 / 8, A);
@@ -278,13 +278,13 @@ void Game::updateLayout(Entity &c) {
     fy -= p.y >> 5;
 
     // Heavily damped so that the layout settles instead of oscillating
-    int64_t vx = ((int64_t)p.vx >> 1) + fx;
-    int64_t vy = ((int64_t)p.vy >> 1) + fy;
-    int32_t vmax = (s >> 2) + (dist >> 4);
+    int64_t vx = ((int64_t)p.vx >> 2) + fx;
+    int64_t vy = ((int64_t)p.vy >> 2) + fy;
+    int32_t vmax = (s >> 3) + (dist >> 4);
     p.vx = (int32_t)clampI64(-vmax, vmax, vx);
     p.vy = (int32_t)clampI64(-vmax, vmax, vy);
     // Below a small threshold the fragment is considered at rest
-    int32_t rest = (s >> 7) + 1;
+    int32_t rest = (s >> 6) + 1;
     if (absI32(p.vx) <= rest && absI32(p.vy) <= rest) p.vx = p.vy = 0;
     p.x += p.vx;
     p.y += p.vy;

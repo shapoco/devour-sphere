@@ -97,6 +97,7 @@ struct FloatingFragment {
 struct Bullet {
   bool alive;
   Frame frame;  // n: position, t: direction of travel
+  Vec3 prevN;   // position at the previous tick (the hit test sweeps the path)
   int32_t r;
   int32_t speed;
   int16_t life;

@@ -62,9 +62,11 @@ void Renderer::init(int width, int height, void *arena, size_t arenaSize) {
   palette_[PAL_ENEMY_SMALL] = flatMaterial(g2::makeColor(110, 200, 255));
   palette_[PAL_FRAGMENT] = flatMaterial(hueColor(sim::FRAGMENT_HUE, 220, 220));
   palette_[PAL_CORE] = flatMaterial(g2::makeColor(255, 255, 255));
-  palette_[PAL_BULLET_PLAYER] = addMaterial(g2::makeColor(255, 150, 30), 1.0f);
+  palette_[PAL_BULLET_PLAYER] =
+      addMaterial(hueColor(sim::FRAGMENT_HUE, 200, 255), 1.0f);
   palette_[PAL_BULLET_ENEMY] = addMaterial(g2::makeColor(255, 60, 110), 1.0f);
-  palette_[PAL_LASER_PLAYER] = addMaterial(g2::makeColor(255, 190, 80), 1.0f);
+  palette_[PAL_LASER_PLAYER] =
+      addMaterial(hueColor(sim::FRAGMENT_HUE, 160, 255), 1.0f);
   palette_[PAL_LINE] = vertexColorMaterial(false);
   palette_[PAL_LINE_ADD] = vertexColorMaterial(true);
   palette_[PAL_FRAGMENT_WHITE] = flatMaterial(g2::makeColor(235, 240, 245));
@@ -232,7 +234,7 @@ void Renderer::updateCamera(float dt) {
   // High and far behind the player, looking down at roughly 45 degrees
   float wantDist = 3.5f * bodyR + 8.0f;
   if (wantDist < 11.0f) wantDist = 11.0f;
-  float nominalDist = wantDist;  // before dash / brake / menu adjustments
+  float nominalDist = wantDist;  // without dash / brake (sphere LOD basis)
   float wantHeight = wantDist * 1.0f;
   float wantFov = 70.0f * PI / 180.0f;
   float wantRoll = 0;
@@ -260,16 +262,19 @@ void Renderer::updateCamera(float dt) {
   } else if (st == sim::GameState::LAUNCH) {
     float t = g.stateTimer() / (float)sim::TICK_RATE;
     wantDist *= 1.0f + t * 1.5f;
+    nominalDist = wantDist;
     wantHeight *= 1.0f + t * 0.8f;
     wantFov = 70.0f * PI / 180.0f;
   } else if (st == sim::GameState::TITLE ||
              st == sim::GameState::WEAPON_SELECT) {
     // Cinematic orbit around the attract-mode player
     wantDist *= 2.2f;
+    nominalDist = wantDist;
     wantHeight *= 1.6f;
     fwd = rotateAroundAxis(fwd, up, time_ * 0.25f);
   } else if (st == sim::GameState::DEAD) {
     wantDist *= 1.6f;
+    nominalDist = wantDist;
     wantHeight *= 2.0f;
   }
 
@@ -478,7 +483,9 @@ void Renderer::drawBullets() {
       case sim::Weapon::LASER: {
         const g3::Material &m =
             palette_[b.fromPlayer ? PAL_LASER_PLAYER : PAL_BULLET_ENEMY];
-        putQuad(pos, fwd, right, base * 3.0f + 1.0f, base * 0.12f + 0.06f, m);
+        // Long beam (the hit test sweeps the path of the last tick, so it
+        // can be drawn as long as it flies)
+        putQuad(pos, fwd, right, base * 12.0f + 4.0f, base * 0.12f + 0.06f, m);
         break;
       }
       case sim::Weapon::MISSILE: {
@@ -510,6 +517,56 @@ void Renderer::drawStars() {
     putPoint3(cam_.eye + dir * DIST,
               g2::makeColor(v8, v8, v8 + 20 > 255 ? 255 : v8 + 20),
               palette_[PAL_LINE]);
+  }
+}
+
+// An enemy just behind the player, outside the screen, heading at the
+// player: warn with a red glow at the bottom of the screen
+void Renderer::updateRearWarning() {
+  const sim::Game &g = *game_;
+  const sim::Entity &p = g.player();
+  rearWarning_ = 0;
+  if (!p.alive || g.state() != sim::GameState::PLAYING) return;
+  vec3f fwd = q30ToF(p.frame.t);
+  constexpr float RANGE = 45.0f;  // FU
+  for (int i = 0; i < sim::MAX_ENTITIES; i++) {
+    const sim::Entity &c = g.entities[i];
+    if (!c.alive || c.isPlayer) continue;
+    vec3f pos = toLocal(sim::scaleToLength(c.frame.n, c.r));
+    float d = g3::length(pos);
+    if (d > RANGE || d < 0.5f) continue;
+    if (g3::dot(pos, fwd) > 0) continue;  // ahead of the player
+    float sx, sy;
+    if (project(pos, sx, sy) && sx >= 0 && sx < w_ && sy >= 0 && sy < h_) {
+      continue;  // visible on screen: no warning needed
+    }
+    vec3f toPlayer = pos * (-1.0f / d);
+    float align = g3::dot(q30ToF(c.frame.t), toPlayer);
+    if (align < 0.6f) continue;
+    float v = (align - 0.6f) / 0.4f * (1.0f - d / RANGE);
+    if (v > rearWarning_) rearWarning_ = v;
+  }
+  if (rearWarning_ > 1) rearWarning_ = 1;
+}
+
+// Additive red gradient over the bottom quarter of the screen
+void Renderer::drawRearWarning(const g2::Surface &dst, int y, int h, int dstY) {
+  if (rearWarning_ <= 0.02f || dst.format != g2::PixelFormat::RGB565BE) return;
+  int top = h_ * 3 / 4;
+  for (int row = y; row < y + h; row++) {
+    if (row < top || row >= h_) continue;
+    float t = (float)(row - top) / (float)(h_ - top);  // 0 at the top edge
+    int r5 = (int)(rearWarning_ * t * t * 31.0f + 0.5f);
+    if (r5 <= 0) continue;
+    uint8_t *line =
+        (uint8_t *)dst.pixels + (size_t)(row - y + dstY) * dst.stride;
+    g2::CursorRgb565BE cur;
+    cur.init(line, 0);
+    for (int x = 0; x < w_; x++) {
+      uint32_t px = cur.read();
+      cur.write(g2::addSaturateRgb565((uint16_t)px, (uint32_t)r5, 0, 0));
+      cur.next();
+    }
   }
 }
 
@@ -629,6 +686,7 @@ void Renderer::beginFrame(const sim::Game &game, float dt) {
   entitiesDrawn_ = 0;
   kites_ = 0;
   updateCamera(dt);
+  updateRearWarning();
   collectEffects();
   updateEffects(dt);
   buildScene();
@@ -640,6 +698,7 @@ void Renderer::renderBand(const g2::Surface &dst, int y, int h, int dstY) {
   g.setClipRect(0, dstY, w_, h);
   g.clear(g2::makeColor(0, 0, 4));
   g3d_.render(0, (int16_t)y, (int16_t)w_, (int16_t)h, dst, 0, (int16_t)dstY);
+  drawRearWarning(dst, y, h, dstY);
   int oy = dstY - y;
   for (int i = 0; i < markerCount_; i++) {
     const Marker2D &mk = markers_[i];

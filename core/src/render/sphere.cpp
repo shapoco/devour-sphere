@@ -20,11 +20,11 @@ static constexpr float FADE_NEAR = 60.0f, FADE_FAR = 900.0f;  // FU
 // the on-screen density and the line count stay about the same as the
 // player grows
 static constexpr int BASE_LEVEL = 4;  // edges of ~34 FU at 11 FU
-static constexpr float LEVEL5_RADIUS = 8.6f, LEVEL6_RADIUS = 3.1f;  // x nominal
+static constexpr float LEVEL5_RADIUS = 7.5f, LEVEL6_RADIUS = 3.1f;  // x nominal
 static constexpr float NOMINAL_DIST0 = 11.0f;
 // Budget of the triangle buffer for the wireframe: near the limit the faces
 // stop subdividing (coarser but complete), at the limit edges are dropped
-static constexpr int MAX_WIRE_LINES = 820;
+static constexpr int MAX_WIRE_LINES = 1100;
 static constexpr int WIRE_COARSE_LIMIT = MAX_WIRE_LINES - 200;
 
 static const vec3f ICO_VERTS[12] = {
@@ -120,7 +120,12 @@ void Renderer::subdivideFace(const vec3f &a, const vec3f &b, const vec3f &c,
   } else if (dist < LEVEL5_RADIUS * unit) {
     want += 1;
   }
-  if (lineCount_ >= WIRE_COARSE_LIMIT) want = level;  // budget: stay coarse
+  // Budget nearly exhausted: the remaining faces get one level less than
+  // the base (never the giant top-level triangles)
+  if (lineCount_ >= WIRE_COARSE_LIMIT && want > BASE_LEVEL - shift - 1) {
+    want = BASE_LEVEL - shift - 1;
+    if (want < 1) want = 1;
+  }
   if (level < want && level < MAX_SPHERE_LEVEL) {
     vec3f ab = g3::normalize(a + b);
     vec3f bc = g3::normalize(b + c);

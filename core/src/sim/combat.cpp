@@ -55,6 +55,7 @@ void Game::fireWeapon(int idx) {
   b.alive = true;
   Vec3 muzzle = worldPos(c.frame.n, c.r) + scaleToLength(c.frame.t, c.coreY);
   b.frame.n = normalizeQ30(muzzle);
+  b.prevN = b.frame.n;
   uint16_t spread = 0;
   if (ws.spread) spread = (uint16_t)rng_.range(-(int32_t)ws.spread, ws.spread);
   b.frame.t = orthonormalizeQ30(rotateAroundQ30(c.frame.t, c.frame.n, spread),
@@ -120,11 +121,17 @@ void Game::updateBullets() {
       }
     }
     int32_t ang = (int32_t)(((int64_t)b.speed << Q30_SHIFT) / b.r);
+    b.prevN = b.frame.n;
     b.frame.n = normalizeQ30(b.frame.n + scaleQ30(b.frame.t, ang));
     b.frame.t = orthonormalizeQ30(b.frame.t, b.frame.n);
 
+    // Hit test against the path flown during this tick (fast bullets would
+    // otherwise jump over small targets)
     int32_t br = bulletRadius(b);
-    int64_t dz = (int64_t)(maxBodyRadius_ + br) << Z_SHIFT;
+    int64_t dz = (int64_t)(maxBodyRadius_ + br + b.speed) << Z_SHIFT;
+    Vec3 pPrev = worldPos(b.prevN, b.r), pCur = worldPos(b.frame.n, b.r);
+    Vec3 seg = pCur - pPrev;
+    int64_t segLen2 = length2_64(seg);
     for (int k = entityLowerBound(b.frame.n.z - dz); k < entityOrderCount_;
          k++) {
       int j = entityOrder_[k];
@@ -133,8 +140,21 @@ void Game::updateBullets() {
       if (!o.alive || j == b.owner) continue;
       int32_t reach = o.bodyRadius + br;
       int64_t d2;
-      if (!tangentialDist2(b.frame.n, o.frame.n, reach, d2)) continue;
-      if (d2 >= (int64_t)reach * reach) continue;
+      if (!tangentialDist2(b.frame.n, o.frame.n, reach + b.speed, d2)) continue;
+      // Closest point of the segment to the target center
+      Vec3 rel = worldPos(o.frame.n, o.r) - pPrev;
+      int64_t t = segLen2 > 0 ? clampI64(0, segLen2, dot64(rel, seg)) : 0;
+      Vec3 closest = pPrev;
+      if (segLen2 > 0) {
+        closest = pPrev + Vec3{(int32_t)((int64_t)seg.x * t / segLen2),
+                               (int32_t)((int64_t)seg.y * t / segLen2),
+                               (int32_t)((int64_t)seg.z * t / segLen2)};
+      }
+      Vec3 gap = worldPos(o.frame.n, o.r) - closest;
+      // ignore the altitude component: only the tangential distance counts
+      int32_t along = dotQ30(gap, o.frame.n);
+      gap = gap - scaleToLength(o.frame.n, along);
+      if (length2_64(gap) >= (int64_t)reach * reach) continue;
       damageEntity(j, b.power, b.owner);
       stats_.hits++;
       b.alive = false;
