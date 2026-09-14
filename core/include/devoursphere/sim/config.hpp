@@ -133,6 +133,10 @@ constexpr int AI_THINK_INTERVAL = 8;  // ticks between decisions (staggered)
 // beyond
 constexpr uint8_t AI_FIRE_CHANCE[] = {40, 110, 200, 255};
 constexpr int AI_FIRE_CHANCE_LEVELS = 4;
+// After AI_EVADE_HITS hits in a short time an enemy breaks off for about
+// AI_EVADE_TICKS (quick turn, then dash away on level 2 and up)
+constexpr int AI_EVADE_HITS = 3;
+constexpr int AI_EVADE_TICKS = 40;
 constexpr int32_t AI_SIGHT_FU = 120;  // detection range in FU
 
 }  // namespace devoursphere::sim

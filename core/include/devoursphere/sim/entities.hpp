@@ -65,6 +65,9 @@ struct Entity {
   int16_t fireCooldown;
   int16_t invincible;   // ticks of spawn protection
   int16_t absorbGuard;  // ticks during which the entity cannot be absorbed
+  int16_t evadeTicks;   // AI: ticks left of an evasive maneuver
+  int8_t evadeDir;      // AI: turn direction while evading
+  uint8_t hitStreak;    // AI: recent hits taken (decays)
 
   Fragment fragments[MAX_FRAGMENTS_PER_ENTITY];
   uint8_t fragmentCount;

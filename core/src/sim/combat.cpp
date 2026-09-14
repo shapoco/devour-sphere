@@ -174,6 +174,16 @@ void Game::damageEntity(int idx, int32_t dmg, int attacker) {
   } else if (attacker == playerIndex_) {
     pushEffect(EffectKind::ENEMY_HIT, idx, c.frame.n, c.r, dmg);
   }
+  // Enemies that keep getting hit break off (see updateAi)
+  if (!c.isPlayer && c.evadeTicks == 0) {
+    if (c.hitStreak < 255) c.hitStreak++;
+    if (c.hitStreak >= AI_EVADE_HITS) {
+      c.hitStreak = 0;
+      c.evadeTicks =
+          (int16_t)(AI_EVADE_TICKS + rng_.range(0, AI_EVADE_TICKS / 2));
+      c.evadeDir = (int8_t)(rng_.below(2) ? 1 : -1);
+    }
+  }
   if (c.hp <= 0) killEntity(idx);
 }
 

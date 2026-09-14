@@ -20,12 +20,14 @@ static constexpr float FADE_NEAR = 60.0f, FADE_FAR = 900.0f;  // FU
 // the on-screen density and the line count stay about the same as the
 // player grows
 static constexpr int BASE_LEVEL = 4;  // edges of ~34 FU at 11 FU
-static constexpr float LEVEL5_RADIUS = 6.5f, LEVEL6_RADIUS = 2.8f;  // x nominal
+static constexpr float LEVEL5_RADIUS = 6.0f, LEVEL6_RADIUS = 2.5f;  // x nominal
 static constexpr float NOMINAL_DIST0 = 11.0f;
-// Budget of the triangle buffer for the wireframe: near the limit the faces
-// stop subdividing (coarser but complete), at the limit edges are dropped
+// Budget of the triangle buffer for the wireframe. The edges are counted in
+// a dry run first; when they exceed WIRE_LIMIT every level is lowered by one
+// for the whole sphere (uniform, no holes) until they fit.
 static constexpr int MAX_WIRE_LINES = 1100;
-static constexpr int WIRE_COARSE_LIMIT = MAX_WIRE_LINES - 200;
+static constexpr int WIRE_LIMIT = MAX_WIRE_LINES - 80;
+static constexpr int WIRE_RELAX = WIRE_LIMIT * 6 / 10;  // hysteresis
 
 static const vec3f ICO_VERTS[12] = {
     {-0.525731f, 0.850651f, 0},  {0.525731f, 0.850651f, 0},
@@ -64,7 +66,7 @@ static g2::Color wireColor(float d, int level) {
 }
 
 void Renderer::emitEdge(const vec3f &a, const vec3f &b, int level) {
-  if (lineCount_ >= MAX_WIRE_LINES) return;
+  if (!sphereDryRun_ && lineCount_ >= MAX_WIRE_LINES) return;
   // Clip against the horizon: the far side of the sphere is never drawn
   float da = g3::dot(a, camUnit_) - cosHorizon_;
   float db = g3::dot(b, camUnit_) - cosHorizon_;
@@ -92,6 +94,8 @@ void Renderer::emitEdge(const vec3f &a, const vec3f &b, int level) {
     }
     slot = (slot + 1) & MASK;
   }
+  sphereCount_++;
+  if (sphereDryRun_) return;
   vec3f pa = sphereCenter_ + ua * SPHERE_R;
   vec3f pb = sphereCenter_ + ub * SPHERE_R;
   putLine3(pa, pb, wireColor(g3::length(pa - cam_.eye), level),
@@ -100,7 +104,7 @@ void Renderer::emitEdge(const vec3f &a, const vec3f &b, int level) {
 
 void Renderer::subdivideFace(const vec3f &a, const vec3f &b, const vec3f &c,
                              int level) {
-  if (lineCount_ >= MAX_WIRE_LINES) return;
+  if (!sphereDryRun_ && lineCount_ >= MAX_WIRE_LINES) return;
   vec3f center = g3::normalize(a + b + c);
   // Horizon: skip faces entirely on the far side of the sphere
   if (g3::dot(center, camUnit_) < cullCos_[level]) return;
@@ -110,9 +114,7 @@ void Renderer::subdivideFace(const vec3f &a, const vec3f &b, const vec3f &c,
   float faceAngle = 0.6524f / (float)(1 << level);  // angular radius
   float ang = std::acos(cosDist > 1 ? 1 : (cosDist < -1 ? -1 : cosDist));
   float dist = (ang - faceAngle) * SPHERE_R;  // FU to the nearest point
-  float scale = camNominal_ / NOMINAL_DIST0;
-  int shift = 0;
-  while (scale >= 2.0f && shift < BASE_LEVEL) scale *= 0.5f, shift++;
+  int shift = sphereShift_;
   float unit = camNominal_ / (float)(1 << shift);  // radii in FU
   int want = BASE_LEVEL - shift;
   if (dist < LEVEL6_RADIUS * unit) {
@@ -120,12 +122,7 @@ void Renderer::subdivideFace(const vec3f &a, const vec3f &b, const vec3f &c,
   } else if (dist < LEVEL5_RADIUS * unit) {
     want += 1;
   }
-  // Budget nearly exhausted: the remaining faces get one level less than
-  // the base (never the giant top-level triangles)
-  if (lineCount_ >= WIRE_COARSE_LIMIT && want > BASE_LEVEL - shift - 1) {
-    want = BASE_LEVEL - shift - 1;
-    if (want < 1) want = 1;
-  }
+  if (want < 1) want = 1;
   if (level < want && level < MAX_SPHERE_LEVEL) {
     vec3f ab = g3::normalize(a + b);
     vec3f bc = g3::normalize(b + c);
@@ -156,9 +153,30 @@ void Renderer::subdivideFace(const vec3f &a, const vec3f &b, const vec3f &c,
   emitEdge(c, a, level);
 }
 
-void Renderer::buildSphere() {
+// One traversal of the whole sphere (dry run: count only)
+static void traverseSphere(Renderer &r,
+                           void (Renderer::*fn)(const vec3f &, const vec3f &,
+                                                const vec3f &, int),
+                           const int *order) {
+  for (int i = 0; i < 20; i++) {
+    int f = order[i];
+    (r.*fn)(ICO_VERTS[ICO_FACES[f][0]], ICO_VERTS[ICO_FACES[f][1]],
+            ICO_VERTS[ICO_FACES[f][2]], 0);
+  }
+}
+
+int Renderer::countSphereLines(int shift, const int *order) {
+  sphereShift_ = shift;
+  sphereDryRun_ = true;
+  sphereCount_ = 0;
   std::memset(edgeKeys_, 0, sizeof(edgeKeys_));
-  // Top-level faces nearest to the player first (see subdivideFace)
+  traverseSphere(*this, &Renderer::subdivideFace, order);
+  sphereDryRun_ = false;
+  return sphereCount_;
+}
+
+void Renderer::buildSphere() {
+  // Top-level faces nearest to the player first
   vec3f playerUnit = g3::normalize(sphereCenter_ * -1.0f);
   float key[20];
   int order[20];
@@ -173,11 +191,31 @@ void Renderer::buildSphere() {
     while (j >= 0 && key[order[j]] > key[o]) order[j + 1] = order[j], j--;
     order[j + 1] = o;
   }
-  for (int i = 0; i < 20; i++) {
-    int f = order[i];
-    subdivideFace(ICO_VERTS[ICO_FACES[f][0]], ICO_VERTS[ICO_FACES[f][1]],
-                  ICO_VERTS[ICO_FACES[f][2]], 0);
+
+  // Base level reduction from the camera distance, plus what the budget
+  // needs (kept between frames with hysteresis so that it does not flicker)
+  float scale = camNominal_ / NOMINAL_DIST0;
+  int base = 0;
+  while (scale >= 2.0f && base < BASE_LEVEL) scale *= 0.5f, base++;
+  int shift = base + sphereExtra_;
+  if (shift > BASE_LEVEL) shift = BASE_LEVEL;
+  int count = countSphereLines(shift, order);
+  while (count > WIRE_LIMIT && shift < BASE_LEVEL) {
+    shift++;
+    count = countSphereLines(shift, order);
   }
+  if (shift > base && shift - 1 >= base) {
+    int relaxed = countSphereLines(shift - 1, order);
+    if (relaxed < WIRE_RELAX) {
+      shift--;
+      count = relaxed;
+    }
+  }
+  sphereExtra_ = shift - base;
+  sphereShift_ = shift;
+  sphereCount_ = 0;
+  std::memset(edgeKeys_, 0, sizeof(edgeKeys_));
+  traverseSphere(*this, &Renderer::subdivideFace, order);
 }
 
 }  // namespace devoursphere::render

@@ -107,6 +107,16 @@ void Game::updateAi(int idx) {
     }
   }
 
+  if (c.hitStreak > 0) c.hitStreak--;
+  if (c.evadeTicks > 0) {
+    // Under sustained fire: break off in a fixed direction (quick turn
+    // under brake at first, then dash away on higher levels)
+    c.aiMode = AiMode::FLEE;
+    c.turn = c.evadeDir;
+    c.braking = c.evadeTicks > AI_EVADE_TICKS / 2;
+    c.dashing = !c.braking && sphereLevel_ >= 2;
+    return;
+  }
   if (threat >= 0) {
     c.aiMode = AiMode::FLEE;
     c.aiTarget = (int16_t)threat;
@@ -129,6 +139,11 @@ void Game::updateAi(int idx) {
     c.turn = steerTowards(c, o.frame.n, false);
     Vec3 d = tangentTowards(c.frame.n, o.frame.n);
     Vec3 dn = normalizeQ30(d);
+    // Overshot a nearby prey (it is behind us): quick turn under brake
+    constexpr int64_t QUICK2 = (int64_t)(30 * FU) * (30 * FU);
+    if (dotQ30(c.frame.t, dn) < -(Q30_ONE / 5) && preyD2 < QUICK2) {
+      c.braking = true;
+    }
     const WeaponSpec &ws = WEAPON_SPECS[(int)c.weapon];
     int64_t range = (int64_t)bulletSpeed(ws, c.size) * ws.lifetime;
     if (dotQ30(c.frame.t, dn) > COS_FIRE_CONE && preyD2 < range * range) {
@@ -219,6 +234,7 @@ void Game::moveEntity(Entity &c) {
   if (c.fireCooldown > 0) c.fireCooldown--;
   if (c.invincible > 0) c.invincible--;
   if (c.absorbGuard > 0) c.absorbGuard--;
+  if (c.evadeTicks > 0) c.evadeTicks--;
 }
 
 // Add the force between a fragment at (px, py) and a point (qx, qy) with the

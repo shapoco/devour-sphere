@@ -91,6 +91,10 @@ class Renderer {
   int width() const { return w_; }
   int height() const { return h_; }
 
+  // Internal (public for the traversal helper): one face of the sphere
+  void subdivideFace(const g3::vec3f &a, const g3::vec3f &b, const g3::vec3f &c,
+                     int level);
+
  private:
   int w_ = 0, h_ = 0;
   g3::Graphics3D g3d_;
@@ -116,6 +120,10 @@ class Renderer {
   float cosHorizon_ = 0;
   float horizonAngle_ = 0;
   float cullCos_[MAX_SPHERE_LEVEL + 1] = {};
+  int sphereShift_ = 0;        // level reduction used for the current frame
+  int sphereExtra_ = 0;        // extra reduction kept between frames (budget)
+  bool sphereDryRun_ = false;  // count edges instead of emitting them
+  int sphereCount_ = 0;
 
   // Per-frame bookkeeping
   uint32_t edgeKeys_[2048];  // edge dedupe hash table
@@ -178,8 +186,7 @@ class Renderer {
 
   // sphere.cpp
   void buildSphere();
-  void subdivideFace(const g3::vec3f &a, const g3::vec3f &b, const g3::vec3f &c,
-                     int level);
+  int countSphereLines(int shift, const int *order);
   void emitEdge(const g3::vec3f &a, const g3::vec3f &b, int level);
 
   // effects.cpp
