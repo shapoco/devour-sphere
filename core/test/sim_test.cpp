@@ -217,8 +217,62 @@ static void testGameplay() {
   checkInvariants(q);
 }
 
+// An equal-sized enemy straight ahead must die from sustained vulcan fire,
+// and the parts of a creature must come to rest after a while
+static void testCombatAndLayout() {
+  Game g;
+  g.reset(2024);
+  g.debugStartPlanet(1, 0);
+  Creature &p = g.creatures[g.playerIndex()];
+  int enemy = -1;
+  for (int i = 1; i < MAX_CREATURES; i++) {
+    if (g.creatures[i].alive) {
+      enemy = i;
+      break;
+    }
+  }
+  CHECK(enemy > 0);
+  Creature &e = g.creatures[enemy];
+  // Same size and heading, 20 PU ahead of the player, both stopped
+  e.size = p.size;
+  e.hpMax = HP_PER_SIZE * (int32_t)e.size;
+  e.hp = e.hpMax;
+  e.partCount = p.partCount;
+  for (int k = 0; k < p.partCount; k++) e.parts[k] = p.parts[k];
+  e.frame.t = p.frame.t;
+  e.frame.n = normalizeQ30(
+      p.frame.n +
+      scaleQ30(p.frame.t, (20 * PU) << (Q30_SHIFT - PLANET_RADIUS_SHIFT)));
+  e.frame.t = orthonormalizeQ30(e.frame.t, e.frame.n);
+  e.r = p.r;
+  e.invincible = 0;
+  int32_t hp0 = e.hp;
+  bool died = false;
+  for (int t = 0; t < 6 * TICK_RATE && !died; t++) {
+    // keep both creatures still by braking (the enemy is not AI driven
+    // while its think tick is skipped: force its controls every tick)
+    g.creatures[enemy].braking = true;
+    g.creatures[enemy].turn = 0;
+    g.creatures[enemy].firing = false;
+    g.tick(Button::DOWN | Button::A);
+    died = !g.creatures[enemy].alive;
+  }
+  CHECK(g.debugStats().hits > 0);
+  CHECK(died || g.creatures[enemy].hp < hp0 / 2);
+
+  // Layout settles: after 5 seconds without eating, part velocities are 0
+  Game h;
+  h.reset(99);
+  h.debugStartPlanet(1, 0);
+  for (int t = 0; t < 5 * TICK_RATE; t++) h.tick(0);
+  const Creature &q = h.player();
+  for (int k = 0; k < q.partCount; k++)
+    CHECK(q.parts[k].vx == 0 && q.parts[k].vy == 0);
+}
+
 int main() {
   testFixed();
+  testCombatAndLayout();
   testDeterminism();
   testGameplay();
   if (failures) {

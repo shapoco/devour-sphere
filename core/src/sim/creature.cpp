@@ -181,23 +181,9 @@ void Game::moveCreature(Creature &c) {
   if (rs == 0 && dr != 0) rs = dr > 0 ? 1 : -1;
   c.r += rs;
 
-  // Health
-  if (c.dashing) {
-    int32_t cost = c.hpMax >> DASH_HP_COST_SHIFT;
-    if (cost < 1) cost = 1;
-    c.hp -= cost;
-    if (c.hp <= (c.hpMax >> 3)) {
-      c.hp = c.hpMax >> 3;
-      c.dashing = false;
-    }
-  } else if (c.hp < c.hpMax) {
-    int32_t regen = c.hpMax >> HP_REGEN_SHIFT;
-    if (regen < 1) regen = 1;
-    c.hp += regen;
-    if (c.hp > c.hpMax) c.hp = c.hpMax;
-  }
   if (c.fireCooldown > 0) c.fireCooldown--;
   if (c.invincible > 0) c.invincible--;
+  if (c.absorbGuard > 0) c.absorbGuard--;
 }
 
 // Add the force between a part at (px, py) and a point (qx, qy) with the
@@ -239,7 +225,7 @@ void Game::updateLayout(Creature &c) {
   for (int i = 0; i < c.partCount; i++) {
     Part &p = c.parts[i];
     int32_t s = half[i];
-    int32_t A = s >> 2;
+    int32_t A = s >> 3;
     if (A < 1) A = 1;
     int64_t fx = 0, fy = 0;
     addForce(fx, fy, p.x, p.y, 0, c.coreY, (coreHalf + s) * 9 / 8, A);
@@ -255,11 +241,15 @@ void Game::updateLayout(Creature &c) {
     int64_t spring = ((int64_t)yRest - p.y) >> 3;
     fy += clampI64(-(A >> 1), A >> 1, spring);
 
-    int64_t vx = ((int64_t)p.vx * 3 >> 2) + fx;
-    int64_t vy = ((int64_t)p.vy * 3 >> 2) + fy;
-    int32_t vmax = s >> 1;
+    // Heavily damped so that the layout settles instead of oscillating
+    int64_t vx = ((int64_t)p.vx >> 1) + fx;
+    int64_t vy = ((int64_t)p.vy >> 1) + fy;
+    int32_t vmax = s >> 2;
     p.vx = (int32_t)clampI64(-vmax, vmax, vx);
     p.vy = (int32_t)clampI64(-vmax, vmax, vy);
+    // Below a small threshold the part is considered at rest
+    int32_t rest = (s >> 7) + 1;
+    if (absI32(p.vx) <= rest && absI32(p.vy) <= rest) p.vx = p.vy = 0;
     p.x += p.vx;
     p.y += p.vy;
     int32_t xmin = s >> 2;

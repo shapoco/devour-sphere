@@ -156,7 +156,7 @@ void Game::damageCreature(int idx, int32_t dmg, int attacker) {
     int32_t dist = c.bodyRadius + PU;
     Vec3 dir = scaleQ30(right, cosQ30(a)) + scaleQ30(c.frame.t, sinQ30(a));
     Vec3 p = worldPos(c.frame.n, c.r) + scaleToLength(dir, dist);
-    Vec3 drift = scaleToLength(dir, PU / 6 + rng_.range(0, PU / 6));
+    Vec3 drift = scaleToLength(dir, PU / 3 + rng_.range(0, PU / 3));
     spawnParticle(normalizeQ30(p), c.r,
                   i == pieces - 1 ? dmg - per * (pieces - 1) : per, drift);
   }
@@ -198,6 +198,7 @@ void Game::absorbCreature(int eater, int eaten) {
     const Part &p = v.parts[i];
     addPartToCreature(e, p.sizeLog2, lx + p.x, ly + p.y);
   }
+  e.absorbGuard = ABSORB_GUARD_TICKS;
   v.alive = false;
   v.hp = 0;
   stats_.absorbs++;
@@ -390,6 +391,7 @@ void Game::handleEating() {
       Vec3 rel = worldPos(fp.n, fp.r) - center;
       addPartToCreature(c, fp.sizeLog2, dotQ30(rel, right),
                         dotQ30(rel, c.frame.t));
+      c.absorbGuard = ABSORB_GUARD_TICKS;
       fp.alive = false;
       stats_.partsEaten++;
       if (c.isPlayer) events_ |= Event::PLAYER_ATE_PART;
@@ -418,7 +420,7 @@ void Game::handleEating() {
 }
 
 void Game::handleCreatureCollisions() {
-  int64_t dz = (int64_t)(maxCoreReach_ * 2) << Z_SHIFT;
+  int64_t dz = (int64_t)(maxBodyRadius_ + maxCoreReach_) << Z_SHIFT;
   for (int ka = 0; ka < creatureOrderCount_; ka++) {
     int i = creatureOrder_[ka];
     Creature &a = creatures[i];
@@ -433,19 +435,18 @@ void Game::handleCreatureCollisions() {
       int big = a.size > b.size ? i : j, small = big == i ? j : i;
       const Creature &B = creatures[big];
       const Creature &S = creatures[small];
-      if (S.invincible > 0) continue;
-      // Creatures that can fight each other do not absorb each other
-      if (canAttack(S.size, B.size)) continue;
-      // The cores must touch (in 3D, so different altitudes never collide)
-      int32_t reach = B.coreHalf + S.coreHalf;
+      if (S.invincible > 0 || S.absorbGuard > 0) continue;
+      // Only creatures that can fight each other collide; the bigger one
+      // absorbs the smaller one when the smaller one's core enters its body
+      if (!canAttack(S.size, B.size)) continue;
+      int32_t reach = B.bodyRadius * 3 / 4 + S.coreHalf;
       int64_t d2;
-      if (!tangentialDist2(B.frame.n, S.frame.n,
-                           reach + absI32(B.coreY) + absI32(S.coreY), d2)) {
+      if (!tangentialDist2(B.frame.n, S.frame.n, reach + absI32(S.coreY), d2)) {
         continue;
       }
-      Vec3 coreB = worldPos(B.frame.n, B.r) + scaleToLength(B.frame.t, B.coreY);
       Vec3 coreS = worldPos(S.frame.n, S.r) + scaleToLength(S.frame.t, S.coreY);
-      if (length2_64(coreB - coreS) >= (int64_t)reach * reach) continue;
+      Vec3 rel = worldPos(B.frame.n, B.r) - coreS;
+      if (length2_64(rel) >= (int64_t)reach * reach) continue;
       absorbCreature(big, small);
     }
   }

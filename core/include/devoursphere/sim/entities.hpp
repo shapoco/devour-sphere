@@ -56,7 +56,8 @@ struct Creature {
   int8_t turn;  // -1 left, 0, +1 right (current input)
   bool dashing, braking, firing;
   int16_t fireCooldown;
-  int16_t invincible;  // ticks of spawn protection
+  int16_t invincible;   // ticks of spawn protection
+  int16_t absorbGuard;  // ticks during which the creature cannot be absorbed
 
   Part parts[MAX_PARTS_PER_CREATURE];
   uint8_t partCount;

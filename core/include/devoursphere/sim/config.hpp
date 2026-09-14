@@ -48,9 +48,10 @@ constexpr uint16_t TURN_RATE_DASH = degToBrad(2);   // per tick while dashing
 
 // --- Health -----------------------------------------------------------------
 constexpr int32_t HP_PER_SIZE = 32;  // hpMax = HP_PER_SIZE * size
-constexpr int32_t DASH_HP_COST_SHIFT =
-    10;                                 // hpMax >> 10 per tick while dashing
-constexpr int32_t HP_REGEN_SHIFT = 12;  // hpMax >> 12 per tick passive regen
+// Health is only restored by absorbing energy particles (no passive regen,
+// dashing is free)
+constexpr int ABSORB_GUARD_TICKS =
+    TICK_RATE;  // no absorption right after eating
 
 // --- Weapons ----------------------------------------------------------------
 enum class Weapon : uint8_t { VULCAN = 0, LASER = 1, MISSILE = 2 };
@@ -68,10 +69,12 @@ struct WeaponSpec {
 };
 
 constexpr WeaponSpec WEAPON_SPECS[WEAPON_COUNT] = {
+    // damage per hit = power * ownerSize / 8; hpMax = 32 * size, so an equal
+    // opponent dies after 8 vulcan hits, 2 laser hits or 5 missile hits
     // speed        life  cd  power  cost  spread          homing        radius
-    {PU * 5 / 2, 45, 4, 8, 11, degToBrad(5), 0, 6},                // VULCAN
-    {PU * 8, 28, 14, 40, 8, 0, 0, 4},                              // LASER
-    {PU * 7 / 4, 100, 12, 16, 9, degToBrad(20), degToBrad(4), 8},  // MISSILE
+    {PU * 5 / 2, 45, 4, 32, 11, degToBrad(5), 0, 6},               // VULCAN
+    {PU * 8, 28, 14, 128, 8, 0, 0, 4},                             // LASER
+    {PU * 7 / 4, 100, 12, 56, 9, degToBrad(20), degToBrad(4), 8},  // MISSILE
 };
 
 // --- Sizes and combat rules -------------------------------------------------
@@ -90,7 +93,7 @@ constexpr int32_t LAYOUT_NEAR_PU =
 // --- Floating parts and particles ------------------------------------------
 constexpr int32_t PARTICLE_LIFETIME = 12 * TICK_RATE;  // ticks
 constexpr int32_t PARTICLE_IMMUNE_TICKS =
-    TICK_RATE;  // cannot be absorbed right after spawning
+    2 * TICK_RATE;  // cannot be absorbed right after spawning
 constexpr int32_t FLOATING_DRIFT_TICKS =
     3 * TICK_RATE;  // initial scatter duration
 

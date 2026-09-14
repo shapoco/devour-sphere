@@ -17,9 +17,10 @@ static constexpr float PLANET_R = (float)sim::PLANET_RADIUS / PU;
 
 // Palette indices
 enum : int {
-  PAL_ENEMY0 = 0,  // ENEMY_HUE_COUNT entries
-  PAL_PLAYER = sim::ENEMY_HUE_COUNT,
-  PAL_GRAY,
+  PAL_PLAYER = 0,   // teal, like the floating parts
+  PAL_ENEMY_BIG,    // fightable and bigger than the player: pink
+  PAL_ENEMY_SMALL,  // fightable and not bigger: light blue
+  PAL_GRAY,         // cannot be fought
   PAL_PART,
   PAL_CORE,
   PAL_BULLET_PLAYER,
@@ -59,11 +60,9 @@ void Renderer::init(int width, int height, void *arena, size_t arenaSize) {
   g3d_.init((int16_t)width, (int16_t)height, arena, arenaSize);
   g3d_.disableClear();
 
-  for (int i = 0; i < sim::ENEMY_HUE_COUNT; i++) {
-    palette_[PAL_ENEMY0 + i] =
-        flatMaterial(hueColor(sim::ENEMY_HUES[i], 235, 235));
-  }
-  palette_[PAL_PLAYER] = flatMaterial(hueColor(sim::PLAYER_HUE, 200, 255));
+  palette_[PAL_PLAYER] = flatMaterial(hueColor(sim::PART_HUE, 220, 230));
+  palette_[PAL_ENEMY_BIG] = flatMaterial(g2::makeColor(255, 90, 170));
+  palette_[PAL_ENEMY_SMALL] = flatMaterial(g2::makeColor(110, 200, 255));
   palette_[PAL_GRAY] = flatMaterial(g2::makeColor(110, 112, 120));
   palette_[PAL_PART] = flatMaterial(hueColor(sim::PART_HUE, 220, 220));
   palette_[PAL_CORE] = flatMaterial(g2::makeColor(255, 255, 255));
@@ -71,15 +70,6 @@ void Renderer::init(int width, int height, void *arena, size_t arenaSize) {
   palette_[PAL_BULLET_ENEMY] = addMaterial(g2::makeColor(255, 60, 110), 1.0f);
   palette_[PAL_LASER_PLAYER] = addMaterial(g2::makeColor(255, 190, 80), 1.0f);
 
-  for (int h = 0; h < 256; h++) {
-    int best = 0, bestD = 1000;
-    for (int i = 0; i < sim::ENEMY_HUE_COUNT; i++) {
-      int d = std::abs(h - sim::ENEMY_HUES[i]);
-      if (d > 128) d = 256 - d;
-      if (d < bestD) bestD = d, best = i;
-    }
-    hueToPalette_[h] = (uint8_t)best;
-  }
   camValid_ = false;
   time_ = 0;
 }
@@ -189,21 +179,22 @@ void Renderer::updateCamera(float dt) {
   vec3f fwd = q30ToF(p.frame.t);
   float bodyR = p.bodyRadius / (float)PU;
 
-  float wantDist = 3.2f * bodyR + 5.0f;
-  if (wantDist < 7.0f) wantDist = 7.0f;
-  float wantHeight = wantDist * 0.42f;
-  float wantFov = 62.0f * PI / 180.0f;
+  // High and far behind the player, looking down at roughly 45 degrees
+  float wantDist = 3.5f * bodyR + 8.0f;
+  if (wantDist < 11.0f) wantDist = 11.0f;
+  float wantHeight = wantDist * 1.0f;
+  float wantFov = 70.0f * PI / 180.0f;
   float wantRoll = 0;
   sim::GameState st = g.state();
   if (st == sim::GameState::PLAYING) {
     if (p.dashing) {
-      wantDist *= 0.72f;
-      wantHeight *= 0.8f;
-      wantFov = 50.0f * PI / 180.0f;
+      wantDist *= 0.8f;
+      wantHeight *= 0.75f;
+      wantFov = 58.0f * PI / 180.0f;
     } else if (p.braking) {
-      wantDist *= 1.35f;
-      wantHeight *= 1.3f;
-      wantFov = 76.0f * PI / 180.0f;
+      wantDist *= 1.25f;
+      wantHeight *= 1.25f;
+      wantFov = 82.0f * PI / 180.0f;
     }
     wantRoll = p.turn * (p.braking ? 14.0f : 9.0f) * PI / 180.0f;
   } else if (st == sim::GameState::LAUNCH) {
@@ -239,7 +230,7 @@ void Renderer::updateCamera(float dt) {
   vec3f eye = fwd * (-camDist_) + up * camHeight_;
   // Look at a point slightly ahead of and below the player so that the
   // planet surface fills the lower part of the screen
-  vec3f target = fwd * (bodyR * 0.5f + 1.0f) - up * (camHeight_ * 0.45f);
+  vec3f target = fwd * (bodyR * 0.5f + 1.0f) - up * (camHeight_ * 0.12f);
   vec3f dir = g3::normalize(target - eye);
   vec3f upR = rotateAroundAxis(up, dir, camRoll_);
   cam_.eye = eye;
@@ -279,7 +270,7 @@ const g3::Material &Renderer::materialForCreature(
   if (c.isPlayer) return palette_[PAL_PLAYER];
   const sim::Creature &p = game_->player();
   if (!sim::canAttack(p.size, c.size)) return palette_[PAL_GRAY];
-  return palette_[PAL_ENEMY0 + hueToPalette_[c.hue]];
+  return palette_[c.size > p.size ? PAL_ENEMY_BIG : PAL_ENEMY_SMALL];
 }
 
 void Renderer::putKite(const vec3f &c, const vec3f &dir, const vec3f &perp,
@@ -495,6 +486,25 @@ void Renderer::buildScene() {
     vec3f pos = toLocal(sim::scaleToLength(c.frame.n, c.r));
     bool blink = c.invincible > 0 && ((g.tickCount() >> 2) & 1);
     drawCreature(c, pos, full, materialForCreature(c), blink);
+    // Health gauge over fightable enemies
+    if (!c.isPlayer && vis[k].px >= 2.5f && gaugeCount_ < MAX_GAUGES &&
+        sim::canAttack(g.player().size, c.size)) {
+      float bodyR = c.bodyRadius / (float)PU;
+      vec3f up = q30ToF(c.frame.n);
+      float sx, sy;
+      if (project(pos + up * (bodyR * 0.3f + 0.5f), sx, sy)) {
+        int w = (int)(vis[k].px * 1.6f);
+        w = w < 14 ? 14 : (w > 48 ? 48 : w);
+        if (sx > -w && sx < w_ + w && sy > -8 && sy < h_ + 8) {
+          Gauge2D &gg = gauges_[gaugeCount_++];
+          gg.x = (int16_t)(sx - w / 2);
+          gg.y = (int16_t)(sy - 6);
+          gg.w = (int16_t)w;
+          int ratio = c.hpMax > 0 ? (int)((int64_t)c.hp * 255 / c.hpMax) : 0;
+          gg.ratio = (uint8_t)(ratio < 0 ? 0 : (ratio > 255 ? 255 : ratio));
+        }
+      }
+    }
   }
 
   drawFloatingParts();
@@ -510,6 +520,7 @@ void Renderer::beginFrame(const sim::Game &game, float dt) {
   time_ += dt;
   lineCount_ = 0;
   pointCount_ = 0;
+  gaugeCount_ = 0;
   creaturesDrawn_ = 0;
   kites_ = 0;
   updateCamera(dt);
@@ -541,6 +552,17 @@ void Renderer::renderBand(const g2::Surface &dst, int y, int h, int dstY) {
     g.drawLine(l.x0, l.y0 + oy, l.x1, l.y1 + oy, l.color);
   }
   g3d_.render(0, (int16_t)y, (int16_t)w_, (int16_t)h, dst, 0, (int16_t)dstY);
+  for (int i = 0; i < gaugeCount_; i++) {
+    const Gauge2D &gg = gauges_[i];
+    if (gg.y + 3 <= y || gg.y >= y + h) continue;
+    g.fillRect(gg.x - 1, gg.y + oy - 1, gg.w + 2, 5,
+               g2::makeColor(0, 0, 0, 170));
+    int fill = gg.w * gg.ratio / 255;
+    g2::Color c = gg.ratio > 128 ? g2::makeColor(90, 230, 140)
+                                 : (gg.ratio > 50 ? g2::makeColor(240, 200, 60)
+                                                  : g2::makeColor(240, 70, 60));
+    if (fill > 0) g.fillRect(gg.x, gg.y + oy, fill, 3, c);
+  }
   drawHud(g, oy);
 }
 

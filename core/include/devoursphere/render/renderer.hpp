@@ -38,6 +38,12 @@ struct Point2D {
   g2::Color color;
 };
 
+// Health gauge drawn over a fightable enemy
+struct Gauge2D {
+  int16_t x, y, w;
+  uint8_t ratio;  // 0..255
+};
+
 struct Camera {
   g3::vec3f eye, target, up;  // PU, relative to the player's position
   float fovY;                 // radians
@@ -96,12 +102,14 @@ class Renderer {
   int lineCount_ = 0;
   Point2D points_[MAX_POINTS];
   int pointCount_ = 0;
+  static constexpr int MAX_GAUGES = 64;
+  Gauge2D gauges_[MAX_GAUGES];
+  int gaugeCount_ = 0;
   uint32_t edgeKeys_[2048];  // edge dedupe hash table (per frame)
   int creaturesDrawn_ = 0, kites_ = 0;
 
   // Materials
   g3::Material palette_[PALETTE_SIZE];
-  uint8_t hueToPalette_[256];
 
   // renderer.cpp
   void updateCamera(float dt);
