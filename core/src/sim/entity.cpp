@@ -301,26 +301,48 @@ void Game::updateLayout(Entity &c) {
   c.bodyRadius = bodyR;
 }
 
+// Merge fragments a and b (same size) into a
+static void mergePair(Entity &c, int i, int j) {
+  Fragment &a = c.fragments[i];
+  const Fragment &b = c.fragments[j];
+  a.x = (int32_t)(((int64_t)a.x + b.x) >> 1);
+  a.y = (int32_t)(((int64_t)a.y + b.y) >> 1);
+  a.vx = a.vy = 0;
+  a.sizeLog2++;
+  c.fragments[j] = c.fragments[c.fragmentCount - 1];
+  c.fragmentCount--;
+}
+
 void Game::mergeFragments(Entity &c) {
+  // Above half the fragment limit the body is crowded: merge same-sized
+  // fragments from much farther apart, and if none are close, the closest
+  // pair anyway
+  bool crowded = c.fragmentCount > MAX_FRAGMENTS_PER_ENTITY / 2;
+  int bestI = -1, bestJ = -1;
+  int64_t bestD2 = INT64_MAX;
   for (int i = 0; i < c.fragmentCount; i++) {
     Fragment &a = c.fragments[i];
     if (a.sizeLog2 >= MAX_SIZE_LOG2) continue;
-    int32_t limit = fragmentHalfSize(a.sizeLog2) * FRAGMENT_MERGE_DIST_NUM /
-                    FRAGMENT_MERGE_DIST_DEN;
+    int32_t limit =
+        fragmentHalfSize(a.sizeLog2) *
+        (crowded ? FRAGMENT_MERGE_DIST_CROWDED_NUM : FRAGMENT_MERGE_DIST_NUM) /
+        FRAGMENT_MERGE_DIST_DEN;
     for (int j = i + 1; j < c.fragmentCount; j++) {
       Fragment &b = c.fragments[j];
       if (b.sizeLog2 != a.sizeLog2) continue;
       int64_t dx = (int64_t)a.x - b.x, dy = (int64_t)a.y - b.y;
-      if (dx * dx + dy * dy >= (int64_t)limit * limit) continue;
-      a.x = (int32_t)(((int64_t)a.x + b.x) >> 1);
-      a.y = (int32_t)(((int64_t)a.y + b.y) >> 1);
-      a.vx = a.vy = 0;
-      a.sizeLog2++;
-      c.fragments[j] = c.fragments[c.fragmentCount - 1];
-      c.fragmentCount--;
-      if (c.isPlayer) events_ |= Event::PLAYER_MERGED;
-      return;  // one merge per tick keeps the layout stable
+      int64_t d2 = dx * dx + dy * dy;
+      if (d2 < (int64_t)limit * limit) {
+        mergePair(c, i, j);
+        if (c.isPlayer) events_ |= Event::PLAYER_MERGED;
+        return;  // one merge per tick keeps the layout stable
+      }
+      if (d2 < bestD2) bestD2 = d2, bestI = i, bestJ = j;
     }
+  }
+  if (crowded && bestI >= 0) {
+    mergePair(c, bestI, bestJ);
+    if (c.isPlayer) events_ |= Event::PLAYER_MERGED;
   }
 }
 

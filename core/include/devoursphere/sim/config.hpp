@@ -21,7 +21,7 @@ constexpr int32_t SPHERE_RADIUS = 1 << SPHERE_RADIUS_SHIFT;
 constexpr int MAX_ENTITIES = 256;
 constexpr int MAX_FLOATING_FRAGMENTS = 1024;
 constexpr int MAX_BULLETS = 256;
-constexpr int MAX_FRAGMENTS_PER_ENTITY = 16;
+constexpr int MAX_FRAGMENTS_PER_ENTITY = 8;
 constexpr int MAX_SIZE_LOG2 = 20;  // largest fragment exponent handled
 
 // --- Altitude ---------------------------------------------------------------
@@ -96,7 +96,10 @@ constexpr int ABSORB_MIN_INTERVAL = 4;
 // --- Fragments inside an entity
 // ------------------------------------------------
 constexpr int32_t FRAGMENT_MERGE_DIST_NUM = 5,
-                  FRAGMENT_MERGE_DIST_DEN = 8;  // fraction of kite half-size
+                  FRAGMENT_MERGE_DIST_DEN =
+                      8;  // fraction of the kite half-size
+// ... when more than half the fragment limit is in use
+constexpr int32_t FRAGMENT_MERGE_DIST_CROWDED_NUM = 20;
 constexpr int32_t LAYOUT_NEAR_FU =
     90;  // full-rate fragment physics within this distance of the player
 

@@ -388,8 +388,8 @@ void Renderer::drawEntity(const sim::Entity &c, const vec3f &pos, float px,
         float t = std::fabs(x) / bodyR;
         if (t > 1) t = 1;
         // rotating +right around fwd by a positive angle moves it towards
-        // -up, so the sign follows the side to raise the outer edge
-        float tilt = -side * t * TILT_MAX;
+        // -up: the outer edge of each wing droops (anhedral)
+        float tilt = side * t * TILT_MAX;
         vec3f rightT = rotateAroundAxis(right, fwd, tilt);
         float dx = x, dy = ly - focusY;
         float len = std::sqrt(dx * dx + dy * dy);

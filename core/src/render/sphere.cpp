@@ -20,7 +20,7 @@ static constexpr float FADE_NEAR = 60.0f, FADE_FAR = 900.0f;  // FU
 // the on-screen density and the line count stay about the same as the
 // player grows
 static constexpr int BASE_LEVEL = 4;  // edges of ~34 FU at 11 FU
-static constexpr float LEVEL5_RADIUS = 7.5f, LEVEL6_RADIUS = 3.1f;  // x nominal
+static constexpr float LEVEL5_RADIUS = 6.5f, LEVEL6_RADIUS = 2.8f;  // x nominal
 static constexpr float NOMINAL_DIST0 = 11.0f;
 // Budget of the triangle buffer for the wireframe: near the limit the faces
 // stop subdividing (coarser but complete), at the limit edges are dropped
@@ -130,10 +130,25 @@ void Renderer::subdivideFace(const vec3f &a, const vec3f &b, const vec3f &c,
     vec3f ab = g3::normalize(a + b);
     vec3f bc = g3::normalize(b + c);
     vec3f ca = g3::normalize(c + a);
-    subdivideFace(a, ab, ca, level + 1);
-    subdivideFace(ab, b, bc, level + 1);
-    subdivideFace(ca, bc, c, level + 1);
-    subdivideFace(ab, bc, ca, level + 1);
+    // Children nearest to the player first, so that when the line budget
+    // runs out only the far faces end up coarse
+    const vec3f *tri[4][3] = {
+        {&a, &ab, &ca}, {&ab, &b, &bc}, {&ca, &bc, &c}, {&ab, &bc, &ca}};
+    float key[4];
+    int order[4] = {0, 1, 2, 3};
+    for (int i = 0; i < 4; i++) {
+      vec3f cen = *tri[i][0] + *tri[i][1] + *tri[i][2];
+      key[i] = -g3::dot(cen, playerUnit);
+    }
+    for (int i = 1; i < 4; i++) {
+      int o = order[i], j = i - 1;
+      while (j >= 0 && key[order[j]] > key[o]) order[j + 1] = order[j], j--;
+      order[j + 1] = o;
+    }
+    for (int i = 0; i < 4; i++) {
+      int o = order[i];
+      subdivideFace(*tri[o][0], *tri[o][1], *tri[o][2], level + 1);
+    }
     return;
   }
   emitEdge(a, b, level);
@@ -143,7 +158,23 @@ void Renderer::subdivideFace(const vec3f &a, const vec3f &b, const vec3f &c,
 
 void Renderer::buildSphere() {
   std::memset(edgeKeys_, 0, sizeof(edgeKeys_));
+  // Top-level faces nearest to the player first (see subdivideFace)
+  vec3f playerUnit = g3::normalize(sphereCenter_ * -1.0f);
+  float key[20];
+  int order[20];
   for (int f = 0; f < 20; f++) {
+    vec3f cen = ICO_VERTS[ICO_FACES[f][0]] + ICO_VERTS[ICO_FACES[f][1]] +
+                ICO_VERTS[ICO_FACES[f][2]];
+    key[f] = -g3::dot(cen, playerUnit);
+    order[f] = f;
+  }
+  for (int i = 1; i < 20; i++) {
+    int o = order[i], j = i - 1;
+    while (j >= 0 && key[order[j]] > key[o]) order[j + 1] = order[j], j--;
+    order[j + 1] = o;
+  }
+  for (int i = 0; i < 20; i++) {
+    int f = order[i];
     subdivideFace(ICO_VERTS[ICO_FACES[f][0]], ICO_VERTS[ICO_FACES[f][1]],
                   ICO_VERTS[ICO_FACES[f][2]], 0);
   }
