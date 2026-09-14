@@ -1,0 +1,14 @@
+# Build outputs
+build/
+*.ppm
+*.png
+
+# Editor / tool state
+.vscode/
+.claude/settings.local.json
+
+# Emscripten
+.emscripten_cache/
+
+# Python
+__pycache__/

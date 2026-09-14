@@ -1,0 +1,3 @@
+[submodule "submodule/shapo-gfx"]
+	path = submodule/shapo-gfx
+	url = https://github.com/shapoco/shapo-gfx.git

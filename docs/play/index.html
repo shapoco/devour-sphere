@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Devour Sphere</title>
+<link rel="stylesheet" href="../style.css">
+<style>
+  /* Game screen: 480x320 pixels, scaled up but never wider than the viewport;
+     the aspect ratio is fixed so narrow screens shrink it uniformly. */
+  #game {
+    width: min(960px, 100%);
+    aspect-ratio: 480 / 320;
+    position: relative;
+    background: #000;
+    border: 1px solid var(--line);
+    box-sizing: border-box;
+  }
+  #screen {
+    display: block;
+    width: 100%;
+    height: 100%;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  #stage {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+  }
+  #stage:fullscreen {
+    background: #000;
+    justify-content: center;
+  }
+  /* In fullscreen keep the whole stage (screen + pad) visible */
+  #stage:fullscreen #game { width: min(100%, calc((100vh - 190px) * 1.5)); }
+  #stage:fullscreen:not(.touch) #game { width: min(100%, calc(100vh * 1.5)); }
+  #toolbar {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  /* Virtual game pad (touch devices) */
+  #pad {
+    display: none;
+    width: min(960px, 100%);
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 8px;
+    box-sizing: border-box;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  body.touch #pad { display: flex; }
+  #dpad {
+    width: 150px;
+    height: 150px;
+    border-radius: 50%;
+    background: radial-gradient(circle, #16203a 0 30%, #0c1222 31% 100%);
+    border: 1px solid var(--line);
+    position: relative;
+    touch-action: none;
+  }
+  #dpad::before, #dpad::after {
+    content: "";
+    position: absolute;
+    background: #24304a;
+    border-radius: 6px;
+  }
+  #dpad::before { left: 50%; top: 10px; width: 30px; height: 130px; margin-left: -15px; }
+  #dpad::after { top: 50%; left: 10px; width: 130px; height: 30px; margin-top: -15px; }
+  #dpad .knob {
+    position: absolute;
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    background: #3a4a70;
+    left: 50%;
+    top: 50%;
+    margin: -23px 0 0 -23px;
+    pointer-events: none;
+    z-index: 1;
+  }
+  #abtn {
+    width: 96px;
+    height: 96px;
+    border-radius: 50%;
+    background: #3a1d24;
+    border: 2px solid #b0405a;
+    color: #ffd0d8;
+    font-size: 28px;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    touch-action: none;
+  }
+  #abtn.down { background: #b0405a; }
+  #dpad.down { border-color: var(--accent); }
+</style>
+</head>
+<body>
+<h1>Devour Sphere</h1>
+<div id="stage">
+  <div id="game"><canvas id="screen" width="480" height="320"></canvas></div>
+  <div id="pad">
+    <div id="dpad"><div class="knob"></div></div>
+    <div id="abtn">A</div>
+  </div>
+</div>
+<div id="toolbar">
+  <button id="fullscreen" type="button">全画面</button>
+  <button id="touchtoggle" type="button">タッチ操作</button>
+  <span id="fps"></span>
+</div>
+<div id="status">Loading...</div>
+<p class="help">
+  移動: ←→ / A D で旋回、↑ / W でダッシュ (体力を消費)、↓ / S でブレーキ。攻撃: スペース / I J K L。
+  ゲームパッドにも対応。
+</p>
+<footer>
+  <a href="../">トップ</a> &nbsp;|&nbsp;
+  <a href="https://github.com/shapoco/devour-sphere">github.com/shapoco/devour-sphere</a>
+</footer>
+<script src="play.js"></script>
+<script>startDevourSphere({ wasm: 'devoursphere.wasm' });</script>
+</body>
+</html>

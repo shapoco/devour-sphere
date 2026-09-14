@@ -1,0 +1,114 @@
+#ifndef DEVOURSPHERE_SIM_ENTITIES_HPP
+#define DEVOURSPHERE_SIM_ENTITIES_HPP
+
+#include <cstdint>
+
+#include "devoursphere/sim/config.hpp"
+#include "devoursphere/sim/fixed.hpp"
+
+namespace devoursphere::sim {
+
+// Button state for one tick (bit set = pressed)
+namespace Button {
+constexpr uint8_t LEFT = 1 << 0;
+constexpr uint8_t RIGHT = 1 << 1;
+constexpr uint8_t UP = 1 << 2;    // dash
+constexpr uint8_t DOWN = 1 << 3;  // brake
+constexpr uint8_t A = 1 << 4;     // fire / confirm
+}  // namespace Button
+
+// Kite half-size (units) of a part of size 2^sizeLog2 (area grows with size)
+int32_t partHalfSize(int sizeLog2);
+
+// Altitude above the planet surface for a creature of the given size
+int32_t altitudeForSize(uint32_t size);
+
+// Cruise speed (units per tick) of a creature of the given size
+int32_t cruiseSpeedForSize(uint32_t size);
+
+// A part inside a creature: local coordinates (x = right, y = forward) in
+// units. x >= 0; a mirrored copy at (-x, y) is implied.
+struct Part {
+  int32_t x, y;    // position
+  int32_t vx, vy;  // velocity (units per tick)
+  uint8_t sizeLog2;
+};
+
+// Orientation frame on the sphere: n (up, unit normal), t (forward, unit
+// tangent), right = t x n. All Q30.
+struct Frame {
+  Vec3 n, t;
+  Vec3 right() const { return crossQ30(t, n); }
+};
+
+enum class AiMode : uint8_t { WANDER, HUNT_PART, HUNT_CREATURE, FLEE };
+
+struct Creature {
+  bool alive;
+  bool isPlayer;
+  Frame frame;
+  int32_t r;      // distance from the planet center (units)
+  int32_t speed;  // current speed (units per tick)
+  uint32_t size;  // sum of part sizes (authoritative)
+  int32_t hp, hpMax;
+  Weapon weapon;
+  uint8_t hue;  // 0..255 color hue (render hint)
+  int8_t turn;  // -1 left, 0, +1 right (current input)
+  bool dashing, braking, firing;
+  int16_t fireCooldown;
+  int16_t invincible;  // ticks of spawn protection
+
+  Part parts[MAX_PARTS_PER_CREATURE];
+  uint8_t partCount;
+  int32_t coreY;         // core position on the local Y axis
+  int32_t coreHalf;      // core kite half-size
+  int32_t bodyRadius;    // tangential extent (units) for collisions
+  int32_t layoutFocusY;  // focus point for part orientation (render hint)
+
+  // AI
+  AiMode aiMode;
+  int16_t aiTarget;  // index into creatures or floating parts (-1 = none)
+  int16_t aiTimer;
+  uint16_t aiWanderAngle;
+
+  // Bookkeeping
+  uint16_t rank;  // 1 = largest on the planet (updated periodically)
+  uint32_t seed;  // per-creature random seed (visual variation)
+};
+
+struct FloatingPart {
+  bool alive;
+  Vec3 n;      // unit normal (Q30)
+  int32_t r;   // distance from the planet center
+  Vec3 drift;  // tangential velocity (units per tick, decays)
+  uint8_t sizeLog2;
+  int16_t age;
+  uint16_t spin;  // render hint (brad)
+};
+
+struct Bullet {
+  bool alive;
+  Frame frame;  // n: position, t: direction of travel
+  int32_t r;
+  int32_t speed;
+  int16_t life;
+  int16_t owner;  // creature index
+  Weapon kind;
+  uint32_t ownerSize;  // size of the owner when fired (hit rule and scale)
+  int32_t power;       // damage
+  int16_t target;      // homing target creature (-1 = none)
+  bool fromPlayer;
+};
+
+struct Particle {
+  bool alive;
+  Vec3 n;
+  int32_t r;
+  Vec3 drift;
+  int32_t energy;  // hp restored when absorbed
+  int16_t life;
+};
+
+}  // namespace devoursphere::sim
+
+#endif
