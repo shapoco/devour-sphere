@@ -38,8 +38,8 @@
     justify-content: center;
   }
   /* In fullscreen keep the whole stage (screen + pad) visible */
-  #stage:fullscreen #game { width: min(100%, calc((100vh - 190px) * 1.5)); }
-  #stage:fullscreen:not(.touch) #game { width: min(100%, calc(100vh * 1.5)); }
+  body.touch #stage:fullscreen #game { width: min(100%, calc((100vh - 190px) * 1.5)); }
+  body:not(.touch) #stage:fullscreen #game { width: min(100%, calc(100vh * 1.5)); }
   #toolbar {
     display: flex;
     gap: 8px;

@@ -45,7 +45,7 @@ void Renderer::emitEdge(const vec3f &a, const vec3f &b, int level) {
   uint32_t ha = hashVec(a), hb = hashVec(b);
   uint32_t key = ha < hb ? (ha * 2654435761u) ^ hb : (hb * 2654435761u) ^ ha;
   if (key == 0) key = 1;
-  constexpr uint32_t MASK = 4095;
+  constexpr uint32_t MASK = 2047;
   uint32_t slot = key & MASK;
   for (int probe = 0; probe < 32; probe++) {
     uint32_t k = edgeKeys_[slot];

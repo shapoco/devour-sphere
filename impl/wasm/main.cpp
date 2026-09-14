@@ -93,23 +93,36 @@ static void writePpm(const char *path) {
   std::printf("wrote %s\n", path);
 }
 
-// Usage: devoursphere_native [level] [ticks] [out.ppm] [input] [auto] [seed]
-//   level: 0 = title screen, >= 1 = play on that planet level
-//   input: button bits held during the ticks (default: 0)
-//   auto:  1 = the AI drives the player
+// Usage: devoursphere_native [level] [script] [out.ppm] [auto] [seed]
+//   level:  0 = title screen, >= 1 = play on that planet level
+//   script: comma separated "COUNTxBUTTONS" items, e.g. "5x0,1x16,300x2"
+//           (BUTTONS = sim::Button bits held for COUNT ticks); a plain number
+//           means that many ticks without input
+//   auto:   1 = the AI drives the player
 int main(int argc, char **argv) {
   int level = argc > 1 ? std::atoi(argv[1]) : 0;
-  int ticks = argc > 2 ? std::atoi(argv[2]) : 60;
+  const char *script = argc > 2 ? argv[2] : "60";
   const char *path = argc > 3 ? argv[3] : "devoursphere.ppm";
-  uint32_t input = argc > 4 ? (uint32_t)std::atoi(argv[4]) : 0;
-  int autoPlay = argc > 5 ? std::atoi(argv[5]) : 0;
-  uint32_t seed = argc > 6 ? (uint32_t)std::atoi(argv[6]) : 12345u;
+  int autoPlay = argc > 4 ? std::atoi(argv[4]) : 0;
+  uint32_t seed = argc > 5 ? (uint32_t)std::atoi(argv[5]) : 12345u;
 
   ds_init(seed);
   if (level > 0) ds_debug_start(level, 0);
   ds_debug_auto(autoPlay);
+
+  // Expand the script into ticks
+  int ticks = 0;
   auto t0 = std::chrono::steady_clock::now();
-  for (int i = 0; i < ticks; i++) ds_tick(input);
+  for (const char *p = script; *p;) {
+    int count = std::atoi(p);
+    uint32_t buttons = 0;
+    while (*p && *p != ',' && *p != 'x') p++;
+    if (*p == 'x') buttons = (uint32_t)std::atoi(++p);
+    while (*p && *p != ',') p++;
+    if (*p == ',') p++;
+    for (int i = 0; i < count; i++) ds_tick(buttons);
+    ticks += count;
+  }
   auto t1 = std::chrono::steady_clock::now();
   const int RENDERS = 20;
   for (int i = 0; i < RENDERS; i++) ds_render(1.0f / 30);

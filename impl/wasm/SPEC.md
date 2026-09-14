@@ -49,12 +49,13 @@ make serve      # docs/ を http://localhost:52980/ で配信 (fetch は file://
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
-./build/impl/wasm/devoursphere_native [level] [ticks] [out.ppm] [input] [auto] [seed]
+./build/impl/wasm/devoursphere_native [level] [script] [out.ppm] [auto] [seed]
 ```
 
 `level` が 0 ならタイトル画面、1 以上ならそのレベルのプラネットで開始する。
-`input` は保持するボタンビット、`auto` を 1 にすると AI がプレイヤーを操作する。
-指定 tick だけ進めて 1 フレームを PPM に書き出し、tick と描画の所要時間、
+`script` は「tick 数 x ボタンビット」をコンマで並べた入力列 (例: `5x0,1x16,300x2`。
+数値だけなら入力なしの tick 数)、`auto` を 1 にすると AI がプレイヤーを操作する。
+入力列を実行して 1 フレームを PPM に書き出し、tick と描画の所要時間、
 描画統計 (線分数、三角形数、アリーナ使用量) を表示する。ブラウザなしで見た目と
 負荷を確認するためのもの。
 

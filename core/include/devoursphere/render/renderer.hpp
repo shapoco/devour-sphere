@@ -50,7 +50,7 @@ struct RenderStats {
 
 class Renderer {
  public:
-  static constexpr int MAX_LINES = 3072;
+  static constexpr int MAX_LINES = 2048;
   static constexpr int MAX_POINTS = 768;
   static constexpr int PALETTE_SIZE = 16;
   static constexpr int MAX_PLANET_LEVEL = 7;
@@ -96,7 +96,7 @@ class Renderer {
   int lineCount_ = 0;
   Point2D points_[MAX_POINTS];
   int pointCount_ = 0;
-  uint32_t edgeKeys_[4096];  // edge dedupe hash table (per frame)
+  uint32_t edgeKeys_[2048];  // edge dedupe hash table (per frame)
   int creaturesDrawn_ = 0, kites_ = 0;
 
   // Materials
