@@ -232,6 +232,7 @@ void Renderer::updateCamera(float dt) {
   // High and far behind the player, looking down at roughly 45 degrees
   float wantDist = 3.5f * bodyR + 8.0f;
   if (wantDist < 11.0f) wantDist = 11.0f;
+  float nominalDist = wantDist;  // before dash / brake / menu adjustments
   float wantHeight = wantDist * 1.0f;
   float wantFov = 70.0f * PI / 180.0f;
   float wantRoll = 0;
@@ -254,7 +255,8 @@ void Renderer::updateCamera(float dt) {
       wantHeight *= 1.25f;
       wantFov = 82.0f * PI / 180.0f;
     }
-    wantRoll = p.turn * (p.braking ? 14.0f : 9.0f) * PI / 180.0f;
+    wantRoll =
+        (p.turnLevel / 256.0f) * (p.braking ? 14.0f : 9.0f) * PI / 180.0f;
   } else if (st == sim::GameState::LAUNCH) {
     float t = g.stateTimer() / (float)sim::TICK_RATE;
     wantDist *= 1.0f + t * 1.5f;
@@ -273,6 +275,7 @@ void Renderer::updateCamera(float dt) {
 
   if (!camValid_) {
     camDist_ = wantDist;
+    camNominal_ = nominalDist;
     camHeight_ = wantHeight;
     camFov_ = wantFov;
     camRoll_ = wantRoll;
@@ -282,6 +285,7 @@ void Renderer::updateCamera(float dt) {
   } else {
     float k = 1.0f - std::exp(-dt * 5.0f);
     camDist_ += (wantDist - camDist_) * k;
+    camNominal_ += (nominalDist - camNominal_) * k;
     camHeight_ += (wantHeight - camHeight_) * k;
     camFov_ += (wantFov - camFov_) * k;
     camRoll_ += (wantRoll - camRoll_) * k;

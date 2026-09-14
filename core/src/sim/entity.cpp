@@ -175,15 +175,24 @@ void Game::moveEntity(Entity &c) {
   if (step == 0 && delta != 0) step = delta > 0 ? 1 : -1;
   c.speed += step;
 
-  if (c.turn < 0) {
-    c.frame.t = rotateAroundQ30(c.frame.t, c.frame.n, rate);
-  } else if (c.turn > 0) {
-    c.frame.t = rotateAroundQ30(c.frame.t, c.frame.n, (uint16_t)(0 - rate));
+  // The turn builds up and stops gradually
+  {
+    int32_t target = c.turn * 256;
+    int32_t d = target - c.turnLevel;
+    int32_t step = 256 / TURN_RAMP_TICKS + 1;
+    if (d > step) d = step;
+    if (d < -step) d = -step;
+    c.turnLevel = (int16_t)(c.turnLevel + d);
+  }
+  if (c.turnLevel != 0) {
+    // positive angles turn left; turnLevel > 0 means turning right
+    int32_t angle = -((int32_t)rate * c.turnLevel) >> 8;
+    c.frame.t = rotateAroundQ30(c.frame.t, c.frame.n, (uint16_t)angle);
   }
   // Bank into the turn (visual, but kept in the simulation so that every
   // platform shows the same attitude)
   int32_t bankTarget =
-      c.turn * (int32_t)(c.braking ? BANK_MAX_BRAKE : BANK_MAX);
+      ((int32_t)(c.braking ? BANK_MAX_BRAKE : BANK_MAX) * c.turnLevel) >> 8;
   int32_t db = bankTarget - c.bank;
   int32_t bs = db >> BANK_APPROACH_SHIFT;
   if (bs == 0 && db != 0) bs = db > 0 ? 1 : -1;

@@ -59,6 +59,7 @@ struct Entity {
   uint8_t hue;   // 0..255 color hue (render hint)
   int8_t turn;   // -1 left, 0, +1 right (current input)
   int16_t bank;  // roll around the heading (brad, positive = right wing down)
+  int16_t turnLevel;  // -256..256: how far the turn has built up
   bool dashing, braking, firing;
   int16_t dashLevel;  // 0..256: how far the dash has built up
   int16_t fireCooldown;

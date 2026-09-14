@@ -103,6 +103,7 @@ class Renderer {
   bool camValid_ = false;
   float camDist_ = 0, camHeight_ = 0, camFov_ = 0, camRoll_ = 0;
   float camAhead_ = 0, camDown_ = 0;  // look target: ahead / below the player
+  float camNominal_ = 11;  // camera distance without dash/brake (sphere LOD)
   g3::mat4f view_ = g3::mat4f::identity();
   g3::mat4f proj_ = g3::mat4f::identity();
   g3::mat4f viewProj_ = g3::mat4f::identity();

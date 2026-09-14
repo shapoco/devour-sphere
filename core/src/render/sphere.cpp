@@ -15,10 +15,17 @@ static constexpr float FADE_NEAR = 60.0f, FADE_FAR = 900.0f;  // FU
 // Subdivision: fixed levels chosen by the distance from the player's
 // position on the surface (not by the screen size, which would make the
 // mesh flicker as the camera moves)
-static constexpr int BASE_LEVEL = 4;  // edges of ~34 FU
-static constexpr float LEVEL5_RADIUS = 95.0f, LEVEL6_RADIUS = 34.0f;  // FU
-// Budget of the triangle buffer for the wireframe
+// The radii scale with the nominal camera distance (11 FU for the smallest
+// player) and every level drops by one each time that distance doubles, so
+// the on-screen density and the line count stay about the same as the
+// player grows
+static constexpr int BASE_LEVEL = 4;  // edges of ~34 FU at 11 FU
+static constexpr float LEVEL5_RADIUS = 8.6f, LEVEL6_RADIUS = 3.1f;  // x nominal
+static constexpr float NOMINAL_DIST0 = 11.0f;
+// Budget of the triangle buffer for the wireframe: near the limit the faces
+// stop subdividing (coarser but complete), at the limit edges are dropped
 static constexpr int MAX_WIRE_LINES = 820;
+static constexpr int WIRE_COARSE_LIMIT = MAX_WIRE_LINES - 200;
 
 static const vec3f ICO_VERTS[12] = {
     {-0.525731f, 0.850651f, 0},  {0.525731f, 0.850651f, 0},
@@ -103,12 +110,17 @@ void Renderer::subdivideFace(const vec3f &a, const vec3f &b, const vec3f &c,
   float faceAngle = 0.6524f / (float)(1 << level);  // angular radius
   float ang = std::acos(cosDist > 1 ? 1 : (cosDist < -1 ? -1 : cosDist));
   float dist = (ang - faceAngle) * SPHERE_R;  // FU to the nearest point
-  int want = BASE_LEVEL;
-  if (dist < LEVEL6_RADIUS) {
-    want = BASE_LEVEL + 2;
-  } else if (dist < LEVEL5_RADIUS) {
-    want = BASE_LEVEL + 1;
+  float scale = camNominal_ / NOMINAL_DIST0;
+  int shift = 0;
+  while (scale >= 2.0f && shift < BASE_LEVEL) scale *= 0.5f, shift++;
+  float unit = camNominal_ / (float)(1 << shift);  // radii in FU
+  int want = BASE_LEVEL - shift;
+  if (dist < LEVEL6_RADIUS * unit) {
+    want += 2;
+  } else if (dist < LEVEL5_RADIUS * unit) {
+    want += 1;
   }
+  if (lineCount_ >= WIRE_COARSE_LIMIT) want = level;  // budget: stay coarse
   if (level < want && level < MAX_SPHERE_LEVEL) {
     vec3f ab = g3::normalize(a + b);
     vec3f bc = g3::normalize(b + c);

@@ -45,7 +45,9 @@ constexpr int32_t SPEED_ACCEL_SHIFT =
 constexpr uint16_t TURN_RATE = degToBrad(3);        // per tick
 constexpr uint16_t TURN_RATE_BRAKE = degToBrad(6);  // per tick while braking
 constexpr uint16_t TURN_RATE_DASH = degToBrad(2);   // per tick while dashing
-constexpr uint16_t BANK_MAX = degToBrad(28);        // roll while turning
+// A turn builds up (and stops) over TURN_RAMP_TICKS (turnLevel is -256..256)
+constexpr int TURN_RAMP_TICKS = 9;            // 0.3 s
+constexpr uint16_t BANK_MAX = degToBrad(28);  // roll while turning
 constexpr uint16_t BANK_MAX_BRAKE =
     degToBrad(40);                      // roll while turning under brake
 constexpr int BANK_APPROACH_SHIFT = 3;  // bank eases 1/8 per tick
