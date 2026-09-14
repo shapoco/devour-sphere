@@ -14,19 +14,7 @@ static constexpr float PI = 3.14159265358979f;
 static constexpr float Z_NEAR = 0.4f;    // FU
 static constexpr float Z_FAR = 1800.0f;  // FU
 static constexpr float SPHERE_R = (float)sim::SPHERE_RADIUS / FU;
-
-// Palette indices
-enum : int {
-  PAL_PLAYER = 0,   // teal, like the floating fragments
-  PAL_ENEMY_BIG,    // bigger than the player: pink
-  PAL_ENEMY_SMALL,  // not bigger than the player: light blue
-  PAL_GRAY,         // (unused)
-  PAL_FRAGMENT,
-  PAL_CORE,
-  PAL_BULLET_PLAYER,
-  PAL_BULLET_ENEMY,
-  PAL_LASER_PLAYER,
-};
+static constexpr float BRAD_TO_RAD = 2.0f * PI / 65536.0f;
 
 static g3::colorf toColorf(g2::Color c) {
   return {g2::colorR(c) / 255.0f, g2::colorG(c) / 255.0f,
@@ -50,6 +38,14 @@ static g3::Material addMaterial(g2::Color c, float opacity) {
   return m;
 }
 
+// White material whose color comes from the vertices
+static g3::Material vertexColorMaterial(bool additive) {
+  g3::Material m = flatMaterial(g2::makeColor(255, 255, 255));
+  m.flags |= g3::MaterialFlags::VERTEX_COLOR;
+  if (additive) m.blendMode = g3::BlendMode::ADD;
+  return m;
+}
+
 static g2::Color hueColor(int hue, int s, int v) {
   return g2::makeColorHsv(hue * 360 / 256, s, v);
 }
@@ -63,15 +59,30 @@ void Renderer::init(int width, int height, void *arena, size_t arenaSize) {
   palette_[PAL_PLAYER] = flatMaterial(hueColor(sim::FRAGMENT_HUE, 220, 230));
   palette_[PAL_ENEMY_BIG] = flatMaterial(g2::makeColor(255, 90, 170));
   palette_[PAL_ENEMY_SMALL] = flatMaterial(g2::makeColor(110, 200, 255));
-  palette_[PAL_GRAY] = flatMaterial(g2::makeColor(110, 112, 120));
   palette_[PAL_FRAGMENT] = flatMaterial(hueColor(sim::FRAGMENT_HUE, 220, 220));
   palette_[PAL_CORE] = flatMaterial(g2::makeColor(255, 255, 255));
   palette_[PAL_BULLET_PLAYER] = addMaterial(g2::makeColor(255, 150, 30), 1.0f);
   palette_[PAL_BULLET_ENEMY] = addMaterial(g2::makeColor(255, 60, 110), 1.0f);
   palette_[PAL_LASER_PLAYER] = addMaterial(g2::makeColor(255, 190, 80), 1.0f);
+  palette_[PAL_LINE] = vertexColorMaterial(false);
+  palette_[PAL_LINE_ADD] = vertexColorMaterial(true);
 
   camValid_ = false;
+  originValid_ = false;
+  debrisCount_ = 0;
+  dustCount_ = 0;
+  dustSpawnAcc_ = 0;
+  lastEffectTick_ = 0xFFFFFFFFu;
   time_ = 0;
+}
+
+float Renderer::frand() {
+  uint32_t x = rng_;
+  x ^= x << 13;
+  x ^= x >> 17;
+  x ^= x << 5;
+  rng_ = x;
+  return (x >> 8) * (1.0f / 16777216.0f);
 }
 
 // ---------------------------------------------------------------------------
@@ -98,87 +109,120 @@ bool Renderer::project(const vec3f &p, float &sx, float &sy) const {
   return true;
 }
 
-// Liang-Barsky clip of a 2D segment against a rectangle
-static bool clipSegment(float &x0, float &y0, float &x1, float &y1, float xmin,
-                        float ymin, float xmax, float ymax) {
-  float dx = x1 - x0, dy = y1 - y0;
-  float t0 = 0, t1 = 1;
-  const float p[4] = {-dx, dx, -dy, dy};
-  const float q[4] = {x0 - xmin, xmax - x0, y0 - ymin, ymax - y0};
-  for (int i = 0; i < 4; i++) {
-    if (p[i] == 0) {
-      if (q[i] < 0) return false;
-    } else {
-      float t = q[i] / p[i];
-      if (p[i] < 0) {
-        if (t > t1) return false;
-        if (t > t0) t0 = t;
-      } else {
-        if (t < t0) return false;
-        if (t < t1) t1 = t;
-      }
-    }
-  }
-  float nx0 = x0 + dx * t0, ny0 = y0 + dy * t0;
-  float nx1 = x0 + dx * t1, ny1 = y0 + dy * t1;
-  x0 = nx0, y0 = ny0, x1 = nx1, y1 = ny1;
-  return true;
-}
-
-void Renderer::addLine(const vec3f &a, const vec3f &b, g2::Color color) {
-  if (lineCount_ >= MAX_LINES) return;
-  float wa, wb;
-  vec3f ca = viewProj_.transformPoint4(a, wa);
-  vec3f cb = viewProj_.transformPoint4(b, wb);
-  if (wa < Z_NEAR && wb < Z_NEAR) return;
-  if (wa < Z_NEAR || wb < Z_NEAR) {
-    // Clip against the near plane in homogeneous space
-    float t = (Z_NEAR - wa) / (wb - wa);
-    vec3f cm = g3::lerp(ca, cb, t);
-    if (wa < Z_NEAR)
-      ca = cm, wa = Z_NEAR;
-    else
-      cb = cm, wb = Z_NEAR;
-  }
-  float x0 = (ca.x / wa * 0.5f + 0.5f) * w_,
-        y0 = (0.5f - ca.y / wa * 0.5f) * h_;
-  float x1 = (cb.x / wb * 0.5f + 0.5f) * w_,
-        y1 = (0.5f - cb.y / wb * 0.5f) * h_;
-  if (!clipSegment(x0, y0, x1, y1, -4, -4, (float)w_ + 4, (float)h_ + 4))
-    return;
-  Line2D &l = lines_[lineCount_++];
-  l.x0 = (int16_t)std::lround(x0), l.y0 = (int16_t)std::lround(y0);
-  l.x1 = (int16_t)std::lround(x1), l.y1 = (int16_t)std::lround(y1);
-  l.color = color;
-}
-
-void Renderer::addPoint(const vec3f &p, int size, g2::Color color) {
-  if (pointCount_ >= MAX_POINTS) return;
-  float sx, sy;
-  if (!project(p, sx, sy)) return;
-  if (sx < -2 || sy < -2 || sx >= w_ + 2 || sy >= h_ + 2) return;
-  Point2D &pt = points_[pointCount_++];
-  pt.x = (int16_t)sx, pt.y = (int16_t)sy;
-  pt.size = (uint8_t)size;
-  pt.color = color;
-}
-
-// ---------------------------------------------------------------------------
-// Camera
-
 static vec3f rotateAroundAxis(const vec3f &v, const vec3f &axis, float angle) {
   float c = std::cos(angle), s = std::sin(angle);
   return v * c + g3::cross(axis, v) * s + axis * (g3::dot(axis, v) * (1 - c));
 }
 
+// ---------------------------------------------------------------------------
+// Primitive helpers
+
+void Renderer::putLine3(const vec3f &a, const vec3f &b, g2::Color ca,
+                        g2::Color cb, const g3::Material &m) {
+  g3::Vertex v[2];
+  v[0].position = a;
+  v[1].position = b;
+  for (int i = 0; i < 2; i++) {
+    v[i].normal = {0, 1, 0};
+    v[i].uv = {0, 0};
+  }
+  v[0].color = ca;
+  v[1].color = cb;
+  static const uint16_t idx[2] = {0, 1};
+  g3::VertexBuffer vb = {2, v};
+  g3::Primitive prim = {g3::PrimitiveType::LINES, &vb, 2, idx, &m};
+  g3d_.putPrimitive(prim);
+  lineCount_++;
+}
+
+void Renderer::putLineLoop3(const vec3f *pts, int n, g2::Color c,
+                            const g3::Material &m) {
+  if (n < 2 || n > 8) return;
+  g3::Vertex v[8];
+  uint16_t idx[8];
+  for (int i = 0; i < n; i++) {
+    v[i].position = pts[i];
+    v[i].normal = {0, 1, 0};
+    v[i].uv = {0, 0};
+    v[i].color = c;
+    idx[i] = (uint16_t)i;
+  }
+  g3::VertexBuffer vb = {(uint16_t)n, v};
+  g3::Primitive prim = {g3::PrimitiveType::LINE_LOOP, &vb, (uint16_t)n, idx,
+                        &m};
+  g3d_.putPrimitive(prim);
+  lineCount_ += n;
+}
+
+void Renderer::putPoint3(const vec3f &p, g2::Color c, const g3::Material &m) {
+  g3::Vertex v[1];
+  v[0].position = p;
+  v[0].normal = {0, 1, 0};
+  v[0].uv = {0, 0};
+  v[0].color = c;
+  static const uint16_t idx[1] = {0};
+  g3::VertexBuffer vb = {1, v};
+  g3::Primitive prim = {g3::PrimitiveType::POINTS, &vb, 1, idx, &m};
+  g3d_.putPrimitive(prim);
+  pointCount_++;
+}
+
+void Renderer::putKite(const vec3f &c, const vec3f &dir, const vec3f &perp,
+                       float s, float tipLen, const g3::Material &m) {
+  g3::Vertex v[4];
+  const vec3f pos[4] = {c + dir * tipLen, c + perp * s, c - dir * s,
+                        c - perp * s};
+  for (int i = 0; i < 4; i++) {
+    v[i].position = pos[i];
+    v[i].normal = {0, 1, 0};
+    v[i].uv = {0, 0};
+    v[i].color = g3::VERTEX_WHITE;
+  }
+  static const uint16_t idx[6] = {0, 1, 2, 0, 2, 3};
+  g3::VertexBuffer vb = {4, v};
+  g3::Primitive prim = {g3::PrimitiveType::TRIANGLES, &vb, 6, idx, &m};
+  g3d_.putPrimitive(prim);
+  kites_++;
+}
+
+void Renderer::putQuad(const vec3f &c, const vec3f &dir, const vec3f &perp,
+                       float halfLen, float halfWidth, const g3::Material &m) {
+  g3::Vertex v[4];
+  const vec3f pos[4] = {c + dir * halfLen + perp * halfWidth,
+                        c + dir * halfLen - perp * halfWidth,
+                        c - dir * halfLen - perp * halfWidth,
+                        c - dir * halfLen + perp * halfWidth};
+  for (int i = 0; i < 4; i++) {
+    v[i].position = pos[i];
+    v[i].normal = {0, 1, 0};
+    v[i].uv = {0, 0};
+    v[i].color = g3::VERTEX_WHITE;
+  }
+  static const uint16_t idx[6] = {0, 1, 2, 0, 2, 3};
+  g3::VertexBuffer vb = {4, v};
+  g3::Primitive prim = {g3::PrimitiveType::TRIANGLES, &vb, 6, idx, &m};
+  g3d_.putPrimitive(prim);
+  kites_++;
+}
+
+// ---------------------------------------------------------------------------
+// Camera
+
 void Renderer::updateCamera(float dt) {
   const sim::Game &g = *game_;
   const sim::Entity &p = g.player();
-  origin_ = sim::scaleToLength(p.frame.n, p.r);
+  sim::Vec3 newOrigin = sim::scaleToLength(p.frame.n, p.r);
+  if (originValid_) {
+    // Effects are stored relative to the origin: keep them where they are
+    sim::Vec3 d = origin_ - newOrigin;
+    shiftEffects({d.x * (1.0f / FU), d.y * (1.0f / FU), d.z * (1.0f / FU)});
+  }
+  origin_ = newOrigin;
+  originValid_ = true;
   vec3f up = q30ToF(p.frame.n);
   vec3f fwd = q30ToF(p.frame.t);
-  // Body size estimate from the size and the fragment count, so that the camera
-  // does not follow the jitter of the fragment layout
+  // Body size estimate from the size and the fragment count, so that the
+  // camera does not follow the jitter of the fragment layout
   float bodyR = sim::fragmentHalfSize(sim::log2Floor(p.size)) / (float)FU *
                 (2.0f + 0.2f * p.fragmentCount);
 
@@ -283,79 +327,80 @@ const g3::Material &Renderer::materialForEntity(const sim::Entity &c) const {
   return palette_[c.size > p.size ? PAL_ENEMY_BIG : PAL_ENEMY_SMALL];
 }
 
-void Renderer::putKite(const vec3f &c, const vec3f &dir, const vec3f &perp,
-                       float s, float tipLen, const g3::Material &m) {
-  g3::Vertex v[4];
-  const vec3f pos[4] = {c + dir * tipLen, c + perp * s, c - dir * s,
-                        c - perp * s};
-  for (int i = 0; i < 4; i++) {
-    v[i].position = pos[i];
-    v[i].normal = {0, 1, 0};
-    v[i].uv = {0, 0};
-    v[i].color = g3::VERTEX_WHITE;
-  }
-  static const uint16_t idx[6] = {0, 1, 2, 0, 2, 3};
-  g3::VertexBuffer vb = {4, v};
-  g3::Primitive prim = {g3::PrimitiveType::TRIANGLES, &vb, 6, idx, &m};
-  g3d_.putPrimitive(prim);
-  kites_++;
+g2::Color Renderer::colorForEntity(const sim::Entity &c) const {
+  const g3::Material &m = materialForEntity(c);
+  return g2::makeColorF(m.diffuse.r, m.diffuse.g, m.diffuse.b);
 }
 
-void Renderer::putQuad(const vec3f &c, const vec3f &dir, const vec3f &perp,
-                       float halfLen, float halfWidth, const g3::Material &m) {
-  g3::Vertex v[4];
-  const vec3f pos[4] = {c + dir * halfLen + perp * halfWidth,
-                        c + dir * halfLen - perp * halfWidth,
-                        c - dir * halfLen - perp * halfWidth,
-                        c - dir * halfLen + perp * halfWidth};
-  for (int i = 0; i < 4; i++) {
-    v[i].position = pos[i];
-    v[i].normal = {0, 1, 0};
-    v[i].uv = {0, 0};
-    v[i].color = g3::VERTEX_WHITE;
-  }
-  static const uint16_t idx[6] = {0, 1, 2, 0, 2, 3};
-  g3::VertexBuffer vb = {4, v};
-  g3::Primitive prim = {g3::PrimitiveType::TRIANGLES, &vb, 6, idx, &m};
-  g3d_.putPrimitive(prim);
-  kites_++;
-}
-
-void Renderer::drawEntity(const sim::Entity &c, const vec3f &pos, bool full,
-                          const g3::Material &m, bool blink) {
+// px: projected body radius in pixels; full: draw every fragment (otherwise
+// an outline of the body)
+void Renderer::drawEntity(const sim::Entity &c, const vec3f &pos, float px,
+                          bool full, bool blink) {
   vec3f up = q30ToF(c.frame.n);
   vec3f fwd = q30ToF(c.frame.t);
   vec3f right = g3::cross(fwd, up);
   const float k = 1.0f / FU;
   float coreY = c.coreY * k, coreHalf = c.coreHalf * k;
   float focusY = c.layoutFocusY * k;
+  const g3::Material &m = materialForEntity(c);
 
-  if (!blink) {
-    if (full) {
-      for (int i = 0; i < c.fragmentCount; i++) {
-        const sim::Fragment &p = c.fragments[i];
-        float s = sim::fragmentHalfSize(p.sizeLog2) * k;
-        float lx = p.x * k * 1.4f, ly = p.y * k;  // widen like wings
-        for (int side = -1; side <= 1; side += 2) {
-          float x = lx * side;
-          float dx = x, dy = ly - focusY;
-          float len = std::sqrt(dx * dx + dy * dy);
-          if (len < 1e-4f) dx = 0, dy = -1, len = 1;
-          dx /= len, dy /= len;
-          vec3f dir = right * dx + fwd * dy;
-          vec3f perp = right * (-dy) + fwd * dx;
-          putKite(pos + right * x + fwd * ly, dir, perp, s, s * 2.5f, m);
-        }
-      }
-    } else {
-      // Far away: one kite the size of the body
-      float s = c.bodyRadius * k * 0.5f;
-      putKite(pos + fwd * (coreY - s), fwd * -1.0f, right, s, s * 2.0f, m);
+  // Bank into the turn: roll the body around the heading
+  if (c.bank != 0) {
+    float bank = c.bank * BRAD_TO_RAD;
+    right = rotateAroundAxis(right, fwd, bank);
+    up = rotateAroundAxis(up, fwd, bank);
+  }
+  // Seen from a shallow angle, tilt the body towards the camera so that the
+  // flat wings do not degenerate into a line
+  {
+    vec3f toCam = g3::normalize(cam_.eye - pos);
+    float elev = g3::dot(toCam, up);
+    if (elev < 0) elev = -elev;
+    float t = (0.55f - elev) / 0.55f;
+    if (t > 0) {
+      if (t > 1) t = 1;
+      up = g3::normalize(up + toCam * (t * 0.8f));
+      fwd = g3::normalize(fwd - up * g3::dot(fwd, up));
+      right = g3::cross(fwd, up);
     }
   }
-  // Core (white, pointing forward)
-  putKite(pos + fwd * coreY, fwd, right, coreHalf, coreHalf * 2.5f,
-          palette_[PAL_CORE]);
+
+  if (blink) {
+    entitiesDrawn_++;
+    return;
+  }
+  if (full) {
+    for (int i = 0; i < c.fragmentCount; i++) {
+      const sim::Fragment &p = c.fragments[i];
+      float s = sim::fragmentHalfSize(p.sizeLog2) * k;
+      float lx = p.x * k * 1.4f, ly = p.y * k;  // widen like wings
+      for (int side = -1; side <= 1; side += 2) {
+        float x = lx * side;
+        float dx = x, dy = ly - focusY;
+        float len = std::sqrt(dx * dx + dy * dy);
+        if (len < 1e-4f) dx = 0, dy = -1, len = 1;
+        dx /= len, dy /= len;
+        vec3f dir = right * dx + fwd * dy;
+        vec3f perp = right * (-dy) + fwd * dx;
+        putKite(pos + right * x + fwd * ly, dir, perp, s, s * 2.5f, m);
+      }
+    }
+    // Core (white, pointing forward)
+    putKite(pos + fwd * coreY, fwd, right, coreHalf, coreHalf * 2.5f,
+            palette_[PAL_CORE]);
+  } else {
+    // Far away: the outline of a body-sized kite (lines stay visible even
+    // edge-on), plus the core when it is more than a few pixels
+    float s = c.bodyRadius * k * 0.5f;
+    vec3f center = pos + fwd * (coreY - s);
+    const vec3f pts[4] = {center - fwd * (s * 2.0f), center + right * s,
+                          center + fwd * s, center - right * s};
+    putLineLoop3(pts, 4, colorForEntity(c), palette_[PAL_LINE]);
+    if (px >= 4.0f) {
+      putKite(pos + fwd * coreY, fwd, right, coreHalf, coreHalf * 2.5f,
+              palette_[PAL_CORE]);
+    }
+  }
   entitiesDrawn_++;
 }
 
@@ -375,14 +420,19 @@ void Renderer::drawFloatingFragments() {
     float s = sim::fragmentHalfSize(fp.sizeLog2) / (float)FU;
     float px = s * focalPx_ / (d > 0.1f ? d : 0.1f);
     if (px < 1.0f) {
-      addPoint(pos, 1, pointColor);
+      putPoint3(pos, pointColor, palette_[PAL_LINE]);
       continue;
     }
-    // Tangent frame spun by the fragment's own angle
+    // Tangent frame spun by the fragment's own angle, tilted a little
+    // towards the camera like the entities
+    vec3f toCam = rel * (-1.0f / (d > 0.1f ? d : 0.1f));
+    float elev = std::fabs(g3::dot(toCam, up));
+    float t = (0.55f - elev) / 0.55f;
+    if (t > 0) up = g3::normalize(up + toCam * ((t > 1 ? 1 : t) * 0.8f));
     vec3f helper = std::fabs(up.x) < 0.9f ? vec3f{1, 0, 0} : vec3f{0, 1, 0};
     vec3f a = g3::normalize(g3::cross(up, helper));
     vec3f b = g3::cross(up, a);
-    float ang = fp.spin * (2 * PI / 65536.0f);
+    float ang = fp.spin * BRAD_TO_RAD;
     vec3f dir = a * std::cos(ang) + b * std::sin(ang);
     vec3f perp = g3::cross(up, dir);
     putKite(pos, dir, perp, s, s * 2.5f, m);
@@ -430,19 +480,45 @@ void Renderer::drawBullets() {
 void Renderer::drawSparks() {
   const sim::Game &g = *game_;
   uint32_t t = g.tickCount();
-  for (int i = 0; i < sim::MAX_SPARKS; i++) {
-    const sim::Spark &p = g.sparks[i];
-    if (!p.alive) continue;
-    vec3f up = q30ToF(p.n);
-    if (g3::dot(up, camUnit_) < cosHorizon_ - 0.01f) continue;
-    vec3f pos = toLocal(sim::scaleToLength(p.n, p.r));
-    vec3f rel = pos - cam_.eye;
-    float d = g3::length(rel);
-    if (g3::dot(rel, viewDir_) < -1.0f) continue;
-    int tw = (int)(((t + (uint32_t)i * 7u) >> 1) & 3);
-    int v = 170 + tw * 28;
-    int size = d < 40.0f ? 2 : 1;
-    addPoint(pos, size, g2::makeColor(v, v, 255));
+  // Near sparks are 2 px squares, far ones single pixels
+  for (int pass = 0; pass < 2; pass++) {
+    g3d_.setPointSize(pass == 0 ? 2 : 1);
+    for (int i = 0; i < sim::MAX_SPARKS; i++) {
+      const sim::Spark &p = g.sparks[i];
+      if (!p.alive) continue;
+      vec3f up = q30ToF(p.n);
+      if (g3::dot(up, camUnit_) < cosHorizon_ - 0.01f) continue;
+      vec3f pos = toLocal(sim::scaleToLength(p.n, p.r));
+      vec3f rel = pos - cam_.eye;
+      float d = g3::length(rel);
+      if ((d < 40.0f) != (pass == 0)) continue;
+      if (g3::dot(rel, viewDir_) < -1.0f) continue;
+      int tw = (int)(((t + (uint32_t)i * 7u) >> 1) & 3);
+      int v = 170 + tw * 28;
+      putPoint3(pos, g2::makeColor(v, v, 255), palette_[PAL_LINE]);
+    }
+  }
+  g3d_.setPointSize(1);
+}
+
+void Renderer::drawStars() {
+  constexpr int STARS = 80;
+  constexpr float DIST = 1500.0f;  // inside the far plane
+  g3d_.setPointSize(1);
+  for (int i = 0; i < STARS; i++) {
+    uint32_t h = (uint32_t)(i + 1) * 2654435761u;
+    uint32_t h2 = h * 40503u + 12345u;
+    float z = ((h & 0xFFFF) / 32768.0f) - 1.0f;  // -1..1
+    float phi = ((h >> 16) / 65536.0f) * 6.2831853f;
+    float r = std::sqrt(1.0f - z * z);
+    vec3f dir = {r * std::cos(phi), r * std::sin(phi), z};
+    // Only stars in front of the camera and above the sphere's limb
+    if (g3::dot(dir, viewDir_) < 0.3f) continue;
+    if (g3::dot(dir, camUnit_) < -cosHorizon_ + 0.05f) continue;
+    int v8 = 90 + (int)((h2 >> 8) % 120);
+    putPoint3(cam_.eye + dir * DIST,
+              g2::makeColor(v8, v8, v8 + 20 > 255 ? 255 : v8 + 20),
+              palette_[PAL_LINE]);
   }
 }
 
@@ -452,6 +528,11 @@ void Renderer::buildScene() {
   g3d_.lookAt(cam_.eye, cam_.target, cam_.up);
   g3d_.disableParallelLight();
   g3d_.disableEnvironmentLight();
+  g3d_.setDepthBias(0.0f);
+
+  drawStars();
+  buildSphere();
+  drawSparks();
 
   // Visible entities sorted by distance
   struct Vis {
@@ -466,9 +547,8 @@ void Renderer::buildScene() {
     vec3f up = q30ToF(c.frame.n);
     float bodyR = c.bodyRadius / (float)FU;
     if (g3::dot(up, camUnit_) < cosHorizon_ - 0.02f) {
-      // Beyond the horizon: fightable enemies get a marker on the horizon
-      // in their direction
-      // (only opponents of a comparable size: 1/4 .. 4x)
+      // Beyond the horizon: opponents of a comparable size (1/4 .. 4x) get
+      // a marker on the horizon in their direction
       uint32_t ps = g.player().size;
       if (c.isPlayer || markerCount_ >= MAX_MARKERS || c.size * 4 < ps ||
           c.size > ps * 4) {
@@ -484,11 +564,10 @@ void Renderer::buildScene() {
       float sx, sy;
       if (!project(world, sx, sy)) continue;
       if (sx < 4 || sx >= w_ - 4 || sy < 4 || sy >= h_ - 4) continue;
-      const g3::Material &m = materialForEntity(c);
       Marker2D &mk = markers_[markerCount_++];
       mk.x = (int16_t)sx;
       mk.y = (int16_t)sy;
-      mk.color = g2::makeColorF(m.diffuse.r, m.diffuse.g, m.diffuse.b);
+      mk.color = colorForEntity(c);
       continue;
     }
     vec3f pos = toLocal(sim::scaleToLength(c.frame.n, c.r));
@@ -497,10 +576,7 @@ void Renderer::buildScene() {
     if (g3::dot(rel, viewDir_) < -bodyR) continue;
     float px = bodyR * focalPx_ / (d > 0.1f ? d : 0.1f);
     if (px < 0.8f) {
-      const g3::Material &m = materialForEntity(c);
-      addPoint(pos, 1,
-               g2::makeColorF(m.diffuse.r * 0.7f, m.diffuse.g * 0.7f,
-                              m.diffuse.b * 0.7f));
+      putPoint3(pos, colorForEntity(c), palette_[PAL_LINE]);
       continue;
     }
     // insertion sort by distance
@@ -512,16 +588,19 @@ void Renderer::buildScene() {
     vis[k] = {d, px, (int16_t)i};
   }
 
-  int triBudget = g3d_.getStats().triCapacity * 3 / 4;
+  // Triangle budget: what is left after the wireframe, minus a reserve for
+  // fragments, bullets and effects
+  g3::Stats st = g3d_.getStats();
+  int triBudget = st.triCapacity - st.triCount - 220;
   for (int k = 0; k < n; k++) {
     const sim::Entity &c = g.entities[vis[k].idx];
     int fullTris = (1 + 2 * c.fragmentCount) * 2;
     bool full = vis[k].px >= 6.0f && triBudget >= fullTris;
-    triBudget -= full ? fullTris : 4;
+    triBudget -= full ? fullTris : 6;
     vec3f pos = toLocal(sim::scaleToLength(c.frame.n, c.r));
     bool blink = c.invincible > 0 && ((g.tickCount() >> 2) & 1);
-    drawEntity(c, pos, full, materialForEntity(c), blink);
-    // Health gauge over fightable enemies
+    drawEntity(c, pos, vis[k].px, full, blink);
+    // Health gauge over enemies
     if (!c.isPlayer && vis[k].px >= 2.5f && gaugeCount_ < MAX_GAUGES) {
       float bodyR = c.bodyRadius / (float)FU;
       vec3f up = q30ToF(c.frame.n);
@@ -543,6 +622,7 @@ void Renderer::buildScene() {
 
   drawFloatingFragments();
   drawBullets();
+  drawEffects();
   g3d_.endScene();
 }
 
@@ -559,9 +639,8 @@ void Renderer::beginFrame(const sim::Game &game, float dt) {
   entitiesDrawn_ = 0;
   kites_ = 0;
   updateCamera(dt);
-  buildStars();
-  buildSphere();
-  drawSparks();
+  collectEffects();
+  updateEffects(dt);
   buildScene();
   g3d_.beginRender();
 }
@@ -570,23 +649,8 @@ void Renderer::renderBand(const g2::Surface &dst, int y, int h, int dstY) {
   g2::Graphics2D g(dst);
   g.setClipRect(0, dstY, w_, h);
   g.clear(g2::makeColor(0, 0, 4));
-  int oy = dstY - y;
-  for (int i = 0; i < pointCount_; i++) {
-    const Point2D &p = points_[i];
-    if (p.y + p.size <= y || p.y >= y + h) continue;
-    if (p.size <= 1) {
-      g.setPixel(p.x, p.y + oy, p.color);
-    } else {
-      g.fillRect(p.x, p.y + oy, p.size, p.size, p.color);
-    }
-  }
-  for (int i = 0; i < lineCount_; i++) {
-    const Line2D &l = lines_[i];
-    int lo = l.y0 < l.y1 ? l.y0 : l.y1, hi = l.y0 < l.y1 ? l.y1 : l.y0;
-    if (hi < y || lo >= y + h) continue;
-    g.drawLine(l.x0, l.y0 + oy, l.x1, l.y1 + oy, l.color);
-  }
   g3d_.render(0, (int16_t)y, (int16_t)w_, (int16_t)h, dst, 0, (int16_t)dstY);
+  int oy = dstY - y;
   for (int i = 0; i < markerCount_; i++) {
     const Marker2D &mk = markers_[i];
     // Downward triangle just above the horizon point

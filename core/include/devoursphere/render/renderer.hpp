@@ -5,12 +5,17 @@
 // layer supplies the target surface (a whole frame buffer or a band of it).
 //
 // Frame structure:
-//   beginFrame()  computes the camera, the 2D line/point lists (sphere
-//                 wireframe, stars, sparks) and builds the 3D scene
-//                 (entities, floating fragments, bullets)
+//   beginFrame()  computes the camera and builds the whole 3D scene: stars
+//                 (points), the sphere wireframe (lines), sparks (points),
+//                 entities, floating fragments and bullets (triangles),
+//                 debris and dash dust (lines)
 //   renderBand()  draws the rows [y, y + h) of the frame into a surface:
-//                 background + lines + points, then the 3D scene, then the HUD
+//                 black background, the 3D scene, then the 2D overlays
+//                 (enemy gauges, horizon markers) and the HUD
 //   endFrame()
+//
+// Everything but the HUD goes through the scanline 3D renderer, so a device
+// without a frame buffer can render band by band.
 //
 // The 3D renderer works in float, in "fragment units" (FU) relative to the
 // player's position, so precision stays high anywhere on the sphere.
@@ -27,27 +32,30 @@ namespace devoursphere::render {
 namespace g2 = shapoco::gfx2d;
 namespace g3 = shapoco::gfx3d;
 
-struct Line2D {
-  int16_t x0, y0, x1, y1;
-  g2::Color color;
-};
-
-struct Point2D {
-  int16_t x, y;
-  uint8_t size;
-  g2::Color color;
-};
-
-// Health gauge drawn over a fightable enemy
+// Health gauge drawn over an enemy
 struct Gauge2D {
   int16_t x, y, w;
   uint8_t ratio;  // 0..255
 };
 
-// Marker on the horizon for a fightable enemy beyond it
+// Marker on the horizon for an enemy beyond it
 struct Marker2D {
   int16_t x, y;
   g2::Color color;
+};
+
+// A piece of debris: a small spinning wireframe triangle that shrinks away
+struct Debris {
+  g3::vec3f pos, vel, axis;  // FU relative to the render origin
+  float angle, spin;         // radians, radians per second
+  float size, life, life0;   // FU, seconds
+  g2::Color color;
+};
+
+// Dust streak of the dash effect (world static; streams towards the camera)
+struct Dust {
+  g3::vec3f pos;
+  float age;
 };
 
 struct Camera {
@@ -62,15 +70,17 @@ struct RenderStats {
 
 class Renderer {
  public:
-  static constexpr int MAX_LINES = 2048;
-  static constexpr int MAX_POINTS = 768;
   static constexpr int PALETTE_SIZE = 16;
   static constexpr int MAX_SPHERE_LEVEL = 7;
+  static constexpr int MAX_GAUGES = 64;
+  static constexpr int MAX_MARKERS = 32;
+  static constexpr int MAX_DEBRIS = 64;
+  static constexpr int MAX_DUST = 64;
 
-  // arena: working memory of the 3D renderer (128 KB or more recommended)
+  // arena: working memory of the 3D renderer (192 KB or more recommended)
   void init(int width, int height, void *arena, size_t arenaSize);
 
-  // dt: seconds since the previous frame (camera smoothing only)
+  // dt: seconds since the previous frame (camera smoothing and effects)
   void beginFrame(const sim::Game &game, float dt);
   // Draw the rows [y, y + h) of the frame into dst starting at row dstY
   void renderBand(const g2::Surface &dst, int y, int h, int dstY = 0);
@@ -86,6 +96,7 @@ class Renderer {
   g3::Graphics3D g3d_;
   const sim::Game *game_ = nullptr;
   float time_ = 0;
+  uint32_t rng_ = 0x1234567u;
 
   // Camera
   Camera cam_ = {};
@@ -97,54 +108,82 @@ class Renderer {
   g3::mat4f viewProj_ = g3::mat4f::identity();
   float focalPx_ = 1;
   g3::vec3f viewDir_ = {0, 0, -1};
-  sim::Vec3 origin_ = {};        // world units of the render origin
+  sim::Vec3 origin_ = {};  // world units of the render origin
+  bool originValid_ = false;
   g3::vec3f sphereCenter_ = {};  // FU relative to the origin
   g3::vec3f camUnit_ = {};       // unit vector sphere center -> eye
   float cosHorizon_ = 0;
   float horizonAngle_ = 0;
   float cullCos_[MAX_SPHERE_LEVEL + 1] = {};
 
-  // 2D lists
-  Line2D lines_[MAX_LINES];
-  int lineCount_ = 0;
-  Point2D points_[MAX_POINTS];
-  int pointCount_ = 0;
-  static constexpr int MAX_GAUGES = 64;
+  // Per-frame bookkeeping
+  uint32_t edgeKeys_[2048];  // edge dedupe hash table
+  int lineCount_ = 0, pointCount_ = 0, entitiesDrawn_ = 0, kites_ = 0;
   Gauge2D gauges_[MAX_GAUGES];
   int gaugeCount_ = 0;
-  static constexpr int MAX_MARKERS = 32;
   Marker2D markers_[MAX_MARKERS];
   int markerCount_ = 0;
-  uint32_t edgeKeys_[2048];  // edge dedupe hash table (per frame)
-  int entitiesDrawn_ = 0, kites_ = 0;
+
+  // Effects (float, render side only)
+  Debris debris_[MAX_DEBRIS];
+  int debrisCount_ = 0;
+  Dust dust_[MAX_DUST];
+  int dustCount_ = 0;
+  float dustSpawnAcc_ = 0;
+  uint32_t lastEffectTick_ = 0xFFFFFFFFu;
 
   // Materials
+  enum Palette : int {
+    PAL_PLAYER = 0,     // teal, like the floating fragments
+    PAL_ENEMY_BIG,      // bigger than the player: pink
+    PAL_ENEMY_SMALL,    // not bigger than the player: light blue
+    PAL_FRAGMENT,       // floating fragments (teal)
+    PAL_CORE,           // white
+    PAL_BULLET_PLAYER,  // additive orange
+    PAL_BULLET_ENEMY,   // additive pink-red
+    PAL_LASER_PLAYER,
+    PAL_LINE,      // vertex colored lines and points (wireframe, stars, debris)
+    PAL_LINE_ADD,  // vertex colored additive lines (dash dust)
+  };
   g3::Material palette_[PALETTE_SIZE];
 
   // renderer.cpp
+  float frand();  // 0..1
   void updateCamera(float dt);
   g3::vec3f toLocal(const sim::Vec3 &worldUnits) const;
   bool project(const g3::vec3f &p, float &sx, float &sy) const;
-  void addLine(const g3::vec3f &a, const g3::vec3f &b, g2::Color c);
-  void addPoint(const g3::vec3f &p, int size, g2::Color c);
-  void buildScene();
+  void putLine3(const g3::vec3f &a, const g3::vec3f &b, g2::Color ca,
+                g2::Color cb, const g3::Material &m);
+  void putLineLoop3(const g3::vec3f *pts, int n, g2::Color c,
+                    const g3::Material &m);
+  void putPoint3(const g3::vec3f &p, g2::Color c, const g3::Material &m);
   void putKite(const g3::vec3f &c, const g3::vec3f &dir, const g3::vec3f &perp,
                float s, float tipLen, const g3::Material &m);
   void putQuad(const g3::vec3f &c, const g3::vec3f &dir, const g3::vec3f &perp,
                float halfLen, float halfWidth, const g3::Material &m);
-  void drawEntity(const sim::Entity &c, const g3::vec3f &pos, bool full,
-                  const g3::Material &m, bool blink);
+  void buildScene();
+  void drawEntity(const sim::Entity &c, const g3::vec3f &pos, float px,
+                  bool full, bool blink);
   void drawFloatingFragments();
   void drawBullets();
   void drawSparks();
+  void drawStars();
   const g3::Material &materialForEntity(const sim::Entity &c) const;
+  g2::Color colorForEntity(const sim::Entity &c) const;
 
   // sphere.cpp
   void buildSphere();
-  void buildStars();
   void subdivideFace(const g3::vec3f &a, const g3::vec3f &b, const g3::vec3f &c,
                      int level);
   void emitEdge(const g3::vec3f &a, const g3::vec3f &b, int level);
+
+  // effects.cpp
+  void shiftEffects(const g3::vec3f &delta);
+  void spawnDebris(const g3::vec3f &pos, int count, float size,
+                   g2::Color color);
+  void collectEffects();
+  void updateEffects(float dt);
+  void drawEffects();
 
   // hud.cpp
   void drawHud(g2::Graphics2D &g, int offsetY);

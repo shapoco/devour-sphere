@@ -26,12 +26,9 @@ constexpr int MAX_FRAGMENTS_PER_ENTITY = 16;
 constexpr int MAX_SIZE_LOG2 = 20;  // largest fragment exponent handled
 
 // --- Altitude ---------------------------------------------------------------
-// altitude(size) = ALT_MIN + ALT_FACTOR * (halfSize(ALT_MAX_LOG2) -
-// halfSize(log2 size)) with ALT_FACTOR = ALT_FACTOR_NUM / ALT_FACTOR_DEN, so
-// that the spacing between size classes grows with the body size
-constexpr int ALT_MAX_LOG2 = 14;
-constexpr int32_t ALT_FACTOR_NUM = 1, ALT_FACTOR_DEN = 1;
-constexpr int32_t ALT_MIN = 6 * FU;
+// Every entity and floating fragment flies at the same height above the
+// surface
+constexpr int32_t ALTITUDE = 12 * FU;
 constexpr int32_t ALT_APPROACH_SHIFT = 5;  // altitude eases 1/32 per tick
 
 // --- Movement ---------------------------------------------------------------
@@ -45,6 +42,10 @@ constexpr int32_t SPEED_ACCEL_SHIFT =
 constexpr uint16_t TURN_RATE = degToBrad(3);        // per tick
 constexpr uint16_t TURN_RATE_BRAKE = degToBrad(6);  // per tick while braking
 constexpr uint16_t TURN_RATE_DASH = degToBrad(2);   // per tick while dashing
+constexpr uint16_t BANK_MAX = degToBrad(28);        // roll while turning
+constexpr uint16_t BANK_MAX_BRAKE =
+    degToBrad(40);                      // roll while turning under brake
+constexpr int BANK_APPROACH_SHIFT = 3;  // bank eases 1/8 per tick
 
 // --- Health -----------------------------------------------------------------
 constexpr int32_t HP_PER_SIZE = 32;  // hpMax = HP_PER_SIZE * size

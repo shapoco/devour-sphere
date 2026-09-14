@@ -144,12 +144,16 @@ void Game::updateBullets() {
 }
 
 void Game::damageEntity(int idx, int32_t dmg, int attacker) {
-  (void)attacker;
   Entity &c = entities[idx];
   if (!c.alive || c.invincible > 0) return;
   if (dmg > c.hp) dmg = c.hp;
   c.hp -= dmg;
-  if (c.isPlayer) events_ |= Event::PLAYER_HIT;
+  if (c.isPlayer) {
+    events_ |= Event::PLAYER_HIT;
+    pushEffect(EffectKind::PLAYER_HIT, c.frame.n, c.r, dmg);
+  } else if (attacker == playerIndex_) {
+    pushEffect(EffectKind::ENEMY_HIT, c.frame.n, c.r, dmg);
+  }
   // The lost health becomes sparks flying out of the body
   int pieces = dmg >= 256 ? 3 : (dmg >= 64 ? 2 : 1);
   int32_t per = dmg / pieces;
@@ -215,6 +219,12 @@ void Game::transferSize(int from, int to) {
   syncFragments(S, 0, 0);
   if (S.isPlayer) events_ |= Event::PLAYER_HIT;
   if (B.isPlayer) events_ |= Event::PLAYER_ATE_FRAGMENT;
+  if ((tickCount_ % 5) == 0) {
+    if (S.isPlayer)
+      pushEffect(EffectKind::PLAYER_DRAINED, S.frame.n, S.r, (int32_t)t);
+    if (B.isPlayer)
+      pushEffect(EffectKind::ENEMY_DRAINED, S.frame.n, S.r, (int32_t)t);
+  }
 }
 
 void Game::spawnFloatingFragment(const Vec3 &n, int32_t r, int sizeLog2,

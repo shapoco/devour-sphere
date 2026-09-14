@@ -56,8 +56,9 @@ struct Entity {
   uint32_t size;  // sum of fragment sizes (authoritative)
   int32_t hp, hpMax;
   Weapon weapon;
-  uint8_t hue;  // 0..255 color hue (render hint)
-  int8_t turn;  // -1 left, 0, +1 right (current input)
+  uint8_t hue;   // 0..255 color hue (render hint)
+  int8_t turn;   // -1 left, 0, +1 right (current input)
+  int16_t bank;  // roll around the heading (brad, positive = right wing down)
   bool dashing, braking, firing;
   int16_t fireCooldown;
   int16_t invincible;   // ticks of spawn protection

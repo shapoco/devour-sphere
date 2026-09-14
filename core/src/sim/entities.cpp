@@ -13,10 +13,8 @@ int32_t fragmentHalfSize(int sizeLog2) {
 }
 
 int32_t altitudeForSize(uint32_t size) {
-  int k = log2Floor(size);
-  if (k > ALT_MAX_LOG2) k = ALT_MAX_LOG2;
-  return ALT_MIN + (fragmentHalfSize(ALT_MAX_LOG2) - fragmentHalfSize(k)) *
-                       ALT_FACTOR_NUM / ALT_FACTOR_DEN;
+  (void)size;
+  return ALTITUDE;
 }
 
 int32_t cruiseSpeedForSize(uint32_t size) {

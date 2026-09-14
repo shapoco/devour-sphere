@@ -1,4 +1,4 @@
-// Sphere wireframe (adaptively subdivided icosahedron) and background stars.
+// Sphere wireframe: an adaptively subdivided icosahedron drawn as 3D lines.
 
 #include <cmath>
 #include <cstring>
@@ -13,8 +13,12 @@ using sim::FU;
 static constexpr float SPHERE_R = (float)sim::SPHERE_RADIUS / FU;
 static constexpr float ICO_EDGE = 1.0515f;  // edge length of a unit icosahedron
 static constexpr float SUBDIVIDE_PX =
-    56.0f;  // subdivide edges longer than this
+    72.0f;  // subdivide edges longer than this
 static constexpr float FADE_NEAR = 60.0f, FADE_FAR = 900.0f;  // FU
+// Budget of the triangle buffer for the wireframe: near the limit the faces
+// stop subdividing (coarser but complete), at the limit edges are dropped
+static constexpr int MAX_WIRE_LINES = 720;
+static constexpr int WIRE_COARSE_LIMIT = MAX_WIRE_LINES - 160;
 
 static const vec3f ICO_VERTS[12] = {
     {-0.525731f, 0.850651f, 0},  {0.525731f, 0.850651f, 0},
@@ -41,7 +45,19 @@ static uint32_t hashVec(const vec3f &v) {
   return h ? h : 1;
 }
 
+// Color of a wireframe vertex: fades with the distance from the eye
+static g2::Color wireColor(float d, int level) {
+  float t = (FADE_FAR - d) / (FADE_FAR - FADE_NEAR);
+  t = g3::clamp01(t);
+  int it = (int)(t * 200) + (level <= 1 ? 55 : (level == 2 ? 30 : 0));
+  if (it > 255) it = 255;
+  g2::Color dim = g2::makeColor(6, 14, 40);
+  g2::Color bright = g2::makeColor(70, 130, 235);
+  return g2::lerpColor(dim, bright, it);
+}
+
 void Renderer::emitEdge(const vec3f &a, const vec3f &b, int level) {
+  if (lineCount_ >= MAX_WIRE_LINES) return;
   uint32_t ha = hashVec(a), hb = hashVec(b);
   uint32_t key = ha < hb ? (ha * 2654435761u) ^ hb : (hb * 2654435761u) ^ ha;
   if (key == 0) key = 1;
@@ -58,20 +74,13 @@ void Renderer::emitEdge(const vec3f &a, const vec3f &b, int level) {
   }
   vec3f pa = sphereCenter_ + a * SPHERE_R;
   vec3f pb = sphereCenter_ + b * SPHERE_R;
-  vec3f mid = (pa + pb) * 0.5f;
-  float d = g3::length(mid - cam_.eye);
-  float t = (FADE_FAR - d) / (FADE_FAR - FADE_NEAR);
-  t = g3::clamp01(t);
-  int it = (int)(t * 200) + (level <= 1 ? 55 : (level == 2 ? 30 : 0));
-  if (it > 255) it = 255;
-  g2::Color dim = g2::makeColor(6, 14, 40);
-  g2::Color bright = g2::makeColor(70, 130, 235);
-  addLine(pa, pb, g2::lerpColor(dim, bright, it));
+  putLine3(pa, pb, wireColor(g3::length(pa - cam_.eye), level),
+           wireColor(g3::length(pb - cam_.eye), level), palette_[PAL_LINE]);
 }
 
 void Renderer::subdivideFace(const vec3f &a, const vec3f &b, const vec3f &c,
                              int level) {
-  if (lineCount_ >= MAX_LINES - 3) return;
+  if (lineCount_ >= MAX_WIRE_LINES) return;
   vec3f center = g3::normalize(a + b + c);
   // Horizon: skip faces entirely on the far side of the sphere
   if (g3::dot(center, camUnit_) < cullCos_[level]) return;
@@ -82,7 +91,8 @@ void Renderer::subdivideFace(const vec3f &a, const vec3f &b, const vec3f &c,
   if (g3::dot(rel, viewDir_) < -edgeLen) return;
   float d = g3::length(rel);
   float px = edgeLen * focalPx_ / (d > 1.0f ? d : 1.0f);
-  if (level < MAX_SPHERE_LEVEL && px > SUBDIVIDE_PX) {
+  if (level < MAX_SPHERE_LEVEL && px > SUBDIVIDE_PX &&
+      lineCount_ < WIRE_COARSE_LIMIT) {
     vec3f ab = g3::normalize(a + b);
     vec3f bc = g3::normalize(b + c);
     vec3f ca = g3::normalize(c + a);
@@ -102,32 +112,6 @@ void Renderer::buildSphere() {
   for (int f = 0; f < 20; f++) {
     subdivideFace(ICO_VERTS[ICO_FACES[f][0]], ICO_VERTS[ICO_FACES[f][1]],
                   ICO_VERTS[ICO_FACES[f][2]], 0);
-  }
-}
-
-void Renderer::buildStars() {
-  constexpr int STARS = 110;
-  for (int i = 0; i < STARS; i++) {
-    uint32_t h = (uint32_t)(i + 1) * 2654435761u;
-    uint32_t h2 = h * 40503u + 12345u;
-    float z = ((h & 0xFFFF) / 32768.0f) - 1.0f;  // -1..1
-    float phi = ((h >> 16) / 65536.0f) * 6.2831853f;
-    float r = std::sqrt(1.0f - z * z);
-    vec3f dir = {r * std::cos(phi), r * std::sin(phi), z};
-    // Rotate into view space and project as a point at infinity
-    vec3f v = view_.transformDir(dir);
-    if (v.z >= -0.05f) continue;
-    float w;
-    vec3f c = proj_.transformPoint4(v * 100.0f, w);
-    float sx = (c.x / w * 0.5f + 0.5f) * w_;
-    float sy = (0.5f - c.y / w * 0.5f) * h_;
-    if (sx < 0 || sy < 0 || sx >= w_ || sy >= h_) continue;
-    if (pointCount_ >= MAX_POINTS) break;
-    int v8 = 90 + (int)((h2 >> 8) % 120);
-    Point2D &p = points_[pointCount_++];
-    p.x = (int16_t)sx, p.y = (int16_t)sy;
-    p.size = 1;
-    p.color = g2::makeColor(v8, v8, v8 + 20 > 255 ? 255 : v8 + 20);
   }
 }
 

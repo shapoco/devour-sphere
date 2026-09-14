@@ -16,6 +16,7 @@ target_compile_options(devoursphere_sim PRIVATE -Wall -Wextra)
 add_library(devoursphere_render STATIC
     src/render/renderer.cpp
     src/render/sphere.cpp
+    src/render/effects.cpp
     src/render/hud.cpp
 )
 add_library(devoursphere::render ALIAS devoursphere_render)

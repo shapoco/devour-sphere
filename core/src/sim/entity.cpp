@@ -169,6 +169,14 @@ void Game::moveEntity(Entity &c) {
   } else if (c.turn > 0) {
     c.frame.t = rotateAroundQ30(c.frame.t, c.frame.n, (uint16_t)(0 - rate));
   }
+  // Bank into the turn (visual, but kept in the simulation so that every
+  // platform shows the same attitude)
+  int32_t bankTarget =
+      c.turn * (int32_t)(c.braking ? BANK_MAX_BRAKE : BANK_MAX);
+  int32_t db = bankTarget - c.bank;
+  int32_t bs = db >> BANK_APPROACH_SHIFT;
+  if (bs == 0 && db != 0) bs = db > 0 ? 1 : -1;
+  c.bank = (int16_t)(c.bank + bs);
 
   if (c.speed > 0) {
     int32_t ang = (int32_t)(((int64_t)c.speed << Q30_SHIFT) / c.r);

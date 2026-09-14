@@ -31,6 +31,22 @@ constexpr uint32_t PLAYER_FIRED = 1 << 5;
 constexpr uint32_t PLAYER_MERGED = 1 << 6;
 }  // namespace Event
 
+// Positions of things worth an effect during the last tick (cleared every
+// tick); the renderer turns them into debris
+enum class EffectKind : uint8_t {
+  PLAYER_HIT,      // the player was hit by a bullet
+  PLAYER_DRAINED,  // the player is being absorbed
+  ENEMY_HIT,       // an enemy was hit by the player's bullet
+  ENEMY_DRAINED,   // an enemy is being absorbed by the player
+};
+
+struct EffectEvent {
+  EffectKind kind;
+  Vec3 n;        // unit normal of the position
+  int32_t r;     // distance from the center
+  int32_t size;  // magnitude hint (damage or size transferred)
+};
+
 // Counters for tuning and tests (never reset except by reset())
 struct DebugStats {
   uint32_t shots, hits, kills, absorbs, fragmentsEaten, sparksEaten;
@@ -72,6 +88,10 @@ class Game {
 
   const DebugStats &debugStats() const { return stats_; }
 
+  static constexpr int MAX_EFFECTS = 16;
+  const EffectEvent *effects() const { return effects_; }
+  int effectCount() const { return effectCount_; }
+
   Entity entities[MAX_ENTITIES];
   FloatingFragment floatingFragments[MAX_FLOATING_FRAGMENTS];
   Bullet bullets[MAX_BULLETS];
@@ -96,6 +116,9 @@ class Game {
   uint8_t prevButtons_ = 0;
   bool autoPlayer_ = false;
   DebugStats stats_ = {};
+  EffectEvent effects_[MAX_EFFECTS];
+  int effectCount_ = 0;
+  void pushEffect(EffectKind kind, const Vec3 &n, int32_t r, int32_t size);
 
   // Indices sorted by n.z (for neighbor queries)
   int16_t entityOrder_[MAX_ENTITIES];

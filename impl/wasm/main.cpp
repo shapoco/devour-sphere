@@ -25,7 +25,7 @@ static constexpr int SCREEN_H = 320;
 static uint16_t fb[SCREEN_W * SCREEN_H];  // RGB565BE
 static const g2::Surface fbSurface = {g2::PixelFormat::RGB565BE, SCREEN_W,
                                       SCREEN_H, SCREEN_W * 2, fb};
-static uint8_t arena[192 * 1024];
+static uint8_t arena[256 * 1024];
 static sim::Game game;
 static render::Renderer renderer;
 
