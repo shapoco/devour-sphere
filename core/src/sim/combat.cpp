@@ -166,6 +166,13 @@ void Game::updateBullets() {
 void Game::damageEntity(int idx, int32_t dmg, int attacker) {
   Entity &c = entities[idx];
   if (!c.alive || c.invincible > 0) return;
+  // The player never loses more than PLAYER_MAX_HIT_PERCENT of the gauge
+  // from one hit (no one-shot kills by huge enemies)
+  if (c.isPlayer) {
+    int32_t cap = c.hpMax * PLAYER_MAX_HIT_PERCENT / 100;
+    if (cap < 1) cap = 1;
+    if (dmg > cap) dmg = cap;
+  }
   if (dmg > c.hp) dmg = c.hp;
   c.hp -= dmg;
   if (c.isPlayer) {

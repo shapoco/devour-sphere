@@ -60,6 +60,8 @@ constexpr int32_t HP_PER_SIZE = 32;  // hpMax = HP_PER_SIZE * size
 // Fragments too small to be eaten (< size / FOOD_NOTICE_RATIO) are consumed
 // for their health only.
 constexpr int32_t HEAL_PER_FRAGMENT_MUL = 3;
+// One bullet hit takes at most this much of the player's gauge
+constexpr int32_t PLAYER_MAX_HIT_PERCENT = 30;
 constexpr int ABSORB_GUARD_TICKS =
     TICK_RATE;  // no absorption right after eating
 
