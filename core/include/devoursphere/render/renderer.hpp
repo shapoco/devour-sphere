@@ -5,15 +5,15 @@
 // layer supplies the target surface (a whole frame buffer or a band of it).
 //
 // Frame structure:
-//   beginFrame()  computes the camera, the 2D line/point lists (planet
-//                 wireframe, stars, energy particles) and builds the 3D scene
-//                 (creatures, floating parts, bullets)
+//   beginFrame()  computes the camera, the 2D line/point lists (sphere
+//                 wireframe, stars, sparks) and builds the 3D scene
+//                 (entities, floating fragments, bullets)
 //   renderBand()  draws the rows [y, y + h) of the frame into a surface:
 //                 background + lines + points, then the 3D scene, then the HUD
 //   endFrame()
 //
-// The 3D renderer works in float, in "part units" (PU) relative to the
-// player's position, so precision stays high anywhere on the planet.
+// The 3D renderer works in float, in "fragment units" (FU) relative to the
+// player's position, so precision stays high anywhere on the sphere.
 
 #include <cstddef>
 #include <cstdint>
@@ -51,12 +51,12 @@ struct Marker2D {
 };
 
 struct Camera {
-  g3::vec3f eye, target, up;  // PU, relative to the player's position
+  g3::vec3f eye, target, up;  // FU, relative to the player's position
   float fovY;                 // radians
 };
 
 struct RenderStats {
-  int lines, points, creaturesDrawn, kites;
+  int lines, points, entitiesDrawn, kites;
   g3::Stats gfx;
 };
 
@@ -65,7 +65,7 @@ class Renderer {
   static constexpr int MAX_LINES = 2048;
   static constexpr int MAX_POINTS = 768;
   static constexpr int PALETTE_SIZE = 16;
-  static constexpr int MAX_PLANET_LEVEL = 7;
+  static constexpr int MAX_SPHERE_LEVEL = 7;
 
   // arena: working memory of the 3D renderer (128 KB or more recommended)
   void init(int width, int height, void *arena, size_t arenaSize);
@@ -98,11 +98,11 @@ class Renderer {
   float focalPx_ = 1;
   g3::vec3f viewDir_ = {0, 0, -1};
   sim::Vec3 origin_ = {};        // world units of the render origin
-  g3::vec3f planetCenter_ = {};  // PU relative to the origin
-  g3::vec3f camUnit_ = {};       // unit vector planet center -> eye
+  g3::vec3f sphereCenter_ = {};  // FU relative to the origin
+  g3::vec3f camUnit_ = {};       // unit vector sphere center -> eye
   float cosHorizon_ = 0;
   float horizonAngle_ = 0;
-  float cullCos_[MAX_PLANET_LEVEL + 1] = {};
+  float cullCos_[MAX_SPHERE_LEVEL + 1] = {};
 
   // 2D lists
   Line2D lines_[MAX_LINES];
@@ -116,7 +116,7 @@ class Renderer {
   Marker2D markers_[MAX_MARKERS];
   int markerCount_ = 0;
   uint32_t edgeKeys_[2048];  // edge dedupe hash table (per frame)
-  int creaturesDrawn_ = 0, kites_ = 0;
+  int entitiesDrawn_ = 0, kites_ = 0;
 
   // Materials
   g3::Material palette_[PALETTE_SIZE];
@@ -132,15 +132,15 @@ class Renderer {
                float s, float tipLen, const g3::Material &m);
   void putQuad(const g3::vec3f &c, const g3::vec3f &dir, const g3::vec3f &perp,
                float halfLen, float halfWidth, const g3::Material &m);
-  void drawCreature(const sim::Creature &c, const g3::vec3f &pos, bool full,
-                    const g3::Material &m, bool blink);
-  void drawFloatingParts();
+  void drawEntity(const sim::Entity &c, const g3::vec3f &pos, bool full,
+                  const g3::Material &m, bool blink);
+  void drawFloatingFragments();
   void drawBullets();
-  void drawParticles();
-  const g3::Material &materialForCreature(const sim::Creature &c) const;
+  void drawSparks();
+  const g3::Material &materialForEntity(const sim::Entity &c) const;
 
-  // planet.cpp
-  void buildPlanet();
+  // sphere.cpp
+  void buildSphere();
   void buildStars();
   void subdivideFace(const g3::vec3f &a, const g3::vec3f &b, const g3::vec3f &c,
                      int level);

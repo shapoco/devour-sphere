@@ -52,7 +52,7 @@ cmake --build build
 ./build/impl/wasm/devoursphere_native [level] [script] [out.ppm] [auto] [seed]
 ```
 
-`level` が 0 ならタイトル画面、1 以上ならそのレベルのプラネットで開始する。
+`level` が 0 ならタイトル画面、1 以上ならそのレベルのスフィアで開始する。
 `script` は「tick 数 x ボタンビット」をコンマで並べた入力列 (例: `5x0,1x16,300x2`。
 数値だけなら入力なしの tick 数)、`auto` を 1 にすると AI がプレイヤーを操作する。
 入力列を実行して 1 フレームを PPM に書き出し、tick と描画の所要時間、
@@ -70,7 +70,7 @@ cmake --build build
 | `ds_tick(buttons)` | 1 tick 進める。`buttons` は sim::Button のビット (LEFT=1, RIGHT=2, UP=4, DOWN=8, A=16) |
 | `ds_render(dt)` | 現在の状態をフレームバッファに描画する。`dt` は前回描画からの秒数 (カメラの補間のみに使う) |
 | `ds_get_state()` | GameState (0 TITLE, 1 WEAPON_SELECT, 2 PLAYING, 3 LAUNCH, 4 DEAD) |
-| `ds_debug_start(level, weapon)` | デバッグ用: メニューを飛ばして指定レベルのプラネットで開始 |
+| `ds_debug_start(level, weapon)` | デバッグ用: メニューを飛ばして指定レベルのスフィアで開始 |
 | `ds_debug_auto(on)` | デバッグ用: AI にプレイヤーを操作させる |
 
 フレームバッファと 3D レンダラのアリーナ (192KB) は main.cpp の静的配列。

@@ -17,21 +17,22 @@ constexpr uint8_t DOWN = 1 << 3;  // brake
 constexpr uint8_t A = 1 << 4;     // fire / confirm
 }  // namespace Button
 
-// Kite half-size (units) of a part of size 2^sizeLog2 (area grows with size)
-int32_t partHalfSize(int sizeLog2);
+// Kite half-size (units) of a fragment of size 2^sizeLog2 (area grows with
+// size)
+int32_t fragmentHalfSize(int sizeLog2);
 
-// Altitude above the planet surface for a creature of the given size
+// Altitude above the sphere surface for an entity of the given size
 int32_t altitudeForSize(uint32_t size);
 
-// Cruise speed (units per tick) of a creature of the given size
+// Cruise speed (units per tick) of an entity of the given size
 int32_t cruiseSpeedForSize(uint32_t size);
 
-// Speed (units per tick) of a bullet fired by a creature of the given size
+// Speed (units per tick) of a bullet fired by an entity of the given size
 int32_t bulletSpeed(const WeaponSpec &ws, uint32_t ownerSize);
 
-// A part inside a creature: local coordinates (x = right, y = forward) in
+// A fragment inside an entity: local coordinates (x = right, y = forward) in
 // units. x >= 0; a mirrored copy at (-x, y) is implied.
-struct Part {
+struct Fragment {
   int32_t x, y;    // position
   int32_t vx, vy;  // velocity (units per tick)
   uint8_t sizeLog2;
@@ -44,15 +45,15 @@ struct Frame {
   Vec3 right() const { return crossQ30(t, n); }
 };
 
-enum class AiMode : uint8_t { WANDER, HUNT_PART, HUNT_CREATURE, FLEE };
+enum class AiMode : uint8_t { WANDER, HUNT_FRAGMENT, HUNT_ENTITY, FLEE };
 
-struct Creature {
+struct Entity {
   bool alive;
   bool isPlayer;
   Frame frame;
-  int32_t r;      // distance from the planet center (units)
+  int32_t r;      // distance from the sphere center (units)
   int32_t speed;  // current speed (units per tick)
-  uint32_t size;  // sum of part sizes (authoritative)
+  uint32_t size;  // sum of fragment sizes (authoritative)
   int32_t hp, hpMax;
   Weapon weapon;
   uint8_t hue;  // 0..255 color hue (render hint)
@@ -60,30 +61,30 @@ struct Creature {
   bool dashing, braking, firing;
   int16_t fireCooldown;
   int16_t invincible;   // ticks of spawn protection
-  int16_t absorbGuard;  // ticks during which the creature cannot be absorbed
+  int16_t absorbGuard;  // ticks during which the entity cannot be absorbed
 
-  Part parts[MAX_PARTS_PER_CREATURE];
-  uint8_t partCount;
+  Fragment fragments[MAX_FRAGMENTS_PER_ENTITY];
+  uint8_t fragmentCount;
   int32_t coreY;         // core position on the local Y axis
   int32_t coreHalf;      // core kite half-size
   int32_t bodyRadius;    // tangential extent (units) for collisions
-  int32_t layoutFocusY;  // focus point for part orientation (render hint)
+  int32_t layoutFocusY;  // focus point for fragment orientation (render hint)
 
   // AI
   AiMode aiMode;
-  int16_t aiTarget;  // index into creatures or floating parts (-1 = none)
+  int16_t aiTarget;  // index into entities or floating fragments (-1 = none)
   int16_t aiTimer;
   uint16_t aiWanderAngle;
 
   // Bookkeeping
-  uint16_t rank;  // 1 = largest on the planet (updated periodically)
-  uint32_t seed;  // per-creature random seed (visual variation)
+  uint16_t rank;  // 1 = largest on the sphere (updated periodically)
+  uint32_t seed;  // per-entity random seed (visual variation)
 };
 
-struct FloatingPart {
+struct FloatingFragment {
   bool alive;
   Vec3 n;      // unit normal (Q30)
-  int32_t r;   // distance from the planet center
+  int32_t r;   // distance from the sphere center
   Vec3 drift;  // tangential velocity (units per tick, decays)
   uint8_t sizeLog2;
   int16_t age;
@@ -96,15 +97,15 @@ struct Bullet {
   int32_t r;
   int32_t speed;
   int16_t life;
-  int16_t owner;  // creature index
+  int16_t owner;  // entity index
   Weapon kind;
   uint32_t ownerSize;  // size of the owner when fired (hit rule and scale)
   int32_t power;       // damage
-  int16_t target;      // homing target creature (-1 = none)
+  int16_t target;      // homing target entity (-1 = none)
   bool fromPlayer;
 };
 
-struct Particle {
+struct Spark {
   bool alive;
   Vec3 n;
   int32_t r;

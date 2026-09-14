@@ -1,4 +1,4 @@
-// Planet wireframe (adaptively subdivided icosahedron) and background stars.
+// Sphere wireframe (adaptively subdivided icosahedron) and background stars.
 
 #include <cmath>
 #include <cstring>
@@ -8,13 +8,13 @@
 namespace devoursphere::render {
 
 using g3::vec3f;
-using sim::PU;
+using sim::FU;
 
-static constexpr float PLANET_R = (float)sim::PLANET_RADIUS / PU;
+static constexpr float SPHERE_R = (float)sim::SPHERE_RADIUS / FU;
 static constexpr float ICO_EDGE = 1.0515f;  // edge length of a unit icosahedron
 static constexpr float SUBDIVIDE_PX =
     56.0f;  // subdivide edges longer than this
-static constexpr float FADE_NEAR = 60.0f, FADE_FAR = 900.0f;  // PU
+static constexpr float FADE_NEAR = 60.0f, FADE_FAR = 900.0f;  // FU
 
 static const vec3f ICO_VERTS[12] = {
     {-0.525731f, 0.850651f, 0},  {0.525731f, 0.850651f, 0},
@@ -56,8 +56,8 @@ void Renderer::emitEdge(const vec3f &a, const vec3f &b, int level) {
     }
     slot = (slot + 1) & MASK;
   }
-  vec3f pa = planetCenter_ + a * PLANET_R;
-  vec3f pb = planetCenter_ + b * PLANET_R;
+  vec3f pa = sphereCenter_ + a * SPHERE_R;
+  vec3f pb = sphereCenter_ + b * SPHERE_R;
   vec3f mid = (pa + pb) * 0.5f;
   float d = g3::length(mid - cam_.eye);
   float t = (FADE_FAR - d) / (FADE_FAR - FADE_NEAR);
@@ -73,16 +73,16 @@ void Renderer::subdivideFace(const vec3f &a, const vec3f &b, const vec3f &c,
                              int level) {
   if (lineCount_ >= MAX_LINES - 3) return;
   vec3f center = g3::normalize(a + b + c);
-  // Horizon: skip faces entirely on the far side of the planet
+  // Horizon: skip faces entirely on the far side of the sphere
   if (g3::dot(center, camUnit_) < cullCos_[level]) return;
-  vec3f worldCenter = planetCenter_ + center * PLANET_R;
+  vec3f worldCenter = sphereCenter_ + center * SPHERE_R;
   vec3f rel = worldCenter - cam_.eye;
-  float edgeLen = ICO_EDGE * PLANET_R / (float)(1 << level);
+  float edgeLen = ICO_EDGE * SPHERE_R / (float)(1 << level);
   // Faces entirely behind the camera
   if (g3::dot(rel, viewDir_) < -edgeLen) return;
   float d = g3::length(rel);
   float px = edgeLen * focalPx_ / (d > 1.0f ? d : 1.0f);
-  if (level < MAX_PLANET_LEVEL && px > SUBDIVIDE_PX) {
+  if (level < MAX_SPHERE_LEVEL && px > SUBDIVIDE_PX) {
     vec3f ab = g3::normalize(a + b);
     vec3f bc = g3::normalize(b + c);
     vec3f ca = g3::normalize(c + a);
@@ -97,7 +97,7 @@ void Renderer::subdivideFace(const vec3f &a, const vec3f &b, const vec3f &c,
   emitEdge(c, a, level);
 }
 
-void Renderer::buildPlanet() {
+void Renderer::buildSphere() {
   std::memset(edgeKeys_, 0, sizeof(edgeKeys_));
   for (int f = 0; f < 20; f++) {
     subdivideFace(ICO_VERTS[ICO_FACES[f][0]], ICO_VERTS[ICO_FACES[f][1]],

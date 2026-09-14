@@ -60,9 +60,9 @@ static void testFixed() {
   CHECK(o.z == 0);
   CHECK(std::abs(dotQ30(o, o) - Q30_ONE) < 8);
 
-  CHECK(partHalfSize(0) == PU / 2);
-  CHECK(partHalfSize(2) == PU);
-  CHECK(std::abs(partHalfSize(1) - 181) <= 1);
+  CHECK(fragmentHalfSize(0) == FU / 2);
+  CHECK(fragmentHalfSize(2) == FU);
+  CHECK(std::abs(fragmentHalfSize(1) - 181) <= 1);
   CHECK(canAttack(100, 67) && canAttack(100, 150) && !canAttack(100, 66) &&
         !canAttack(100, 151));
 }
@@ -95,25 +95,25 @@ static void enterPlay(Game &g) {
 }
 
 static void checkInvariants(const Game &g) {
-  for (int i = 0; i < MAX_CREATURES; i++) {
-    const Creature &c = g.creatures[i];
+  for (int i = 0; i < MAX_ENTITIES; i++) {
+    const Entity &c = g.entities[i];
     if (!c.alive) continue;
-    CHECK(c.partCount >= 1 && c.partCount <= MAX_PARTS_PER_CREATURE);
+    CHECK(c.fragmentCount >= 1 && c.fragmentCount <= MAX_FRAGMENTS_PER_ENTITY);
     CHECK(c.size >= 1);
     CHECK(c.hp >= 0 && c.hp <= c.hpMax);
-    CHECK(c.r > PLANET_RADIUS);
+    CHECK(c.r > SPHERE_RADIUS);
     CHECK(std::llabs(dot64(c.frame.n, c.frame.n) - ((int64_t)1 << 60)) <
           ((int64_t)1 << 40));
     CHECK(std::llabs(dot64(c.frame.t, c.frame.t) - ((int64_t)1 << 60)) <
           ((int64_t)1 << 40));
     CHECK(std::abs(dotQ30(c.frame.n, c.frame.t)) < (1 << 12));
-    for (int k = 0; k < c.partCount; k++) {
-      CHECK(c.parts[k].x >= 0);
-      CHECK(c.parts[k].sizeLog2 <= MAX_SIZE_LOG2);
-      CHECK(std::abs(c.parts[k].x) < 4096 * PU &&
-            std::abs(c.parts[k].y) < 4096 * PU);
+    for (int k = 0; k < c.fragmentCount; k++) {
+      CHECK(c.fragments[k].x >= 0);
+      CHECK(c.fragments[k].sizeLog2 <= MAX_SIZE_LOG2);
+      CHECK(std::abs(c.fragments[k].x) < 4096 * FU &&
+            std::abs(c.fragments[k].y) < 4096 * FU);
     }
-    CHECK(c.bodyRadius > 0 && c.bodyRadius < 4096 * PU);
+    CHECK(c.bodyRadius > 0 && c.bodyRadius < 4096 * FU);
   }
 }
 
@@ -126,7 +126,7 @@ static void testDeterminism() {
   playTicks(a, 3000, 0);
   playTicks(b, 3000, 0);
   CHECK(a.stateHash() == b.stateHash());
-  CHECK(std::memcmp(a.creatures, b.creatures, sizeof(a.creatures)) == 0);
+  CHECK(std::memcmp(a.entities, b.entities, sizeof(a.entities)) == 0);
   Game c;
   c.reset(12346);
   enterPlay(c);
@@ -142,54 +142,54 @@ static void testGameplay() {
   checkInvariants(g);
   g.reset(777);
   enterPlay(g);
-  const Creature &p = g.player();
+  const Entity &p = g.player();
   CHECK(p.alive && p.isPlayer);
   CHECK(p.size == (1u << PLAYER_START_SIZE_LOG2));
   int alive = 0;
-  for (int i = 0; i < MAX_CREATURES; i++) alive += g.creatures[i].alive;
-  CHECK(alive == INITIAL_CREATURES);
+  for (int i = 0; i < MAX_ENTITIES; i++) alive += g.entities[i].alive;
+  CHECK(alive == INITIAL_ENTITIES);
 
-  bool sawBullet = false, sawPart = false, sawParticle = false;
+  bool sawBullet = false, sawFragment = false, sawSpark = false;
   for (int i = 0; i < 6000; i++) {
     g.tick(scriptedInput(100 + i));
     for (int k = 0; k < MAX_BULLETS; k++) sawBullet |= g.bullets[k].alive;
-    for (int k = 0; k < MAX_FLOATING_PARTS; k++)
-      sawPart |= g.floatingParts[k].alive;
-    for (int k = 0; k < MAX_PARTICLES; k++) sawParticle |= g.particles[k].alive;
+    for (int k = 0; k < MAX_FLOATING_FRAGMENTS; k++)
+      sawFragment |= g.floatingFragments[k].alive;
+    for (int k = 0; k < MAX_SPARKS; k++) sawSpark |= g.sparks[k].alive;
     if ((i % 500) == 0) checkInvariants(g);
     if (g.state() == GameState::DEAD) break;
   }
   checkInvariants(g);
   CHECK(sawBullet);
-  CHECK(g.playerRank() >= 1 && g.playerRank() <= MAX_CREATURES);
+  CHECK(g.playerRank() >= 1 && g.playerRank() <= MAX_ENTITIES);
 
-  // On a high level planet the enemies fight each other: parts and energy
-  // particles must appear
+  // On a high level sphere the enemies fight each other: fragments and energy
+  // sparks must appear
   Game f;
   f.reset(31337);
-  f.debugStartPlanet(4, 0);
-  CHECK(f.planetLevel() == 4);
-  sawPart = sawParticle = false;
+  f.debugStartSphere(4, 0);
+  CHECK(f.sphereLevel() == 4);
+  sawFragment = sawSpark = false;
   int deaths = 0;
   for (int i = 0; i < 4000; i++) {
-    int before = f.aliveCreatures();
+    int before = f.aliveEntities();
     f.tick(scriptedInput(900 + i));
-    if (f.aliveCreatures() < before) deaths++;
-    for (int k = 0; k < MAX_FLOATING_PARTS; k++)
-      sawPart |= f.floatingParts[k].alive;
-    for (int k = 0; k < MAX_PARTICLES; k++) sawParticle |= f.particles[k].alive;
+    if (f.aliveEntities() < before) deaths++;
+    for (int k = 0; k < MAX_FLOATING_FRAGMENTS; k++)
+      sawFragment |= f.floatingFragments[k].alive;
+    for (int k = 0; k < MAX_SPARKS; k++) sawSpark |= f.sparks[k].alive;
     if ((i % 500) == 0) checkInvariants(f);
     if (f.state() != GameState::PLAYING) break;
   }
-  CHECK(sawPart);
-  CHECK(sawParticle);
+  CHECK(sawFragment);
+  CHECK(sawSpark);
   CHECK(deaths > 0);
 
   // Kill the player to reach the DEAD state, then restart
   Game h;
   h.reset(4242);
   enterPlay(h);
-  Creature &hp = h.creatures[h.playerIndex()];
+  Entity &hp = h.entities[h.playerIndex()];
   hp.invincible = 0;
   hp.hp = 1;
   hp.alive = false;  // simulate death
@@ -199,87 +199,88 @@ static void testGameplay() {
   h.tick(Button::A);
   CHECK(h.state() == GameState::TITLE);
 
-  // Planet transition: make the player the largest
+  // Sphere transition: make the player the largest
   Game q;
   q.reset(99);
   enterPlay(q);
-  Creature &qp = q.creatures[q.playerIndex()];
-  for (int i = 0; i < 12; i++) qp.parts[0].sizeLog2 = 18, qp.size = 1u << 18;
+  Entity &qp = q.entities[q.playerIndex()];
+  for (int i = 0; i < 12; i++)
+    qp.fragments[0].sizeLog2 = 18, qp.size = 1u << 18;
   qp.hpMax = HP_PER_SIZE * (int32_t)qp.size;
   qp.hp = qp.hpMax;
   for (int i = 0; i < 4 * TICK_RATE + 5; i++) q.tick(0);
   CHECK(q.state() == GameState::LAUNCH);
   for (int i = 0; i < 3 * TICK_RATE + 5; i++) q.tick(0);
   CHECK(q.state() == GameState::PLAYING);
-  CHECK(q.planetLevel() == 2);
+  CHECK(q.sphereLevel() == 2);
   CHECK(q.player().size < 64);
   CHECK(q.playerDisplayScaleLog2() > 0);
   checkInvariants(q);
 }
 
 // An equal-sized enemy straight ahead must die from sustained vulcan fire,
-// and the parts of a creature must come to rest after a while
+// and the fragments of an entity must come to rest after a while
 static void testCombatAndLayout() {
   Game g;
   g.reset(2024);
-  g.debugStartPlanet(1, 0);
-  Creature &p = g.creatures[g.playerIndex()];
+  g.debugStartSphere(1, 0);
+  Entity &p = g.entities[g.playerIndex()];
   int enemy = -1;
-  for (int i = 1; i < MAX_CREATURES; i++) {
-    if (g.creatures[i].alive) {
+  for (int i = 1; i < MAX_ENTITIES; i++) {
+    if (g.entities[i].alive) {
       enemy = i;
       break;
     }
   }
   CHECK(enemy > 0);
-  Creature &e = g.creatures[enemy];
-  // Same size and heading, 20 PU ahead of the player, both stopped
+  Entity &e = g.entities[enemy];
+  // Same size and heading, 20 FU ahead of the player, both stopped
   e.size = p.size;
   e.hpMax = HP_PER_SIZE * (int32_t)e.size;
   e.hp = e.hpMax;
-  e.partCount = p.partCount;
-  for (int k = 0; k < p.partCount; k++) e.parts[k] = p.parts[k];
+  e.fragmentCount = p.fragmentCount;
+  for (int k = 0; k < p.fragmentCount; k++) e.fragments[k] = p.fragments[k];
   e.frame.t = p.frame.t;
   e.frame.n = normalizeQ30(
       p.frame.n +
-      scaleQ30(p.frame.t, (20 * PU) << (Q30_SHIFT - PLANET_RADIUS_SHIFT)));
+      scaleQ30(p.frame.t, (20 * FU) << (Q30_SHIFT - SPHERE_RADIUS_SHIFT)));
   e.frame.t = orthonormalizeQ30(e.frame.t, e.frame.n);
   e.r = p.r;
   e.invincible = 0;
   int32_t hp0 = e.hp;
   bool died = false;
   for (int t = 0; t < 6 * TICK_RATE && !died; t++) {
-    // keep both creatures still by braking (the enemy is not AI driven
+    // keep both entities still by braking (the enemy is not AI driven
     // while its think tick is skipped: force its controls every tick)
-    g.creatures[enemy].braking = true;
-    g.creatures[enemy].turn = 0;
-    g.creatures[enemy].firing = false;
+    g.entities[enemy].braking = true;
+    g.entities[enemy].turn = 0;
+    g.entities[enemy].firing = false;
     g.tick(Button::DOWN | Button::A);
-    died = !g.creatures[enemy].alive;
+    died = !g.entities[enemy].alive;
   }
   CHECK(g.debugStats().hits > 0);
-  CHECK(died || g.creatures[enemy].hp < hp0 / 2);
+  CHECK(died || g.entities[enemy].hp < hp0 / 2);
 
-  // A part left far behind the core is pulled back into the body
+  // A fragment left far behind the core is pulled back into the body
   {
     Game b;
     b.reset(5);
-    b.debugStartPlanet(1, 0);
-    Creature &c = b.creatures[b.playerIndex()];
-    c.parts[0].x = 2 * PU;
-    c.parts[0].y = -60 * PU;
+    b.debugStartSphere(1, 0);
+    Entity &c = b.entities[b.playerIndex()];
+    c.fragments[0].x = 2 * FU;
+    c.fragments[0].y = -60 * FU;
     for (int t = 0; t < 4 * TICK_RATE; t++) b.tick(0);
-    CHECK(std::abs(b.player().parts[0].y) < 8 * PU);
+    CHECK(std::abs(b.player().fragments[0].y) < 8 * FU);
   }
 
-  // Layout settles: after 5 seconds without eating, part velocities are 0
+  // Layout settles: after 5 seconds without eating, fragment velocities are 0
   Game h;
   h.reset(99);
-  h.debugStartPlanet(1, 0);
+  h.debugStartSphere(1, 0);
   for (int t = 0; t < 5 * TICK_RATE; t++) h.tick(0);
-  const Creature &q = h.player();
-  for (int k = 0; k < q.partCount; k++)
-    CHECK(q.parts[k].vx == 0 && q.parts[k].vy == 0);
+  const Entity &q = h.player();
+  for (int k = 0; k < q.fragmentCount; k++)
+    CHECK(q.fragments[k].vx == 0 && q.fragments[k].vy == 0);
 }
 
 int main() {

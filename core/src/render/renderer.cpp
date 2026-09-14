@@ -8,20 +8,20 @@
 namespace devoursphere::render {
 
 using g3::vec3f;
-using sim::PU;
+using sim::FU;
 
 static constexpr float PI = 3.14159265358979f;
-static constexpr float Z_NEAR = 0.4f;    // PU
-static constexpr float Z_FAR = 1800.0f;  // PU
-static constexpr float PLANET_R = (float)sim::PLANET_RADIUS / PU;
+static constexpr float Z_NEAR = 0.4f;    // FU
+static constexpr float Z_FAR = 1800.0f;  // FU
+static constexpr float SPHERE_R = (float)sim::SPHERE_RADIUS / FU;
 
 // Palette indices
 enum : int {
-  PAL_PLAYER = 0,   // teal, like the floating parts
+  PAL_PLAYER = 0,   // teal, like the floating fragments
   PAL_ENEMY_BIG,    // fightable and bigger than the player: pink
   PAL_ENEMY_SMALL,  // fightable and not bigger: light blue
   PAL_GRAY,         // cannot be fought
-  PAL_PART,
+  PAL_FRAGMENT,
   PAL_CORE,
   PAL_BULLET_PLAYER,
   PAL_BULLET_ENEMY,
@@ -60,11 +60,11 @@ void Renderer::init(int width, int height, void *arena, size_t arenaSize) {
   g3d_.init((int16_t)width, (int16_t)height, arena, arenaSize);
   g3d_.disableClear();
 
-  palette_[PAL_PLAYER] = flatMaterial(hueColor(sim::PART_HUE, 220, 230));
+  palette_[PAL_PLAYER] = flatMaterial(hueColor(sim::FRAGMENT_HUE, 220, 230));
   palette_[PAL_ENEMY_BIG] = flatMaterial(g2::makeColor(255, 90, 170));
   palette_[PAL_ENEMY_SMALL] = flatMaterial(g2::makeColor(110, 200, 255));
   palette_[PAL_GRAY] = flatMaterial(g2::makeColor(110, 112, 120));
-  palette_[PAL_PART] = flatMaterial(hueColor(sim::PART_HUE, 220, 220));
+  palette_[PAL_FRAGMENT] = flatMaterial(hueColor(sim::FRAGMENT_HUE, 220, 220));
   palette_[PAL_CORE] = flatMaterial(g2::makeColor(255, 255, 255));
   palette_[PAL_BULLET_PLAYER] = addMaterial(g2::makeColor(255, 150, 30), 1.0f);
   palette_[PAL_BULLET_ENEMY] = addMaterial(g2::makeColor(255, 60, 110), 1.0f);
@@ -83,7 +83,7 @@ static inline vec3f q30ToF(const sim::Vec3 &v) {
 }
 
 vec3f Renderer::toLocal(const sim::Vec3 &worldUnits) const {
-  constexpr float k = 1.0f / PU;
+  constexpr float k = 1.0f / FU;
   return {(worldUnits.x - origin_.x) * k, (worldUnits.y - origin_.y) * k,
           (worldUnits.z - origin_.z) * k};
 }
@@ -173,14 +173,14 @@ static vec3f rotateAroundAxis(const vec3f &v, const vec3f &axis, float angle) {
 
 void Renderer::updateCamera(float dt) {
   const sim::Game &g = *game_;
-  const sim::Creature &p = g.player();
+  const sim::Entity &p = g.player();
   origin_ = sim::scaleToLength(p.frame.n, p.r);
   vec3f up = q30ToF(p.frame.n);
   vec3f fwd = q30ToF(p.frame.t);
-  // Body size estimate from the size and the part count, so that the camera
-  // does not follow the jitter of the part layout
-  float bodyR = sim::partHalfSize(sim::log2Floor(p.size)) / (float)PU *
-                (2.0f + 0.2f * p.partCount);
+  // Body size estimate from the size and the fragment count, so that the camera
+  // does not follow the jitter of the fragment layout
+  float bodyR = sim::fragmentHalfSize(sim::log2Floor(p.size)) / (float)FU *
+                (2.0f + 0.2f * p.fragmentCount);
 
   // High and far behind the player, looking down at roughly 45 degrees
   float wantDist = 3.5f * bodyR + 8.0f;
@@ -241,7 +241,7 @@ void Renderer::updateCamera(float dt) {
 
   vec3f eye = fwd * (-camDist_) + up * camHeight_;
   // Look at a point ahead of (and normally slightly below) the player so
-  // that the planet surface fills the lower part of the screen
+  // that the sphere surface fills the lower part of the screen
   vec3f target = fwd * camAhead_ - up * (camHeight_ * camDown_);
   vec3f dir = g3::normalize(target - eye);
   vec3f upR = rotateAroundAxis(up, dir, camRoll_);
@@ -258,16 +258,16 @@ void Renderer::updateCamera(float dt) {
   focalPx_ = (h_ * 0.5f) / std::tan(camFov_ * 0.5f);
   viewDir_ = dir;
 
-  planetCenter_ = toLocal({0, 0, 0});
-  vec3f rel = eye - planetCenter_;
+  sphereCenter_ = toLocal({0, 0, 0});
+  vec3f rel = eye - sphereCenter_;
   float d = g3::length(rel);
   camUnit_ = rel * (1.0f / d);
-  cosHorizon_ = PLANET_R / d;
+  cosHorizon_ = SPHERE_R / d;
   if (cosHorizon_ > 1) cosHorizon_ = 1;
   horizonAngle_ = std::acos(cosHorizon_);
   // Angular radius of a subdivided icosahedron face (level 0: ~37.4 deg)
   float faceAngle = 0.6524f;
-  for (int l = 0; l <= MAX_PLANET_LEVEL; l++) {
+  for (int l = 0; l <= MAX_SPHERE_LEVEL; l++) {
     float a = horizonAngle_ + faceAngle;
     cullCos_[l] = a >= PI ? -1.0f : std::cos(a);
     faceAngle *= 0.5f;
@@ -277,10 +277,9 @@ void Renderer::updateCamera(float dt) {
 // ---------------------------------------------------------------------------
 // Scene
 
-const g3::Material &Renderer::materialForCreature(
-    const sim::Creature &c) const {
+const g3::Material &Renderer::materialForEntity(const sim::Entity &c) const {
   if (c.isPlayer) return palette_[PAL_PLAYER];
-  const sim::Creature &p = game_->player();
+  const sim::Entity &p = game_->player();
   if (!sim::canAttack(p.size, c.size)) return palette_[PAL_GRAY];
   return palette_[c.size > p.size ? PAL_ENEMY_BIG : PAL_ENEMY_SMALL];
 }
@@ -323,20 +322,20 @@ void Renderer::putQuad(const vec3f &c, const vec3f &dir, const vec3f &perp,
   kites_++;
 }
 
-void Renderer::drawCreature(const sim::Creature &c, const vec3f &pos, bool full,
-                            const g3::Material &m, bool blink) {
+void Renderer::drawEntity(const sim::Entity &c, const vec3f &pos, bool full,
+                          const g3::Material &m, bool blink) {
   vec3f up = q30ToF(c.frame.n);
   vec3f fwd = q30ToF(c.frame.t);
   vec3f right = g3::cross(fwd, up);
-  const float k = 1.0f / PU;
+  const float k = 1.0f / FU;
   float coreY = c.coreY * k, coreHalf = c.coreHalf * k;
   float focusY = c.layoutFocusY * k;
 
   if (!blink) {
     if (full) {
-      for (int i = 0; i < c.partCount; i++) {
-        const sim::Part &p = c.parts[i];
-        float s = sim::partHalfSize(p.sizeLog2) * k;
+      for (int i = 0; i < c.fragmentCount; i++) {
+        const sim::Fragment &p = c.fragments[i];
+        float s = sim::fragmentHalfSize(p.sizeLog2) * k;
         float lx = p.x * k * 1.4f, ly = p.y * k;  // widen like wings
         for (int side = -1; side <= 1; side += 2) {
           float x = lx * side;
@@ -358,15 +357,15 @@ void Renderer::drawCreature(const sim::Creature &c, const vec3f &pos, bool full,
   // Core (white, pointing forward)
   putKite(pos + fwd * coreY, fwd, right, coreHalf, coreHalf * 2.5f,
           palette_[PAL_CORE]);
-  creaturesDrawn_++;
+  entitiesDrawn_++;
 }
 
-void Renderer::drawFloatingParts() {
+void Renderer::drawFloatingFragments() {
   const sim::Game &g = *game_;
-  const g3::Material &m = palette_[PAL_PART];
-  g2::Color pointColor = hueColor(sim::PART_HUE, 200, 200);
-  for (int i = 0; i < sim::MAX_FLOATING_PARTS; i++) {
-    const sim::FloatingPart &fp = g.floatingParts[i];
+  const g3::Material &m = palette_[PAL_FRAGMENT];
+  g2::Color pointColor = hueColor(sim::FRAGMENT_HUE, 200, 200);
+  for (int i = 0; i < sim::MAX_FLOATING_FRAGMENTS; i++) {
+    const sim::FloatingFragment &fp = g.floatingFragments[i];
     if (!fp.alive) continue;
     vec3f up = q30ToF(fp.n);
     if (g3::dot(up, camUnit_) < cosHorizon_ - 0.01f) continue;
@@ -374,13 +373,13 @@ void Renderer::drawFloatingParts() {
     vec3f rel = pos - cam_.eye;
     float d = g3::length(rel);
     if (g3::dot(rel, viewDir_) < -2.0f) continue;
-    float s = sim::partHalfSize(fp.sizeLog2) / (float)PU;
+    float s = sim::fragmentHalfSize(fp.sizeLog2) / (float)FU;
     float px = s * focalPx_ / (d > 0.1f ? d : 0.1f);
     if (px < 1.0f) {
       addPoint(pos, 1, pointColor);
       continue;
     }
-    // Tangent frame spun by the part's own angle
+    // Tangent frame spun by the fragment's own angle
     vec3f helper = std::fabs(up.x) < 0.9f ? vec3f{1, 0, 0} : vec3f{0, 1, 0};
     vec3f a = g3::normalize(g3::cross(up, helper));
     vec3f b = g3::cross(up, a);
@@ -403,7 +402,7 @@ void Renderer::drawBullets() {
     if (g3::dot(rel, viewDir_) < -2.0f) continue;
     vec3f fwd = q30ToF(b.frame.t);
     vec3f right = g3::cross(fwd, up);
-    float base = sim::partHalfSize(sim::log2Floor(b.ownerSize)) / (float)PU;
+    float base = sim::fragmentHalfSize(sim::log2Floor(b.ownerSize)) / (float)FU;
     switch (b.kind) {
       case sim::Weapon::VULCAN: {
         const g3::Material &m =
@@ -429,11 +428,11 @@ void Renderer::drawBullets() {
   }
 }
 
-void Renderer::drawParticles() {
+void Renderer::drawSparks() {
   const sim::Game &g = *game_;
   uint32_t t = g.tickCount();
-  for (int i = 0; i < sim::MAX_PARTICLES; i++) {
-    const sim::Particle &p = g.particles[i];
+  for (int i = 0; i < sim::MAX_SPARKS; i++) {
+    const sim::Spark &p = g.sparks[i];
     if (!p.alive) continue;
     vec3f up = q30ToF(p.n);
     if (g3::dot(up, camUnit_) < cosHorizon_ - 0.01f) continue;
@@ -455,18 +454,18 @@ void Renderer::buildScene() {
   g3d_.disableParallelLight();
   g3d_.disableEnvironmentLight();
 
-  // Visible creatures sorted by distance
+  // Visible entities sorted by distance
   struct Vis {
     float d, px;
     int16_t idx;
   };
-  Vis vis[sim::MAX_CREATURES];
+  Vis vis[sim::MAX_ENTITIES];
   int n = 0;
-  for (int i = 0; i < sim::MAX_CREATURES; i++) {
-    const sim::Creature &c = g.creatures[i];
+  for (int i = 0; i < sim::MAX_ENTITIES; i++) {
+    const sim::Entity &c = g.entities[i];
     if (!c.alive) continue;
     vec3f up = q30ToF(c.frame.n);
-    float bodyR = c.bodyRadius / (float)PU;
+    float bodyR = c.bodyRadius / (float)FU;
     if (g3::dot(up, camUnit_) < cosHorizon_ - 0.02f) {
       // Beyond the horizon: fightable enemies get a marker on the horizon
       // in their direction
@@ -480,11 +479,11 @@ void Renderer::buildScene() {
       d = d * (1.0f / len);
       vec3f hp =
           camUnit_ * std::cos(horizonAngle_) + d * std::sin(horizonAngle_);
-      vec3f world = planetCenter_ + hp * PLANET_R;
+      vec3f world = sphereCenter_ + hp * SPHERE_R;
       float sx, sy;
       if (!project(world, sx, sy)) continue;
       if (sx < 4 || sx >= w_ - 4 || sy < 4 || sy >= h_ - 4) continue;
-      const g3::Material &m = materialForCreature(c);
+      const g3::Material &m = materialForEntity(c);
       Marker2D &mk = markers_[markerCount_++];
       mk.x = (int16_t)sx;
       mk.y = (int16_t)sy;
@@ -497,7 +496,7 @@ void Renderer::buildScene() {
     if (g3::dot(rel, viewDir_) < -bodyR) continue;
     float px = bodyR * focalPx_ / (d > 0.1f ? d : 0.1f);
     if (px < 0.8f) {
-      const g3::Material &m = materialForCreature(c);
+      const g3::Material &m = materialForEntity(c);
       addPoint(pos, 1,
                g2::makeColorF(m.diffuse.r * 0.7f, m.diffuse.g * 0.7f,
                               m.diffuse.b * 0.7f));
@@ -514,17 +513,17 @@ void Renderer::buildScene() {
 
   int triBudget = g3d_.getStats().triCapacity * 3 / 4;
   for (int k = 0; k < n; k++) {
-    const sim::Creature &c = g.creatures[vis[k].idx];
-    int fullTris = (1 + 2 * c.partCount) * 2;
+    const sim::Entity &c = g.entities[vis[k].idx];
+    int fullTris = (1 + 2 * c.fragmentCount) * 2;
     bool full = vis[k].px >= 6.0f && triBudget >= fullTris;
     triBudget -= full ? fullTris : 4;
     vec3f pos = toLocal(sim::scaleToLength(c.frame.n, c.r));
     bool blink = c.invincible > 0 && ((g.tickCount() >> 2) & 1);
-    drawCreature(c, pos, full, materialForCreature(c), blink);
+    drawEntity(c, pos, full, materialForEntity(c), blink);
     // Health gauge over fightable enemies
     if (!c.isPlayer && vis[k].px >= 2.5f && gaugeCount_ < MAX_GAUGES &&
         sim::canAttack(g.player().size, c.size)) {
-      float bodyR = c.bodyRadius / (float)PU;
+      float bodyR = c.bodyRadius / (float)FU;
       vec3f up = q30ToF(c.frame.n);
       float sx, sy;
       if (project(pos + up * (bodyR * 0.3f + 0.5f), sx, sy)) {
@@ -542,7 +541,7 @@ void Renderer::buildScene() {
     }
   }
 
-  drawFloatingParts();
+  drawFloatingFragments();
   drawBullets();
   g3d_.endScene();
 }
@@ -557,12 +556,12 @@ void Renderer::beginFrame(const sim::Game &game, float dt) {
   pointCount_ = 0;
   gaugeCount_ = 0;
   markerCount_ = 0;
-  creaturesDrawn_ = 0;
+  entitiesDrawn_ = 0;
   kites_ = 0;
   updateCamera(dt);
   buildStars();
-  buildPlanet();
-  drawParticles();
+  buildSphere();
+  drawSparks();
   buildScene();
   g3d_.beginRender();
 }
@@ -616,7 +615,7 @@ RenderStats Renderer::stats() const {
   RenderStats s;
   s.lines = lineCount_;
   s.points = pointCount_;
-  s.creaturesDrawn = creaturesDrawn_;
+  s.entitiesDrawn = entitiesDrawn_;
   s.kites = kites_;
   s.gfx = g3d_.getStats();
   return s;

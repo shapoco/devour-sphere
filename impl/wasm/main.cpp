@@ -42,7 +42,7 @@ DS_EXPORT void ds_init(uint32_t seed) {
 
 // Debug: skip the menus (level >= 1)
 DS_EXPORT void ds_debug_start(int level, int weapon) {
-  game.debugStartPlanet(level, weapon);
+  game.debugStartSphere(level, weapon);
 }
 
 // Debug: let the AI drive the player (attract-mode style demo)
@@ -94,7 +94,7 @@ static void writePpm(const char *path) {
 }
 
 // Usage: devoursphere_native [level] [script] [out.ppm] [auto] [seed]
-//   level:  0 = title screen, >= 1 = play on that planet level
+//   level:  0 = title screen, >= 1 = play on that sphere level
 //   script: comma separated "COUNTxBUTTONS" items, e.g. "5x0,1x16,300x2"
 //           (BUTTONS = sim::Button bits held for COUNT ticks); a plain number
 //           means that many ticks without input
@@ -136,8 +136,8 @@ int main(int argc, char **argv) {
   render::RenderStats st = renderer.stats();
   std::printf("state=%d tick %.3f ms, render %.3f ms\n", ds_get_state(), tickMs,
               renderMs);
-  std::printf("lines=%d points=%d creatures=%d kites=%d\n", st.lines, st.points,
-              st.creaturesDrawn, st.kites);
+  std::printf("lines=%d points=%d entities=%d kites=%d\n", st.lines, st.points,
+              st.entitiesDrawn, st.kites);
   std::printf(
       "tris %d/%d (dropped %d), spans peak %d/%d (dropped %d), arena %zu/%zu\n",
       st.gfx.triCount, st.gfx.triCapacity, st.gfx.triDropped, st.gfx.spanPeak,

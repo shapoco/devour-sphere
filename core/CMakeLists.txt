@@ -5,7 +5,7 @@ add_library(devoursphere_sim STATIC
     src/sim/fixed.cpp
     src/sim/entities.cpp
     src/sim/game.cpp
-    src/sim/creature.cpp
+    src/sim/entity.cpp
     src/sim/combat.cpp
 )
 add_library(devoursphere::sim ALIAS devoursphere_sim)
@@ -15,7 +15,7 @@ target_compile_options(devoursphere_sim PRIVATE -Wall -Wextra)
 
 add_library(devoursphere_render STATIC
     src/render/renderer.cpp
-    src/render/planet.cpp
+    src/render/sphere.cpp
     src/render/hud.cpp
 )
 add_library(devoursphere::render ALIAS devoursphere_render)

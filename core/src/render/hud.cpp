@@ -28,7 +28,7 @@ void Renderer::drawCenteredText(g2::Graphics2D &g, int y, const char *text,
 
 void Renderer::drawHud(g2::Graphics2D &g, int oy) {
   const sim::Game &game = *game_;
-  const sim::Creature &p = game.player();
+  const sim::Entity &p = game.player();
   char buf[64];
   uint32_t t = game.tickCount();
   bool blinkOn = (t / 15) & 1;
@@ -97,7 +97,7 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
       // Rank and size
       g.setFont(&ShapoSansP_s12c09a01w02);
       std::snprintf(buf, sizeof(buf), "RANK %d / %d", game.playerRank(),
-                    game.aliveCreatures());
+                    game.aliveEntities());
       g.setTextColor(HUD_SHADOW);
       g.drawString(gx + 1, gy + gh + 5, buf);
       g.setTextColor(game.playerRank() == 1 ? g2::makeColor(255, 230, 120)
@@ -114,8 +114,8 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
       g.setTextColor(HUD_DIM);
       g.drawString(gx, gy + gh + 22, buf);
 
-      // Planet and weapon (top right)
-      std::snprintf(buf, sizeof(buf), "PLANET %d", game.planetLevel());
+      // Sphere and weapon (top right)
+      std::snprintf(buf, sizeof(buf), "SPHERE %d", game.sphereLevel());
       int tw = g.measureText(buf);
       g.setTextColor(HUD_TEXT);
       g.drawString(w_ - 8 - tw, oy + 8, buf);
@@ -130,7 +130,7 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
 
       if (game.state() == sim::GameState::LAUNCH) {
         g.setFont(&ShapoSansP_s21c16a01w03);
-        drawCenteredText(g, oy + 100, "PLANET DEVOURED",
+        drawCenteredText(g, oy + 100, "SPHERE DEVOURED",
                          g2::makeColor(255, 230, 120));
         g.setFont(&ShapoSansP_s12c09a01w02);
         drawCenteredText(g, oy + 135, "leaving for a larger world...",
@@ -140,17 +140,17 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
         drawCenteredText(g, oy + 100, "YOU WERE DEVOURED",
                          g2::makeColor(255, 90, 90));
         g.setFont(&ShapoSansP_s12c09a01w02);
-        std::snprintf(buf, sizeof(buf), "planets devoured: %d",
-                      game.planetsCleared());
+        std::snprintf(buf, sizeof(buf), "spheres devoured: %d",
+                      game.spheresCleared());
         drawCenteredText(g, oy + 135, buf, HUD_TEXT);
         if (game.stateTimer() > 2 * sim::TICK_RATE && blinkOn) {
           drawCenteredText(g, oy + 200, "PRESS A", HUD_TEXT);
         }
       } else if (game.stateTimer() < 3 * sim::TICK_RATE &&
-                 game.planetLevel() == 1 && game.planetsCleared() == 0) {
+                 game.sphereLevel() == 1 && game.spheresCleared() == 0) {
         g.setFont(&ShapoSansP_s12c09a01w02);
-        drawCenteredText(g, oy + 240, "devour the parts, become the largest",
-                         HUD_DIM);
+        drawCenteredText(g, oy + 240,
+                         "devour the fragments, become the largest", HUD_DIM);
       }
       break;
     }
