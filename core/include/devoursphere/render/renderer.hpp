@@ -44,6 +44,12 @@ struct Gauge2D {
   uint8_t ratio;  // 0..255
 };
 
+// Marker on the horizon for a fightable enemy beyond it
+struct Marker2D {
+  int16_t x, y;
+  g2::Color color;
+};
+
 struct Camera {
   g3::vec3f eye, target, up;  // PU, relative to the player's position
   float fovY;                 // radians
@@ -85,6 +91,7 @@ class Renderer {
   Camera cam_ = {};
   bool camValid_ = false;
   float camDist_ = 0, camHeight_ = 0, camFov_ = 0, camRoll_ = 0;
+  float camAhead_ = 0, camDown_ = 0;  // look target: ahead / below the player
   g3::mat4f view_ = g3::mat4f::identity();
   g3::mat4f proj_ = g3::mat4f::identity();
   g3::mat4f viewProj_ = g3::mat4f::identity();
@@ -105,6 +112,9 @@ class Renderer {
   static constexpr int MAX_GAUGES = 64;
   Gauge2D gauges_[MAX_GAUGES];
   int gaugeCount_ = 0;
+  static constexpr int MAX_MARKERS = 32;
+  Marker2D markers_[MAX_MARKERS];
+  int markerCount_ = 0;
   uint32_t edgeKeys_[2048];  // edge dedupe hash table (per frame)
   int creaturesDrawn_ = 0, kites_ = 0;
 

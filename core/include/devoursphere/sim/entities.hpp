@@ -26,6 +26,9 @@ int32_t altitudeForSize(uint32_t size);
 // Cruise speed (units per tick) of a creature of the given size
 int32_t cruiseSpeedForSize(uint32_t size);
 
+// Speed (units per tick) of a bullet fired by a creature of the given size
+int32_t bulletSpeed(const WeaponSpec &ws, uint32_t ownerSize);
+
 // A part inside a creature: local coordinates (x = right, y = forward) in
 // units. x >= 0; a mirrored copy at (-x, y) is implied.
 struct Part {

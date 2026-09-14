@@ -23,6 +23,14 @@ bool Game::tangentialDist2(const Vec3 &a, const Vec3 &b, int32_t maxUnits,
   return true;
 }
 
+// Bullets fly faster the bigger the owner: proportional to the kite size
+// (the table speed applies to the player's starting size)
+int32_t bulletSpeed(const WeaponSpec &ws, uint32_t ownerSize) {
+  int64_t k = partHalfSize(log2Floor(ownerSize));
+  return (int32_t)((int64_t)ws.speed * k /
+                   partHalfSize(PLAYER_START_SIZE_LOG2));
+}
+
 static int32_t bulletRadius(const Bullet &b) {
   const WeaponSpec &ws = WEAPON_SPECS[(int)b.kind];
   return partHalfSize(log2Floor(b.ownerSize)) * ws.radiusPU8 / 4;
@@ -52,7 +60,7 @@ void Game::fireWeapon(int idx) {
   b.frame.t = orthonormalizeQ30(rotateAroundQ30(c.frame.t, c.frame.n, spread),
                                 b.frame.n);
   b.r = c.r;
-  b.speed = ws.speed;
+  b.speed = bulletSpeed(ws, c.size);
   b.life = ws.lifetime;
   b.owner = (int16_t)idx;
   b.kind = c.weapon;
@@ -64,7 +72,7 @@ void Game::fireWeapon(int idx) {
   if (ws.homing) {
     // Nearest attackable creature in front
     int64_t best = INT64_MAX;
-    int64_t range = (int64_t)ws.speed * ws.lifetime;
+    int64_t range = (int64_t)bulletSpeed(ws, c.size) * ws.lifetime;
     for (int j = 0; j < MAX_CREATURES; j++) {
       const Creature &o = creatures[j];
       if (j == idx || !o.alive || !canAttack(c.size, o.size)) continue;

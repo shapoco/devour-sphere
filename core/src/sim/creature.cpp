@@ -124,7 +124,7 @@ void Game::updateAi(int idx) {
     Vec3 d = tangentTowards(c.frame.n, o.frame.n);
     Vec3 dn = normalizeQ30(d);
     const WeaponSpec &ws = WEAPON_SPECS[(int)c.weapon];
-    int64_t range = (int64_t)ws.speed * ws.lifetime;
+    int64_t range = (int64_t)bulletSpeed(ws, c.size) * ws.lifetime;
     if (dotQ30(c.frame.t, dn) > COS_FIRE_CONE && preyD2 < range * range) {
       // Enemies fire more eagerly on higher level planets; the AI-driven
       // player always fires

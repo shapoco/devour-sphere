@@ -177,7 +177,10 @@ void Renderer::updateCamera(float dt) {
   origin_ = sim::scaleToLength(p.frame.n, p.r);
   vec3f up = q30ToF(p.frame.n);
   vec3f fwd = q30ToF(p.frame.t);
-  float bodyR = p.bodyRadius / (float)PU;
+  // Body size estimate from the size and the part count, so that the camera
+  // does not follow the jitter of the part layout
+  float bodyR = sim::partHalfSize(sim::log2Floor(p.size)) / (float)PU *
+                (2.0f + 0.2f * p.partCount);
 
   // High and far behind the player, looking down at roughly 45 degrees
   float wantDist = 3.5f * bodyR + 8.0f;
@@ -185,12 +188,17 @@ void Renderer::updateCamera(float dt) {
   float wantHeight = wantDist * 1.0f;
   float wantFov = 70.0f * PI / 180.0f;
   float wantRoll = 0;
+  float wantAhead = bodyR * 0.5f + 1.0f;  // look target ahead of the player
+  float wantDown = 0.12f;                 // ... and below (x camera height)
   sim::GameState st = g.state();
   if (st == sim::GameState::PLAYING) {
     if (p.dashing) {
-      wantDist *= 0.8f;
-      wantHeight *= 0.75f;
-      wantFov = 58.0f * PI / 180.0f;
+      // Close behind and low, looking along the heading
+      wantDist *= 0.55f;
+      wantHeight *= 0.22f;
+      wantFov = 60.0f * PI / 180.0f;
+      wantAhead = wantDist * 4.0f;
+      wantDown = 0.0f;
     } else if (p.braking) {
       wantDist *= 1.25f;
       wantHeight *= 1.25f;
@@ -218,6 +226,8 @@ void Renderer::updateCamera(float dt) {
     camHeight_ = wantHeight;
     camFov_ = wantFov;
     camRoll_ = wantRoll;
+    camAhead_ = wantAhead;
+    camDown_ = wantDown;
     camValid_ = true;
   } else {
     float k = 1.0f - std::exp(-dt * 5.0f);
@@ -225,12 +235,14 @@ void Renderer::updateCamera(float dt) {
     camHeight_ += (wantHeight - camHeight_) * k;
     camFov_ += (wantFov - camFov_) * k;
     camRoll_ += (wantRoll - camRoll_) * k;
+    camAhead_ += (wantAhead - camAhead_) * k;
+    camDown_ += (wantDown - camDown_) * k;
   }
 
   vec3f eye = fwd * (-camDist_) + up * camHeight_;
-  // Look at a point slightly ahead of and below the player so that the
-  // planet surface fills the lower part of the screen
-  vec3f target = fwd * (bodyR * 0.5f + 1.0f) - up * (camHeight_ * 0.12f);
+  // Look at a point ahead of (and normally slightly below) the player so
+  // that the planet surface fills the lower part of the screen
+  vec3f target = fwd * camAhead_ - up * (camHeight_ * camDown_);
   vec3f dir = g3::normalize(target - eye);
   vec3f upR = rotateAroundAxis(up, dir, camRoll_);
   cam_.eye = eye;
@@ -455,7 +467,30 @@ void Renderer::buildScene() {
     if (!c.alive) continue;
     vec3f up = q30ToF(c.frame.n);
     float bodyR = c.bodyRadius / (float)PU;
-    if (g3::dot(up, camUnit_) < cosHorizon_ - 0.02f) continue;
+    if (g3::dot(up, camUnit_) < cosHorizon_ - 0.02f) {
+      // Beyond the horizon: fightable enemies get a marker on the horizon
+      // in their direction
+      if (c.isPlayer || markerCount_ >= MAX_MARKERS ||
+          !sim::canAttack(g.player().size, c.size)) {
+        continue;
+      }
+      vec3f d = up - camUnit_ * g3::dot(up, camUnit_);
+      float len = g3::length(d);
+      if (len < 1e-5f) continue;
+      d = d * (1.0f / len);
+      vec3f hp =
+          camUnit_ * std::cos(horizonAngle_) + d * std::sin(horizonAngle_);
+      vec3f world = planetCenter_ + hp * PLANET_R;
+      float sx, sy;
+      if (!project(world, sx, sy)) continue;
+      if (sx < 4 || sx >= w_ - 4 || sy < 4 || sy >= h_ - 4) continue;
+      const g3::Material &m = materialForCreature(c);
+      Marker2D &mk = markers_[markerCount_++];
+      mk.x = (int16_t)sx;
+      mk.y = (int16_t)sy;
+      mk.color = g2::makeColorF(m.diffuse.r, m.diffuse.g, m.diffuse.b);
+      continue;
+    }
     vec3f pos = toLocal(sim::scaleToLength(c.frame.n, c.r));
     vec3f rel = pos - cam_.eye;
     float d = g3::length(rel);
@@ -521,6 +556,7 @@ void Renderer::beginFrame(const sim::Game &game, float dt) {
   lineCount_ = 0;
   pointCount_ = 0;
   gaugeCount_ = 0;
+  markerCount_ = 0;
   creaturesDrawn_ = 0;
   kites_ = 0;
   updateCamera(dt);
@@ -552,6 +588,14 @@ void Renderer::renderBand(const g2::Surface &dst, int y, int h, int dstY) {
     g.drawLine(l.x0, l.y0 + oy, l.x1, l.y1 + oy, l.color);
   }
   g3d_.render(0, (int16_t)y, (int16_t)w_, (int16_t)h, dst, 0, (int16_t)dstY);
+  for (int i = 0; i < markerCount_; i++) {
+    const Marker2D &mk = markers_[i];
+    // Downward triangle just above the horizon point
+    int x = mk.x, yb = mk.y + oy - 3, yt = yb - 7;
+    if (yb < dstY || yt >= dstY + h) continue;
+    g.fillTriangle(x - 5, yt, x + 5, yt, x, yb, mk.color);
+    g.drawTriangle(x - 5, yt, x + 5, yt, x, yb, g2::makeColor(0, 0, 0, 120));
+  }
   for (int i = 0; i < gaugeCount_; i++) {
     const Gauge2D &gg = gauges_[i];
     if (gg.y + 3 <= y || gg.y >= y + h) continue;
