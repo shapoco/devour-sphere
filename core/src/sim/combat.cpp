@@ -32,9 +32,6 @@ void Game::fireWeapon(int idx) {
   Creature &c = creatures[idx];
   if (c.fireCooldown > 0) return;
   const WeaponSpec &ws = WEAPON_SPECS[(int)c.weapon];
-  int32_t cost = c.hpMax >> ws.hpCostShift;
-  if (cost < 1) cost = 1;
-  if (c.hp <= cost + (c.hpMax >> 4)) return;  // too weak to fire
 
   int slot = -1;
   for (int i = 0; i < MAX_BULLETS; i++) {
@@ -45,7 +42,6 @@ void Game::fireWeapon(int idx) {
   }
   if (slot < 0) return;
 
-  c.hp -= cost;
   c.fireCooldown = ws.cooldown;
   Bullet &b = bullets[slot];
   b.alive = true;

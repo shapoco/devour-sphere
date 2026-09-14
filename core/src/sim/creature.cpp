@@ -72,12 +72,10 @@ void Game::updateAi(int idx) {
       // Bigger attackers are a threat in sight (when they can attack);
       // absorbers only when close
       constexpr int64_t NEAR2 = (int64_t)(40 * PU) * (40 * PU);
-      bool dangerous = (canAttack(o.size, c.size) && planetLevel_ >= 2 &&
-                        o.size * 4 > c.size * 5) ||
+      bool dangerous = (canAttack(o.size, c.size) && o.size * 4 > c.size * 5) ||
                        (!canAttack(c.size, o.size) && d2 < NEAR2);
       if (dangerous && d2 < threatD2) threat = j, threatD2 = d2;
-    } else if (canAttack(c.size, o.size) && (planetLevel_ >= 2 || c.isPlayer) &&
-               d2 < preyD2) {
+    } else if (canAttack(c.size, o.size) && d2 < preyD2) {
       prey = j, preyD2 = d2;  // equal or smaller: fair game
     }
   }
@@ -128,7 +126,12 @@ void Game::updateAi(int idx) {
     const WeaponSpec &ws = WEAPON_SPECS[(int)c.weapon];
     int64_t range = (int64_t)ws.speed * ws.lifetime;
     if (dotQ30(c.frame.t, dn) > COS_FIRE_CONE && preyD2 < range * range) {
-      c.firing = true;
+      // Enemies fire more eagerly on higher level planets; the AI-driven
+      // player always fires
+      int lv = planetLevel_ - 1;
+      if (lv >= AI_FIRE_CHANCE_LEVELS) lv = AI_FIRE_CHANCE_LEVELS - 1;
+      if (lv < 0) lv = 0;
+      c.firing = c.isPlayer || rng_.below(256) < AI_FIRE_CHANCE[lv];
     }
     c.dashing = planetLevel_ >= 3 && preyD2 > (int64_t)(40 * PU) * (40 * PU) &&
                 c.hp > (c.hpMax >> 1);
@@ -235,16 +238,17 @@ void Game::updateLayout(Creature &c) {
       if (j != i) addForce(fx, fy, p.x, p.y, o.x, o.y, d0, A);
       addForce(fx, fy, p.x, p.y, -o.x, o.y, d0, A);  // mirror images
     }
-    // Gentle spring towards a resting line behind the core (bounded, so
-    // parts cannot drift away)
-    int32_t yRest = c.coreY - (coreHalf + s) * 3 / 2;
-    int64_t spring = ((int64_t)yRest - p.y) >> 3;
-    fy += clampI64(-(A >> 1), A >> 1, spring);
+    // Weak spring towards the local origin: a part that got left behind is
+    // pulled back into the body (the speed limit grows with the distance so
+    // that far parts return quickly)
+    int32_t dist = absI32(p.x) > absI32(p.y) ? absI32(p.x) : absI32(p.y);
+    fx -= p.x >> 5;
+    fy -= p.y >> 5;
 
     // Heavily damped so that the layout settles instead of oscillating
     int64_t vx = ((int64_t)p.vx >> 1) + fx;
     int64_t vy = ((int64_t)p.vy >> 1) + fy;
-    int32_t vmax = s >> 2;
+    int32_t vmax = (s >> 2) + (dist >> 4);
     p.vx = (int32_t)clampI64(-vmax, vmax, vx);
     p.vy = (int32_t)clampI64(-vmax, vmax, vy);
     // Below a small threshold the part is considered at rest
@@ -328,6 +332,9 @@ void Game::addPartToCreature(Creature &c, int sizeLog2, int32_t lx,
   if (oldMax > 0) {
     c.hp = (int32_t)(((int64_t)c.hp * c.hpMax) / oldMax);
   }
+  // Every part taken in heals a fixed fraction of the gauge
+  c.hp += c.hpMax / HEAL_PER_PART_DIV;
+  if (c.hp > c.hpMax) c.hp = c.hpMax;
 }
 
 }  // namespace devoursphere::sim

@@ -260,6 +260,18 @@ static void testCombatAndLayout() {
   CHECK(g.debugStats().hits > 0);
   CHECK(died || g.creatures[enemy].hp < hp0 / 2);
 
+  // A part left far behind the core is pulled back into the body
+  {
+    Game b;
+    b.reset(5);
+    b.debugStartPlanet(1, 0);
+    Creature &c = b.creatures[b.playerIndex()];
+    c.parts[0].x = 2 * PU;
+    c.parts[0].y = -60 * PU;
+    for (int t = 0; t < 4 * TICK_RATE; t++) b.tick(0);
+    CHECK(std::abs(b.player().parts[0].y) < 8 * PU);
+  }
+
   // Layout settles: after 5 seconds without eating, part velocities are 0
   Game h;
   h.reset(99);

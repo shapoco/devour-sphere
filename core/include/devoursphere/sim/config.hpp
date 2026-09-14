@@ -48,8 +48,10 @@ constexpr uint16_t TURN_RATE_DASH = degToBrad(2);   // per tick while dashing
 
 // --- Health -----------------------------------------------------------------
 constexpr int32_t HP_PER_SIZE = 32;  // hpMax = HP_PER_SIZE * size
-// Health is only restored by absorbing energy particles (no passive regen,
-// dashing is free)
+// Health only drops from enemy fire (dashing and firing are free, no passive
+// regen) and returns through energy particles and eating: every part taken
+// in restores hpMax / HEAL_PER_PART_DIV, whatever the part's size
+constexpr int32_t HEAL_PER_PART_DIV = 10;
 constexpr int ABSORB_GUARD_TICKS =
     TICK_RATE;  // no absorption right after eating
 
@@ -62,7 +64,6 @@ struct WeaponSpec {
   int16_t lifetime;      // ticks
   int16_t cooldown;      // ticks between shots
   int32_t powerPerSize;  // damage = powerPerSize * ownerSize / 8
-  int32_t hpCostShift;   // hpMax >> shift per shot
   uint16_t spread;       // random spread half-angle (brad)
   uint16_t homing;       // turn rate per tick (brad); 0 = none
   int32_t radiusPU8;     // hit radius in PU/8 for a size-1 owner
@@ -71,10 +72,10 @@ struct WeaponSpec {
 constexpr WeaponSpec WEAPON_SPECS[WEAPON_COUNT] = {
     // damage per hit = power * ownerSize / 8; hpMax = 32 * size, so an equal
     // opponent dies after 8 vulcan hits, 2 laser hits or 5 missile hits
-    // speed        life  cd  power  cost  spread          homing        radius
-    {PU * 5 / 2, 45, 4, 32, 11, degToBrad(5), 0, 6},               // VULCAN
-    {PU * 8, 28, 14, 128, 8, 0, 0, 4},                             // LASER
-    {PU * 7 / 4, 100, 12, 56, 9, degToBrad(20), degToBrad(4), 8},  // MISSILE
+    // speed        life  cd  power  spread          homing        radius
+    {PU * 5 / 2, 45, 4, 32, degToBrad(5), 0, 6},                // VULCAN
+    {PU * 8, 28, 14, 128, 0, 0, 4},                             // LASER
+    {PU * 7 / 4, 100, 12, 56, degToBrad(20), degToBrad(4), 8},  // MISSILE
 };
 
 // --- Sizes and combat rules -------------------------------------------------
@@ -115,6 +116,11 @@ constexpr uint8_t PART_HUE = 120;  // floating parts (teal)
 
 // --- Enemy AI ---------------------------------------------------------------
 constexpr int AI_THINK_INTERVAL = 8;  // ticks between decisions (staggered)
+// Chance (out of 256) that an enemy hunting a target fires during a think
+// interval, per planet level (index 0 = level 1); the last entry applies
+// beyond
+constexpr uint8_t AI_FIRE_CHANCE[] = {40, 110, 200, 255};
+constexpr int AI_FIRE_CHANCE_LEVELS = 4;
 constexpr int32_t AI_SIGHT_PU = 120;  // detection range in PU
 
 }  // namespace devoursphere::sim
