@@ -63,8 +63,6 @@ static void testFixed() {
   CHECK(fragmentHalfSize(0) == FU / 2);
   CHECK(fragmentHalfSize(2) == FU);
   CHECK(std::abs(fragmentHalfSize(1) - 181) <= 1);
-  CHECK(canAttack(100, 67) && canAttack(100, 150) && !canAttack(100, 66) &&
-        !canAttack(100, 151));
 }
 
 static uint8_t scriptedInput(uint32_t t) {
@@ -260,6 +258,52 @@ static void testCombatAndLayout() {
   }
   CHECK(g.debugStats().hits > 0);
   CHECK(died || g.entities[enemy].hp < hp0 / 2);
+
+  // Contact: size flows gradually from the smaller entity to the bigger one
+  {
+    Game b;
+    b.reset(77);
+    b.debugStartSphere(1, 0);
+    Entity &p = b.entities[b.playerIndex()];
+    int other = -1;
+    for (int i = 1; i < MAX_ENTITIES; i++) {
+      if (b.entities[i].alive) {
+        other = i;
+        break;
+      }
+    }
+    Entity &o = b.entities[other];
+    o.fragmentCount = p.fragmentCount;
+    for (int k = 0; k < p.fragmentCount; k++) o.fragments[k] = p.fragments[k];
+    o.fragments[0].sizeLog2 += 3;  // clearly bigger
+    o.size = 0;
+    for (int k = 0; k < o.fragmentCount; k++)
+      o.size += 1u << o.fragments[k].sizeLog2;
+    o.hpMax = HP_PER_SIZE * (int32_t)o.size;
+    o.hp = o.hpMax;
+    o.frame = p.frame;
+    o.r = p.r;
+    o.invincible = 0;
+    p.invincible = 0;
+    p.absorbGuard = 0;
+    uint32_t p0 = p.size, o0 = o.size;
+    for (int t = 0; t < 8; t++) {
+      b.entities[other].frame = b.player().frame;
+      b.entities[other].r = b.player().r;
+      b.tick(Button::DOWN);
+    }
+    // gradual: the player is still alive after a few ticks, but smaller
+    CHECK(b.player().alive);
+    CHECK(b.player().size < p0);
+    CHECK(b.entities[other].size > o0);
+    CHECK(b.player().size + b.entities[other].size == p0 + o0);
+    for (int t = 0; t < 10 * TICK_RATE && b.player().alive; t++) {
+      b.entities[other].frame = b.player().frame;
+      b.entities[other].r = b.player().r;
+      b.tick(Button::DOWN);
+    }
+    CHECK(!b.player().alive);  // eventually absorbed
+  }
 
   // A fragment left far behind the core is pulled back into the body
   {

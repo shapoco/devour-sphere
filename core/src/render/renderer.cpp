@@ -18,9 +18,9 @@ static constexpr float SPHERE_R = (float)sim::SPHERE_RADIUS / FU;
 // Palette indices
 enum : int {
   PAL_PLAYER = 0,   // teal, like the floating fragments
-  PAL_ENEMY_BIG,    // fightable and bigger than the player: pink
-  PAL_ENEMY_SMALL,  // fightable and not bigger: light blue
-  PAL_GRAY,         // cannot be fought
+  PAL_ENEMY_BIG,    // bigger than the player: pink
+  PAL_ENEMY_SMALL,  // not bigger than the player: light blue
+  PAL_GRAY,         // (unused)
   PAL_FRAGMENT,
   PAL_CORE,
   PAL_BULLET_PLAYER,
@@ -280,7 +280,6 @@ void Renderer::updateCamera(float dt) {
 const g3::Material &Renderer::materialForEntity(const sim::Entity &c) const {
   if (c.isPlayer) return palette_[PAL_PLAYER];
   const sim::Entity &p = game_->player();
-  if (!sim::canAttack(p.size, c.size)) return palette_[PAL_GRAY];
   return palette_[c.size > p.size ? PAL_ENEMY_BIG : PAL_ENEMY_SMALL];
 }
 
@@ -469,8 +468,10 @@ void Renderer::buildScene() {
     if (g3::dot(up, camUnit_) < cosHorizon_ - 0.02f) {
       // Beyond the horizon: fightable enemies get a marker on the horizon
       // in their direction
-      if (c.isPlayer || markerCount_ >= MAX_MARKERS ||
-          !sim::canAttack(g.player().size, c.size)) {
+      // (only opponents of a comparable size: 1/4 .. 4x)
+      uint32_t ps = g.player().size;
+      if (c.isPlayer || markerCount_ >= MAX_MARKERS || c.size * 4 < ps ||
+          c.size > ps * 4) {
         continue;
       }
       vec3f d = up - camUnit_ * g3::dot(up, camUnit_);
@@ -521,8 +522,7 @@ void Renderer::buildScene() {
     bool blink = c.invincible > 0 && ((g.tickCount() >> 2) & 1);
     drawEntity(c, pos, full, materialForEntity(c), blink);
     // Health gauge over fightable enemies
-    if (!c.isPlayer && vis[k].px >= 2.5f && gaugeCount_ < MAX_GAUGES &&
-        sim::canAttack(g.player().size, c.size)) {
+    if (!c.isPlayer && vis[k].px >= 2.5f && gaugeCount_ < MAX_GAUGES) {
       float bodyR = c.bodyRadius / (float)FU;
       vec3f up = q30ToF(c.frame.n);
       float sx, sy;

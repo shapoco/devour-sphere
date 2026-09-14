@@ -72,11 +72,14 @@ void Game::updateAi(int idx) {
       // Bigger attackers are a threat in sight (when they can attack);
       // absorbers only when close
       constexpr int64_t NEAR2 = (int64_t)(40 * FU) * (40 * FU);
-      bool dangerous = (canAttack(o.size, c.size) && o.size * 4 > c.size * 5) ||
-                       (!canAttack(c.size, o.size) && d2 < NEAR2);
+      // Bigger entities are a threat only when close (everything is bigger
+      // than somebody; fleeing from every giant in sight would paralyze the
+      // small ones): 1.25x within 60 FU, anything bigger within 40 FU
+      constexpr int64_t FLEE2 = (int64_t)(60 * FU) * (60 * FU);
+      bool dangerous = (o.size * 4 > c.size * 5 && d2 < FLEE2) || d2 < NEAR2;
       if (dangerous && d2 < threatD2) threat = j, threatD2 = d2;
-    } else if (canAttack(c.size, o.size) && d2 < preyD2) {
-      prey = j, preyD2 = d2;  // equal or smaller: fair game
+    } else if (o.size * 4 >= c.size && d2 < preyD2) {
+      prey = j, preyD2 = d2;  // equal or smaller (but not tiny): fair game
     }
   }
   // Food: nearest floating fragment in sight (z-band query)
@@ -110,7 +113,8 @@ void Game::updateAi(int idx) {
                 threatD2 < (int64_t)(30 * FU) * (30 * FU);
     return;
   }
-  if (food >= 0 && (prey < 0 || foodD2 <= preyD2)) {
+  // Food first unless the prey is much closer (everything is prey now)
+  if (food >= 0 && (prey < 0 || foodD2 <= preyD2 * 4)) {
     c.aiMode = AiMode::HUNT_FRAGMENT;
     c.aiTarget = (int16_t)food;
     c.turn = steerTowards(c, floatingFragments[food].n, false);
@@ -315,8 +319,8 @@ void Game::enforceFragmentLimit(Entity &c) {
   c.fragmentCount--;
 }
 
-void Game::addFragmentToEntity(Entity &c, int sizeLog2, int32_t lx,
-                               int32_t ly) {
+// Visual only: add a fragment to the body (size is not changed) and heal
+void Game::pushFragment(Entity &c, int sizeLog2, int32_t lx, int32_t ly) {
   enforceFragmentLimit(c);
   Fragment &p = c.fragments[c.fragmentCount++];
   int32_t s = fragmentHalfSize(sizeLog2);
@@ -325,16 +329,49 @@ void Game::addFragmentToEntity(Entity &c, int sizeLog2, int32_t lx,
   p.y = clampI32(-lim, lim, ly);
   p.vx = p.vy = 0;
   p.sizeLog2 = (uint8_t)clampI32(0, MAX_SIZE_LOG2, sizeLog2);
-  uint32_t add = 1u << p.sizeLog2;
-  int32_t oldMax = c.hpMax;
-  c.size += add;
-  c.hpMax = HP_PER_SIZE * (int32_t)c.size;
-  if (oldMax > 0) {
-    c.hp = (int32_t)(((int64_t)c.hp * c.hpMax) / oldMax);
-  }
   // Every fragment taken in heals a fixed fraction of the gauge
   c.hp += c.hpMax / HEAL_PER_FRAGMENT_DIV;
   if (c.hp > c.hpMax) c.hp = c.hpMax;
+}
+
+// Change the size, keeping the health ratio
+void Game::setEntitySize(Entity &c, uint32_t size) {
+  int32_t oldMax = c.hpMax;
+  c.size = size;
+  c.hpMax = HP_PER_SIZE * (int32_t)c.size;
+  if (oldMax > 0) c.hp = (int32_t)(((int64_t)c.hp * c.hpMax) / oldMax);
+  if (c.hp > c.hpMax) c.hp = c.hpMax;
+}
+
+void Game::addFragmentToEntity(Entity &c, int sizeLog2, int32_t lx,
+                               int32_t ly) {
+  int k = clampI32(0, MAX_SIZE_LOG2, sizeLog2);
+  setEntitySize(c, c.size + (1u << k));
+  pushFragment(c, k, lx, ly);
+}
+
+// Bring the visual decomposition back in line with `size` after it changed
+// (gradual absorption): shed the smallest fragments while they exceed the
+// size, add fragments while they fall short. (lx, ly): where new fragments
+// enter the body.
+void Game::syncFragments(Entity &c, int32_t lx, int32_t ly) {
+  uint32_t sum = 0;
+  for (int i = 0; i < c.fragmentCount; i++)
+    sum += 1u << c.fragments[i].sizeLog2;
+  while (sum > c.size && c.fragmentCount > 1) {
+    int a = 0;
+    for (int i = 1; i < c.fragmentCount; i++) {
+      if (c.fragments[i].sizeLog2 < c.fragments[a].sizeLog2) a = i;
+    }
+    sum -= 1u << c.fragments[a].sizeLog2;
+    c.fragments[a] = c.fragments[c.fragmentCount - 1];
+    c.fragmentCount--;
+  }
+  for (int n = 0; n < 4 && sum < c.size; n++) {
+    int k = log2Floor(c.size - sum);
+    pushFragment(c, k, lx, ly);
+    sum += 1u << k;
+  }
 }
 
 }  // namespace devoursphere::sim

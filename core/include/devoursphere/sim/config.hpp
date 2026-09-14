@@ -71,19 +71,19 @@ struct WeaponSpec {
 
 constexpr WeaponSpec WEAPON_SPECS[WEAPON_COUNT] = {
     // damage per hit = power * ownerSize / 8; hpMax = 32 * size, so an equal
-    // opponent dies after 8 vulcan hits, 2 laser hits or 5 missile hits
+    // opponent dies after ~26 vulcan hits, ~6 laser hits or ~14 missile hits
     // speed        life  cd  power  spread          homing        radius
-    {FU * 5 / 2, 45, 4, 32, degToBrad(5), 0, 6},                // VULCAN
-    {FU * 8, 28, 14, 128, 0, 0, 4},                             // LASER
-    {FU * 7 / 4, 100, 12, 56, degToBrad(20), degToBrad(4), 8},  // MISSILE
+    {FU * 5 / 2, 45, 4, 10, degToBrad(5), 0, 6},                // VULCAN
+    {FU * 8, 28, 14, 40, 0, 0, 4},                              // LASER
+    {FU * 7 / 4, 100, 12, 18, degToBrad(20), degToBrad(4), 8},  // MISSILE
 };
 
 // --- Sizes and combat rules -------------------------------------------------
-// Attackable: 2/3 <= other / self <= 3/2
-static inline bool canAttack(uint32_t self, uint32_t other) {
-  return (uint64_t)other * 3 >= (uint64_t)self * 2 &&
-         (uint64_t)other * 2 <= (uint64_t)self * 3;
-}
+// Every entity can attack every other entity. When two entities of different
+// sizes touch, size flows from the smaller one to the bigger one: per tick
+// size >> ABSORB_RATE_SHIFT (at least 1 every ABSORB_MIN_INTERVAL ticks).
+constexpr int ABSORB_RATE_SHIFT = 7;
+constexpr int ABSORB_MIN_INTERVAL = 4;
 
 // --- Fragments inside an entity
 // ------------------------------------------------

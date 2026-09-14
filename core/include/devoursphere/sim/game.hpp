@@ -131,7 +131,10 @@ class Game {
   void handleEntityCollisions();
   void damageEntity(int idx, int32_t dmg, int attacker);
   void killEntity(int idx);
-  void absorbEntity(int eater, int eaten);
+  void transferSize(int from, int to);
+  void setEntitySize(Entity &e, uint32_t size);
+  void pushFragment(Entity &e, int sizeLog2, int32_t lx, int32_t ly);
+  void syncFragments(Entity &e, int32_t lx, int32_t ly);
   void spawnFloatingFragment(const Vec3 &n, int32_t r, int sizeLog2,
                              const Vec3 &drift);
   void spawnSpark(const Vec3 &n, int32_t r, int32_t energy, const Vec3 &drift);

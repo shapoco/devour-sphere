@@ -75,7 +75,7 @@ void Game::fireWeapon(int idx) {
     int64_t range = (int64_t)bulletSpeed(ws, c.size) * ws.lifetime;
     for (int j = 0; j < MAX_ENTITIES; j++) {
       const Entity &o = entities[j];
-      if (j == idx || !o.alive || !canAttack(c.size, o.size)) continue;
+      if (j == idx || !o.alive) continue;
       int64_t d2;
       if (!tangentialDist2(c.frame.n, o.frame.n, (int32_t)range, d2)) continue;
       Vec3 d = {(o.frame.n.x - c.frame.n.x) >> 2,
@@ -100,7 +100,7 @@ void Game::updateBullets() {
     const WeaponSpec &ws = WEAPON_SPECS[(int)b.kind];
     if (ws.homing && b.target >= 0) {
       const Entity &o = entities[b.target];
-      if (!o.alive || !canAttack(b.ownerSize, o.size)) {
+      if (!o.alive) {
         b.target = -1;
       } else {
         Vec3 d = {(o.frame.n.x - b.frame.n.x) >> 2,
@@ -131,7 +131,6 @@ void Game::updateBullets() {
       Entity &o = entities[j];
       if (o.frame.n.z > b.frame.n.z + dz) break;
       if (!o.alive || j == b.owner) continue;
-      if (!canAttack(b.ownerSize, o.size)) continue;
       int32_t reach = o.bodyRadius + br;
       int64_t d2;
       if (!tangentialDist2(b.frame.n, o.frame.n, reach, d2)) continue;
@@ -191,22 +190,31 @@ void Game::killEntity(int idx) {
   if (c.isPlayer) events_ |= Event::PLAYER_DIED;
 }
 
-void Game::absorbEntity(int eater, int eaten) {
-  Entity &e = entities[eater];
-  Entity &v = entities[eaten];
-  if (!e.alive || !v.alive) return;
-  Vec3 rel = worldPos(v.frame.n, v.r) - worldPos(e.frame.n, e.r);
-  int32_t lx = dotQ30(rel, e.frame.right());
-  int32_t ly = dotQ30(rel, e.frame.t);
-  for (int i = 0; i < v.fragmentCount; i++) {
-    const Fragment &p = v.fragments[i];
-    addFragmentToEntity(e, p.sizeLog2, lx + p.x, ly + p.y);
+// One tick of contact: size flows from the smaller entity to the bigger one
+void Game::transferSize(int from, int to) {
+  Entity &S = entities[from];
+  Entity &B = entities[to];
+  if (!S.alive || !B.alive) return;
+  uint32_t t = S.size >> ABSORB_RATE_SHIFT;
+  if (t == 0) {
+    if ((tickCount_ % ABSORB_MIN_INTERVAL) != 0) return;
+    t = 1;
   }
-  e.absorbGuard = ABSORB_GUARD_TICKS;
-  v.alive = false;
-  v.hp = 0;
-  stats_.absorbs++;
-  if (v.isPlayer) events_ |= Event::PLAYER_DIED;
+  if (t > S.size) t = S.size;
+  Vec3 rel = worldPos(S.frame.n, S.r) - worldPos(B.frame.n, B.r);
+  setEntitySize(B, B.size + t);
+  syncFragments(B, dotQ30(rel, B.frame.right()), dotQ30(rel, B.frame.t));
+  setEntitySize(S, S.size - t);
+  if (S.size == 0) {
+    S.alive = false;
+    S.hp = 0;
+    stats_.absorbs++;
+    if (S.isPlayer) events_ |= Event::PLAYER_DIED;
+    return;
+  }
+  syncFragments(S, 0, 0);
+  if (S.isPlayer) events_ |= Event::PLAYER_HIT;
+  if (B.isPlayer) events_ |= Event::PLAYER_ATE_FRAGMENT;
 }
 
 void Game::spawnFloatingFragment(const Vec3 &n, int32_t r, int sizeLog2,
@@ -423,7 +431,7 @@ void Game::handleEating() {
 }
 
 void Game::handleEntityCollisions() {
-  int64_t dz = (int64_t)(maxBodyRadius_ + maxCoreReach_) << Z_SHIFT;
+  int64_t dz = (int64_t)(maxBodyRadius_ * 2) << Z_SHIFT;
   for (int ka = 0; ka < entityOrderCount_; ka++) {
     int i = entityOrder_[ka];
     Entity &a = entities[i];
@@ -439,18 +447,13 @@ void Game::handleEntityCollisions() {
       const Entity &B = entities[big];
       const Entity &S = entities[small];
       if (S.invincible > 0 || S.absorbGuard > 0) continue;
-      // Only entities that can fight each other collide; the bigger one
-      // absorbs the smaller one when the smaller one's core enters its body
-      if (!canAttack(S.size, B.size)) continue;
-      int32_t reach = B.bodyRadius * 3 / 4 + S.coreHalf;
+      // Bodies overlapping (in 3D, so a much higher entity is out of reach)
+      int32_t reach = (B.bodyRadius + S.bodyRadius) >> 1;
       int64_t d2;
-      if (!tangentialDist2(B.frame.n, S.frame.n, reach + absI32(S.coreY), d2)) {
-        continue;
-      }
-      Vec3 coreS = worldPos(S.frame.n, S.r) + scaleToLength(S.frame.t, S.coreY);
-      Vec3 rel = worldPos(B.frame.n, B.r) - coreS;
+      if (!tangentialDist2(B.frame.n, S.frame.n, reach, d2)) continue;
+      Vec3 rel = worldPos(B.frame.n, B.r) - worldPos(S.frame.n, S.r);
       if (length2_64(rel) >= (int64_t)reach * reach) continue;
-      absorbEntity(big, small);
+      transferSize(small, big);
     }
   }
 }
