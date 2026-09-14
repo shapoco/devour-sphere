@@ -21,7 +21,6 @@ constexpr int32_t SPHERE_RADIUS = 1 << SPHERE_RADIUS_SHIFT;
 constexpr int MAX_ENTITIES = 256;
 constexpr int MAX_FLOATING_FRAGMENTS = 1024;
 constexpr int MAX_BULLETS = 256;
-constexpr int MAX_SPARKS = 512;
 constexpr int MAX_FRAGMENTS_PER_ENTITY = 16;
 constexpr int MAX_SIZE_LOG2 = 20;  // largest fragment exponent handled
 
@@ -34,7 +33,11 @@ constexpr int32_t ALT_APPROACH_SHIFT = 5;  // altitude eases 1/32 per tick
 // --- Movement ---------------------------------------------------------------
 constexpr int32_t SPEED_BASE = FU / 2;       // units per tick for size 1
 constexpr int32_t SPEED_PER_LOG2 = FU / 12;  // extra speed per doubling
-constexpr int32_t DASH_SPEED_NUM = 9, DASH_SPEED_DEN = 4;  // dash: x2.25
+constexpr int32_t DASH_SPEED_NUM = 9, DASH_SPEED_DEN = 4;  // full dash: x2.25
+// Dash builds up over DASH_RAMP_UP_TICKS and fades over DASH_RAMP_DOWN_TICKS
+// (dashLevel is 0..256)
+constexpr int DASH_RAMP_UP_TICKS = 2 * TICK_RATE;
+constexpr int DASH_RAMP_DOWN_TICKS = TICK_RATE;
 constexpr int32_t BRAKE_DECEL_SHIFT =
     4;  // speed eases towards 0 by 1/16 per tick
 constexpr int32_t SPEED_ACCEL_SHIFT =
@@ -50,9 +53,11 @@ constexpr int BANK_APPROACH_SHIFT = 3;  // bank eases 1/8 per tick
 // --- Health -----------------------------------------------------------------
 constexpr int32_t HP_PER_SIZE = 32;  // hpMax = HP_PER_SIZE * size
 // Health only drops from enemy fire (dashing and firing are free, no passive
-// regen) and returns through sparks and eating: every fragment taken
-// in restores hpMax / HEAL_PER_FRAGMENT_DIV, whatever the fragment's size
-constexpr int32_t HEAL_PER_FRAGMENT_DIV = 10;
+// regen) and returns by touching fragments: HP_PER_SIZE * HEAL_PER_FRAGMENT_MUL
+// per unit of fragment size, i.e. a fragment of 1/32 of the body heals ~9%.
+// Fragments too small to be eaten (< size / FOOD_NOTICE_RATIO) are consumed
+// for their health only.
+constexpr int32_t HEAL_PER_FRAGMENT_MUL = 3;
 constexpr int ABSORB_GUARD_TICKS =
     TICK_RATE;  // no absorption right after eating
 
@@ -96,10 +101,7 @@ constexpr int32_t LAYOUT_NEAR_FU =
 // A fragment smaller than size / FOOD_NOTICE_RATIO cannot be eaten
 constexpr uint32_t FOOD_NOTICE_RATIO = 32;
 
-// --- Floating fragments and sparks ------------------------------------------
-constexpr int32_t SPARK_LIFETIME = 12 * TICK_RATE;  // ticks
-constexpr int32_t SPARK_IMMUNE_TICKS =
-    2 * TICK_RATE;  // cannot be absorbed right after spawning
+// --- Floating fragments ------------------------------------------------------
 constexpr int32_t FLOATING_DRIFT_TICKS =
     3 * TICK_RATE;  // initial scatter duration
 

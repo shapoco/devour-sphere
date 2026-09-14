@@ -98,8 +98,9 @@ void Renderer::updateEffects(float dt) {
   // Dust: spawned ahead of the player while dashing, world static, streams
   // past the camera as the player moves
   const sim::Entity &p = game_->player();
+  float dash = p.dashLevel / 256.0f;
   bool dashing =
-      p.alive && p.dashing && game_->state() == sim::GameState::PLAYING;
+      p.alive && dash > 0.05f && game_->state() == sim::GameState::PLAYING;
   if (dashing) {
     vec3f up = {p.frame.n.x / 1073741824.0f, p.frame.n.y / 1073741824.0f,
                 p.frame.n.z / 1073741824.0f};
@@ -107,7 +108,7 @@ void Renderer::updateEffects(float dt) {
                  p.frame.t.z / 1073741824.0f};
     vec3f right = g3::cross(fwd, up);
     float reach = camDist_ * 4.0f + 10.0f;
-    dustSpawnAcc_ += dt * 90.0f;
+    dustSpawnAcc_ += dt * 90.0f * dash;  // more dust the faster the dash
     while (dustSpawnAcc_ >= 1.0f && dustCount_ < MAX_DUST) {
       dustSpawnAcc_ -= 1.0f;
       Dust &d = dust_[dustCount_++];

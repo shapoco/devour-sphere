@@ -24,7 +24,6 @@ enum class GameState : uint8_t {
 namespace Event {
 constexpr uint32_t PLAYER_HIT = 1 << 0;
 constexpr uint32_t PLAYER_ATE_FRAGMENT = 1 << 1;
-constexpr uint32_t PLAYER_ATE_SPARK = 1 << 2;
 constexpr uint32_t PLAYER_DIED = 1 << 3;
 constexpr uint32_t SPHERE_CLEARED = 1 << 4;
 constexpr uint32_t PLAYER_FIRED = 1 << 5;
@@ -50,7 +49,7 @@ struct EffectEvent {
 
 // Counters for tuning and tests (never reset except by reset())
 struct DebugStats {
-  uint32_t shots, hits, kills, absorbs, fragmentsEaten, sparksEaten;
+  uint32_t shots, hits, kills, absorbs, fragmentsEaten, fragmentsHealed;
 };
 
 class Game {
@@ -96,7 +95,6 @@ class Game {
   Entity entities[MAX_ENTITIES];
   FloatingFragment floatingFragments[MAX_FLOATING_FRAGMENTS];
   Bullet bullets[MAX_BULLETS];
-  Spark sparks[MAX_SPARKS];
 
  private:
   GameState state_ = GameState::TITLE;
@@ -127,8 +125,6 @@ class Game {
   int entityOrderCount_ = 0;
   int16_t fragmentOrder_[MAX_FLOATING_FRAGMENTS];
   int fragmentOrderCount_ = 0;
-  int16_t sparkOrder_[MAX_SPARKS];
-  int sparkOrderCount_ = 0;
   int32_t maxBodyRadius_ = 0;  // over all living entities (this tick)
   int32_t maxCoreReach_ = 0;   // max coreHalf + |coreY|
 
@@ -149,7 +145,6 @@ class Game {
   void fireWeapon(int idx);
   void updateBullets();
   void updateFloatingFragments();
-  void updateSparks();
   void rebuildOrders();
   int entityLowerBound(int64_t z) const;
   void handleEating();
@@ -159,10 +154,10 @@ class Game {
   void transferSize(int from, int to);
   void setEntitySize(Entity &e, uint32_t size);
   void pushFragment(Entity &e, int sizeLog2, int32_t lx, int32_t ly);
+  void healByFragment(Entity &e, int sizeLog2);
   void syncFragments(Entity &e, int32_t lx, int32_t ly);
   void spawnFloatingFragment(const Vec3 &n, int32_t r, int sizeLog2,
                              const Vec3 &drift);
-  void spawnSpark(const Vec3 &n, int32_t r, int32_t energy, const Vec3 &drift);
   void updateRanks();
   void updateRespawns();
   void spawnFood(bool farFromPlayer);

@@ -148,13 +148,12 @@ static void testGameplay() {
   for (int i = 0; i < MAX_ENTITIES; i++) alive += g.entities[i].alive;
   CHECK(alive == INITIAL_ENTITIES);
 
-  bool sawBullet = false, sawFragment = false, sawSpark = false;
+  bool sawBullet = false, sawFragment = false;
   for (int i = 0; i < 6000; i++) {
     g.tick(scriptedInput(100 + i));
     for (int k = 0; k < MAX_BULLETS; k++) sawBullet |= g.bullets[k].alive;
     for (int k = 0; k < MAX_FLOATING_FRAGMENTS; k++)
       sawFragment |= g.floatingFragments[k].alive;
-    for (int k = 0; k < MAX_SPARKS; k++) sawSpark |= g.sparks[k].alive;
     if ((i % 500) == 0) checkInvariants(g);
     if (g.state() == GameState::DEAD) break;
   }
@@ -162,13 +161,13 @@ static void testGameplay() {
   CHECK(sawBullet);
   CHECK(g.playerRank() >= 1 && g.playerRank() <= MAX_ENTITIES);
 
-  // On a high level sphere the enemies fight each other: fragments and energy
-  // sparks must appear
+  // On a high level sphere the enemies fight each other: fragments must
+  // appear
   Game f;
   f.reset(31337);
   f.debugStartSphere(4, 0);
   CHECK(f.sphereLevel() == 4);
-  sawFragment = sawSpark = false;
+  sawFragment = false;
   int deaths = 0;
   for (int i = 0; i < 4000; i++) {
     int before = f.aliveEntities();
@@ -176,12 +175,10 @@ static void testGameplay() {
     if (f.aliveEntities() < before) deaths++;
     for (int k = 0; k < MAX_FLOATING_FRAGMENTS; k++)
       sawFragment |= f.floatingFragments[k].alive;
-    for (int k = 0; k < MAX_SPARKS; k++) sawSpark |= f.sparks[k].alive;
     if ((i % 500) == 0) checkInvariants(f);
     if (f.state() != GameState::PLAYING) break;
   }
   CHECK(sawFragment);
-  CHECK(sawSpark);
   CHECK(deaths > 0);
 
   // Kill the player to reach the DEAD state, then restart

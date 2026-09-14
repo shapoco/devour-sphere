@@ -60,6 +60,7 @@ struct Entity {
   int8_t turn;   // -1 left, 0, +1 right (current input)
   int16_t bank;  // roll around the heading (brad, positive = right wing down)
   bool dashing, braking, firing;
+  int16_t dashLevel;  // 0..256: how far the dash has built up
   int16_t fireCooldown;
   int16_t invincible;   // ticks of spawn protection
   int16_t absorbGuard;  // ticks during which the entity cannot be absorbed
@@ -104,15 +105,6 @@ struct Bullet {
   int32_t power;       // damage
   int16_t target;      // homing target entity (-1 = none)
   bool fromPlayer;
-};
-
-struct Spark {
-  bool alive;
-  Vec3 n;
-  int32_t r;
-  Vec3 drift;
-  int32_t energy;  // hp restored when absorbed
-  int16_t life;
 };
 
 }  // namespace devoursphere::sim

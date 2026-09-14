@@ -6,7 +6,7 @@
 //
 // Frame structure:
 //   beginFrame()  computes the camera and builds the whole 3D scene: stars
-//                 (points), the sphere wireframe (lines), sparks (points),
+//                 (points), the sphere wireframe (lines),
 //                 entities, floating fragments and bullets (triangles),
 //                 debris and dash dust (lines)
 //   renderBand()  draws the rows [y, y + h) of the frame into a surface:
@@ -145,7 +145,7 @@ class Renderer {
     PAL_LASER_PLAYER,
     PAL_LINE,      // vertex colored lines and points (wireframe, stars, debris)
     PAL_LINE_ADD,  // vertex colored additive lines (dash dust)
-    PAL_FRAGMENT_GRAY,  // floating fragments the player cannot eat
+    PAL_FRAGMENT_WHITE,  // floating fragments the player cannot eat (heal only)
   };
   g3::Material palette_[PALETTE_SIZE];
 
@@ -168,7 +168,6 @@ class Renderer {
                   bool full, bool blink);
   void drawFloatingFragments();
   void drawBullets();
-  void drawSparks();
   void drawStars();
   const g3::Material &materialForEntity(const sim::Entity &c) const;
   g2::Color colorForEntity(const sim::Entity &c) const;

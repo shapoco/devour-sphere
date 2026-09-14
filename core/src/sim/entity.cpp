@@ -151,13 +151,22 @@ void Game::updateAi(int idx) {
 
 void Game::moveEntity(Entity &c) {
   int32_t cruise = cruiseSpeedForSize(c.size);
-  int32_t target = cruise;
+  // The dash builds up slowly and fades faster
+  if (c.dashing && !c.braking) {
+    c.dashLevel = (int16_t)(c.dashLevel + 256 / DASH_RAMP_UP_TICKS + 1);
+    if (c.dashLevel > 256) c.dashLevel = 256;
+  } else {
+    c.dashLevel = (int16_t)(c.dashLevel - 256 / DASH_RAMP_DOWN_TICKS - 1);
+    if (c.dashLevel < 0) c.dashLevel = 0;
+  }
+  int32_t dashExtra =
+      cruise * (DASH_SPEED_NUM - DASH_SPEED_DEN) / DASH_SPEED_DEN;
+  int32_t target = cruise + (int32_t)(((int64_t)dashExtra * c.dashLevel) >> 8);
   uint16_t rate = TURN_RATE;
   if (c.braking) {
     target = 0;
     rate = TURN_RATE_BRAKE;
-  } else if (c.dashing) {
-    target = cruise * DASH_SPEED_NUM / DASH_SPEED_DEN;
+  } else if (c.dashLevel > 128) {
     rate = TURN_RATE_DASH;
   }
   int shift = c.braking ? BRAKE_DECEL_SHIFT : SPEED_ACCEL_SHIFT;
@@ -339,8 +348,15 @@ void Game::pushFragment(Entity &c, int sizeLog2, int32_t lx, int32_t ly) {
   p.y = clampI32(-lim, lim, ly);
   p.vx = p.vy = 0;
   p.sizeLog2 = (uint8_t)clampI32(0, MAX_SIZE_LOG2, sizeLog2);
-  // Every fragment taken in heals a fixed fraction of the gauge
-  c.hp += c.hpMax / HEAL_PER_FRAGMENT_DIV;
+  healByFragment(c, sizeLog2);
+}
+
+// Touching a fragment heals in proportion to its size
+void Game::healByFragment(Entity &c, int sizeLog2) {
+  int64_t heal =
+      (int64_t)HP_PER_SIZE * HEAL_PER_FRAGMENT_MUL * (1u << sizeLog2);
+  if (heal > c.hpMax) heal = c.hpMax;
+  c.hp += (int32_t)heal;
   if (c.hp > c.hpMax) c.hp = c.hpMax;
 }
 

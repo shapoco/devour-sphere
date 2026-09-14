@@ -16,9 +16,9 @@ static constexpr float FADE_NEAR = 60.0f, FADE_FAR = 900.0f;  // FU
 // position on the surface (not by the screen size, which would make the
 // mesh flicker as the camera moves)
 static constexpr int BASE_LEVEL = 4;  // edges of ~34 FU
-static constexpr float LEVEL5_RADIUS = 60.0f, LEVEL6_RADIUS = 22.0f;  // FU
+static constexpr float LEVEL5_RADIUS = 95.0f, LEVEL6_RADIUS = 34.0f;  // FU
 // Budget of the triangle buffer for the wireframe
-static constexpr int MAX_WIRE_LINES = 720;
+static constexpr int MAX_WIRE_LINES = 820;
 
 static const vec3f ICO_VERTS[12] = {
     {-0.525731f, 0.850651f, 0},  {0.525731f, 0.850651f, 0},

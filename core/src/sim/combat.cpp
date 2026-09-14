@@ -1,4 +1,4 @@
-// Weapons, damage, death, eating, collisions, floating fragments and sparks.
+// Weapons, damage, death, eating, collisions and floating fragments.
 
 #include "devoursphere/sim/game.hpp"
 
@@ -154,19 +154,6 @@ void Game::damageEntity(int idx, int32_t dmg, int attacker) {
   } else if (attacker == playerIndex_) {
     pushEffect(EffectKind::ENEMY_HIT, idx, c.frame.n, c.r, dmg);
   }
-  // The lost health becomes sparks flying out of the body
-  int pieces = dmg >= 256 ? 3 : (dmg >= 64 ? 2 : 1);
-  int32_t per = dmg / pieces;
-  Vec3 right = c.frame.right();
-  for (int i = 0; i < pieces; i++) {
-    uint16_t a = rng_.brad();
-    int32_t dist = c.bodyRadius + FU;
-    Vec3 dir = scaleQ30(right, cosQ30(a)) + scaleQ30(c.frame.t, sinQ30(a));
-    Vec3 p = worldPos(c.frame.n, c.r) + scaleToLength(dir, dist);
-    Vec3 drift = scaleToLength(dir, FU / 3 + rng_.range(0, FU / 3));
-    spawnSpark(normalizeQ30(p), c.r,
-               i == pieces - 1 ? dmg - per * (pieces - 1) : per, drift);
-  }
   if (c.hp <= 0) killEntity(idx);
 }
 
@@ -251,27 +238,6 @@ void Game::spawnFloatingFragment(const Vec3 &n, int32_t r, int sizeLog2,
   fp.spin = rng_.brad();
 }
 
-void Game::spawnSpark(const Vec3 &n, int32_t r, int32_t energy,
-                      const Vec3 &drift) {
-  if (energy <= 0) return;
-  int slot = -1, oldest = -1;
-  for (int i = 0; i < MAX_SPARKS; i++) {
-    if (!sparks[i].alive) {
-      slot = i;
-      break;
-    }
-    if (oldest < 0 || sparks[i].life < sparks[oldest].life) oldest = i;
-  }
-  if (slot < 0) slot = oldest;
-  Spark &p = sparks[slot];
-  p.alive = true;
-  p.n = n;
-  p.r = r;
-  p.drift = drift;
-  p.energy = energy;
-  p.life = (int16_t)SPARK_LIFETIME;
-}
-
 // Move a point on the sphere by a tangential drift (units per tick)
 static void applyDrift(Vec3 &n, int32_t r, Vec3 &drift, int decayShift) {
   if (drift.x == 0 && drift.y == 0 && drift.z == 0) return;
@@ -302,21 +268,8 @@ void Game::updateFloatingFragments() {
   }
 }
 
-void Game::updateSparks() {
-  for (int i = 0; i < MAX_SPARKS; i++) {
-    Spark &p = sparks[i];
-    if (!p.alive) continue;
-    if (--p.life <= 0) {
-      p.alive = false;
-      continue;
-    }
-    applyDrift(p.n, p.r, p.drift, 6);
-  }
-}
-
-// Keep an index sorted by n.z for the entities, the floating fragments and the
-// sparks. The previous order is reused (insertion sort is nearly linear
-// then).
+// Keep an index sorted by n.z for the entities and the floating fragments.
+// The previous order is reused (insertion sort is nearly linear then).
 template <typename T, typename ZFn>
 static void rebuildOrder(const T *items, int count, int16_t *order,
                          int &orderCount, ZFn zOf) {
@@ -351,8 +304,6 @@ void Game::rebuildOrders() {
   rebuildOrder(floatingFragments, MAX_FLOATING_FRAGMENTS, fragmentOrder_,
                fragmentOrderCount_,
                [](const FloatingFragment &p) { return p.n.z; });
-  rebuildOrder(sparks, MAX_SPARKS, sparkOrder_, sparkOrderCount_,
-               [](const Spark &p) { return p.n.z; });
   maxBodyRadius_ = 0;
   maxCoreReach_ = 0;
   for (int i = 0; i < MAX_ENTITIES; i++) {
@@ -407,12 +358,18 @@ void Game::handleEating() {
       FloatingFragment &fp = floatingFragments[fragmentOrder_[k]];
       if (fp.n.z > c.frame.n.z + dz) break;
       if (!fp.alive) continue;
-      // Fragments smaller than 1/32 of the body are beneath notice
-      if ((1u << fp.sizeLog2) * FOOD_NOTICE_RATIO < c.size) continue;
       int32_t lim = c.bodyRadius + fragmentHalfSize(fp.sizeLog2);
       int64_t d2;
       if (!tangentialDist2(c.frame.n, fp.n, lim, d2)) continue;
       if (d2 >= (int64_t)lim * lim) continue;
+      if ((1u << fp.sizeLog2) * FOOD_NOTICE_RATIO < c.size) {
+        // Too small to become part of the body: consumed for its health
+        healByFragment(c, fp.sizeLog2);
+        fp.alive = false;
+        stats_.fragmentsHealed++;
+        if (c.isPlayer) events_ |= Event::PLAYER_ATE_FRAGMENT;
+        continue;
+      }
       Vec3 rel = worldPos(fp.n, fp.r) - center;
       addFragmentToEntity(c, fp.sizeLog2, dotQ30(rel, right),
                           dotQ30(rel, c.frame.t));
@@ -420,24 +377,6 @@ void Game::handleEating() {
       fp.alive = false;
       stats_.fragmentsEaten++;
       if (c.isPlayer) events_ |= Event::PLAYER_ATE_FRAGMENT;
-    }
-
-    // Energy sparks
-    reach = c.bodyRadius;
-    dz = (int64_t)reach << Z_SHIFT;
-    k = lowerBoundZ(sparks, sparkOrder_, sparkOrderCount_, c.frame.n.z - dz);
-    for (; k < sparkOrderCount_; k++) {
-      Spark &p = sparks[sparkOrder_[k]];
-      if (p.n.z > c.frame.n.z + dz) break;
-      if (!p.alive || p.life > SPARK_LIFETIME - SPARK_IMMUNE_TICKS) continue;
-      int64_t d2;
-      if (!tangentialDist2(c.frame.n, p.n, reach, d2)) continue;
-      if (d2 >= (int64_t)reach * reach) continue;
-      c.hp += p.energy;
-      if (c.hp > c.hpMax) c.hp = c.hpMax;
-      p.alive = false;
-      stats_.sparksEaten++;
-      if (c.isPlayer) events_ |= Event::PLAYER_ATE_SPARK;
     }
   }
 }

@@ -56,10 +56,8 @@ void Game::startSphere(bool keepPlayer) {
   std::memset(entities, 0, sizeof(entities));
   std::memset(floatingFragments, 0, sizeof(floatingFragments));
   std::memset(bullets, 0, sizeof(bullets));
-  std::memset(sparks, 0, sizeof(sparks));
   entityOrderCount_ = 0;
   fragmentOrderCount_ = 0;
-  sparkOrderCount_ = 0;
 
   playerIndex_ = 0;
   if (keepPlayer) {
@@ -342,7 +340,6 @@ void Game::tick(uint8_t buttons) {
 
   updateBullets();
   updateFloatingFragments();
-  updateSparks();
   rebuildOrders();
   handleEating();
   handleEntityCollisions();
@@ -373,7 +370,6 @@ uint32_t Game::stateHash() const {
   h = fnv(h, entities, sizeof(entities));
   h = fnv(h, floatingFragments, sizeof(floatingFragments));
   h = fnv(h, bullets, sizeof(bullets));
-  h = fnv(h, sparks, sizeof(sparks));
   uint32_t scalars[] = {(uint32_t)state_,      tickCount_,
                         (uint32_t)stateTimer_, (uint32_t)sphereLevel_,
                         rng_.state(),          (uint32_t)playerIndex_,

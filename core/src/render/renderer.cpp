@@ -67,7 +67,7 @@ void Renderer::init(int width, int height, void *arena, size_t arenaSize) {
   palette_[PAL_LASER_PLAYER] = addMaterial(g2::makeColor(255, 190, 80), 1.0f);
   palette_[PAL_LINE] = vertexColorMaterial(false);
   palette_[PAL_LINE_ADD] = vertexColorMaterial(true);
-  palette_[PAL_FRAGMENT_GRAY] = flatMaterial(g2::makeColor(105, 110, 120));
+  palette_[PAL_FRAGMENT_WHITE] = flatMaterial(g2::makeColor(235, 240, 245));
 
   camValid_ = false;
   originValid_ = false;
@@ -239,14 +239,17 @@ void Renderer::updateCamera(float dt) {
   float wantDown = 0.12f;                 // ... and below (x camera height)
   sim::GameState st = g.state();
   if (st == sim::GameState::PLAYING) {
-    if (p.dashing) {
-      // Close behind and low, looking along the heading
-      wantDist *= 0.55f;
-      wantHeight *= 0.22f;
-      wantFov = 60.0f * PI / 180.0f;
-      wantAhead = wantDist * 4.0f;
-      wantDown = 0.0f;
-    } else if (p.braking) {
+    float dash = p.dashLevel / 256.0f;
+    if (dash > 0) {
+      // Close behind and low, looking along the heading; blended in as the
+      // dash builds up
+      wantDist *= 1.0f - 0.45f * dash;
+      wantHeight *= 1.0f - 0.78f * dash;
+      wantFov = (70.0f - 10.0f * dash) * PI / 180.0f;
+      wantAhead = wantAhead + (wantDist * 4.0f - wantAhead) * dash;
+      wantDown *= 1.0f - dash;
+    }
+    if (p.braking) {
       wantDist *= 1.25f;
       wantHeight *= 1.25f;
       wantFov = 82.0f * PI / 180.0f;
@@ -410,14 +413,15 @@ void Renderer::drawEntity(const sim::Entity &c, const vec3f &pos, float px,
 void Renderer::drawFloatingFragments() {
   const sim::Game &g = *game_;
   g2::Color pointColor = hueColor(sim::FRAGMENT_HUE, 200, 200);
-  g2::Color grayPoint = g2::makeColor(105, 110, 120);
+  g2::Color whitePoint = g2::makeColor(235, 240, 245);
   uint32_t playerSize = g.player().size;
   for (int i = 0; i < sim::MAX_FLOATING_FRAGMENTS; i++) {
     const sim::FloatingFragment &fp = g.floatingFragments[i];
     if (!fp.alive) continue;
-    // Fragments the player cannot eat are gray
+    // Fragments too small to join the player's body only heal: white
     bool edible = (1u << fp.sizeLog2) * sim::FOOD_NOTICE_RATIO >= playerSize;
-    const g3::Material &m = palette_[edible ? PAL_FRAGMENT : PAL_FRAGMENT_GRAY];
+    const g3::Material &m =
+        palette_[edible ? PAL_FRAGMENT : PAL_FRAGMENT_WHITE];
     vec3f up = q30ToF(fp.n);
     if (g3::dot(up, camUnit_) < cosHorizon_ - 0.01f) continue;
     vec3f pos = toLocal(sim::scaleToLength(fp.n, fp.r));
@@ -427,7 +431,7 @@ void Renderer::drawFloatingFragments() {
     float s = sim::fragmentHalfSize(fp.sizeLog2) / (float)FU;
     float px = s * focalPx_ / (d > 0.1f ? d : 0.1f);
     if (px < 1.0f) {
-      putPoint3(pos, edible ? pointColor : grayPoint, palette_[PAL_LINE]);
+      putPoint3(pos, edible ? pointColor : whitePoint, palette_[PAL_LINE]);
       continue;
     }
     // Tangent frame spun by the fragment's own angle, tilted a little
@@ -484,30 +488,6 @@ void Renderer::drawBullets() {
   }
 }
 
-void Renderer::drawSparks() {
-  const sim::Game &g = *game_;
-  uint32_t t = g.tickCount();
-  // Near sparks are 2 px squares, far ones single pixels
-  for (int pass = 0; pass < 2; pass++) {
-    g3d_.setPointSize(pass == 0 ? 2 : 1);
-    for (int i = 0; i < sim::MAX_SPARKS; i++) {
-      const sim::Spark &p = g.sparks[i];
-      if (!p.alive) continue;
-      vec3f up = q30ToF(p.n);
-      if (g3::dot(up, camUnit_) < cosHorizon_ - 0.01f) continue;
-      vec3f pos = toLocal(sim::scaleToLength(p.n, p.r));
-      vec3f rel = pos - cam_.eye;
-      float d = g3::length(rel);
-      if ((d < 40.0f) != (pass == 0)) continue;
-      if (g3::dot(rel, viewDir_) < -1.0f) continue;
-      int tw = (int)(((t + (uint32_t)i * 7u) >> 1) & 3);
-      int v = 170 + tw * 28;
-      putPoint3(pos, g2::makeColor(v, v, 255), palette_[PAL_LINE]);
-    }
-  }
-  g3d_.setPointSize(1);
-}
-
 void Renderer::drawStars() {
   constexpr int STARS = 80;
   constexpr float DIST = 1500.0f;  // inside the far plane
@@ -539,7 +519,6 @@ void Renderer::buildScene() {
 
   drawStars();
   buildSphere();
-  drawSparks();
 
   // Visible entities sorted by distance
   struct Vis {

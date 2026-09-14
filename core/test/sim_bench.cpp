@@ -40,9 +40,8 @@ int main(int argc, char **argv) {
     if (t % (10 * TICK_RATE) == 0) {
       const Entity &p = g.player();
       const DebugStats &st = g.debugStats();
-      int fragments = 0, sparks = 0, bullets = 0;
+      int fragments = 0, bullets = 0;
       for (const auto &fp : g.floatingFragments) fragments += fp.alive;
-      for (const auto &pt : g.sparks) sparks += pt.alive;
       for (const auto &b : g.bullets) bullets += b.alive;
       uint32_t maxSize = 0;
       for (const auto &c : g.entities)
@@ -50,13 +49,13 @@ int main(int argc, char **argv) {
       std::printf(
           "t=%3ds lv=%d size=%u (x2^%u) rank=%d/%d hp=%d%% fragments=%d max=%u "
           "| "
-          "floating=%d sparks=%d bullets=%d | shots=%u hits=%u kills=%u "
+          "floating=%d bullets=%d | shots=%u hits=%u kills=%u "
           "absorbs=%u eaten=%u\n",
           t / TICK_RATE, g.sphereLevel(), p.size, g.playerDisplayScaleLog2(),
           p.rank, g.aliveEntities(),
           (int)((int64_t)p.hp * 100 / (p.hpMax ? p.hpMax : 1)), p.fragmentCount,
-          maxSize, fragments, sparks, bullets, st.shots, st.hits, st.kills,
-          st.absorbs, st.fragmentsEaten);
+          maxSize, fragments, bullets, st.shots, st.hits, st.kills, st.absorbs,
+          st.fragmentsEaten);
     }
   }
   std::printf("avg tick %.3f ms, deaths=%d clears=%d\n", total / ticks, deaths,
