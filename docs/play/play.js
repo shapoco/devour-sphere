@@ -8,6 +8,7 @@
 // startDevourSphere({ wasm: 'devoursphere.wasm' })
 //   URL parameters: ?level=N&weapon=W  skips the menus (debug)
 //                   ?seed=N            fixed random seed
+//                   ?auto=1            the AI drives the player (demo)
 
 'use strict';
 
@@ -44,6 +45,7 @@ async function startDevourSphere(opts) {
       ex.ds_debug_start(parseInt(params.get('level'), 10) || 1,
                         parseInt(params.get('weapon') || '0', 10) || 0);
     }
+    if (params.get('auto') === '1') ex.ds_debug_auto(1);
 
     const W = ex.ds_get_width();
     const H = ex.ds_get_height();

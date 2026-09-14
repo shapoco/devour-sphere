@@ -48,6 +48,8 @@ class Game {
 
   // Debug: skip the menus and start playing on a planet of the given level
   void debugStartPlanet(int level, int weapon);
+  // Debug: let the AI drive the player while playing (for balancing runs)
+  void debugAutoPlayer(bool on) { autoPlayer_ = on; }
 
   // --- Read-only access for the renderer ------------------------------------
   GameState state() const { return state_; }
@@ -89,15 +91,21 @@ class Game {
   int playerIndex_ = 0;
   int aliveCreatures_ = 0;
   int respawnTimer_ = 0;
+  int foodTimer_ = 0;
   uint32_t displayScaleLog2_ = 0;
   uint8_t prevButtons_ = 0;
+  bool autoPlayer_ = false;
   DebugStats stats_ = {};
 
-  // Sorted index of floating parts by n.z (for neighbor queries)
+  // Indices sorted by n.z (for neighbor queries)
+  int16_t creatureOrder_[MAX_CREATURES];
+  int creatureOrderCount_ = 0;
   int16_t partOrder_[MAX_FLOATING_PARTS];
   int partOrderCount_ = 0;
   int16_t particleOrder_[MAX_PARTICLES];
   int particleOrderCount_ = 0;
+  int32_t maxBodyRadius_ = 0;  // over all living creatures (this tick)
+  int32_t maxCoreReach_ = 0;   // max coreHalf + |coreY|
 
   void setState(GameState s);
   void startPlanet(bool keepPlayer);
@@ -118,6 +126,7 @@ class Game {
   void updateFloatingParts();
   void updateParticles();
   void rebuildOrders();
+  int creatureLowerBound(int64_t z) const;
   void handleEating();
   void handleCreatureCollisions();
   void damageCreature(int idx, int32_t dmg, int attacker);
@@ -129,6 +138,7 @@ class Game {
                      const Vec3 &drift);
   void updateRanks();
   void updateRespawns();
+  void spawnFood(bool farFromPlayer);
   void checkTransitions();
   void rescalePlayerForNextPlanet();
   int findFreeCreature() const;

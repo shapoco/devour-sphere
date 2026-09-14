@@ -57,6 +57,7 @@ void Game::startPlanet(bool keepPlayer) {
   std::memset(floatingParts, 0, sizeof(floatingParts));
   std::memset(bullets, 0, sizeof(bullets));
   std::memset(particles, 0, sizeof(particles));
+  creatureOrderCount_ = 0;
   partOrderCount_ = 0;
   particleOrderCount_ = 0;
 
@@ -82,8 +83,22 @@ void Game::startPlanet(bool keepPlayer) {
     if (i < 4) e = maxExp;  // guarantee a few giants
     spawnEnemy(i, e, true);
   }
+  for (int i = 0; i < INITIAL_FOOD_PARTS; i++) spawnFood(false);
   respawnTimer_ = RESPAWN_INTERVAL;
+  foodTimer_ = FOOD_SPAWN_INTERVAL;
   updateRanks();
+  rebuildOrders();
+}
+
+// A free part somewhere on the planet; small sizes are the most common
+void Game::spawnFood(bool farFromPlayer) {
+  Frame f;
+  int32_t r;
+  int a = (int)rng_.below(FOOD_MAX_SIZE_LOG2 + 1);
+  int b = (int)rng_.below(FOOD_MAX_SIZE_LOG2 + 1);
+  int k = a < b ? a : b;
+  placeRandom(f, r, 4u << k, farFromPlayer);
+  spawnFloatingPart(f.n, r, k, {0, 0, 0});
 }
 
 void Game::initCreature(Creature &c, int sizeLog2, Weapon w) {
@@ -208,6 +223,12 @@ void Game::updateRanks() {
 }
 
 void Game::updateRespawns() {
+  if (--foodTimer_ <= 0) {
+    foodTimer_ = FOOD_SPAWN_INTERVAL;
+    int n = 0;
+    for (int i = 0; i < MAX_FLOATING_PARTS; i++) n += floatingParts[i].alive;
+    if (n < FOOD_TARGET) spawnFood(true);
+  }
   if (aliveCreatures_ >= INITIAL_CREATURES) return;
   if (--respawnTimer_ > 0) return;
   respawnTimer_ = RESPAWN_INTERVAL;
@@ -286,7 +307,7 @@ void Game::tick(uint8_t buttons) {
   }
 
   Creature &p = creatures[playerIndex_];
-  if (state_ == GameState::PLAYING && p.alive) {
+  if (state_ == GameState::PLAYING && p.alive && !autoPlayer_) {
     updatePlayerControls(buttons);
   } else if (state_ == GameState::LAUNCH) {
     p.turn = 0;
@@ -295,17 +316,25 @@ void Game::tick(uint8_t buttons) {
     p.firing = false;
   }
 
+  // The neighbor queries of the AI use the orders of the previous tick
   for (int i = 0; i < MAX_CREATURES; i++) {
     Creature &c = creatures[i];
     if (!c.alive) continue;
     bool aiDriven = !c.isPlayer || state_ == GameState::TITLE ||
-                    state_ == GameState::WEAPON_SELECT;
+                    state_ == GameState::WEAPON_SELECT ||
+                    (autoPlayer_ && state_ == GameState::PLAYING);
     if (aiDriven && ((tickCount_ + (uint32_t)i) % AI_THINK_INTERVAL) == 0) {
       updateAi(i);
     }
     moveCreature(c);
-    updateLayout(c);
-    mergeParts(c);
+    // The part physics of creatures far from the player runs at a lower rate
+    int64_t d2;
+    bool near = c.isPlayer ||
+                tangentialDist2(p.frame.n, c.frame.n, LAYOUT_NEAR_PU * PU, d2);
+    if (near || ((tickCount_ + (uint32_t)i) & 3) == 0) {
+      updateLayout(c);
+      mergeParts(c);
+    }
     if (c.firing) fireWeapon(i);
   }
 

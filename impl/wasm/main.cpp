@@ -45,6 +45,9 @@ DS_EXPORT void ds_debug_start(int level, int weapon) {
   game.debugStartPlanet(level, weapon);
 }
 
+// Debug: let the AI drive the player (attract-mode style demo)
+DS_EXPORT void ds_debug_auto(int on) { game.debugAutoPlayer(on != 0); }
+
 // One simulation tick (30 per second) with the button bits of sim::Button
 DS_EXPORT void ds_tick(uint32_t buttons) { game.tick((uint8_t)buttons); }
 
@@ -90,17 +93,21 @@ static void writePpm(const char *path) {
   std::printf("wrote %s\n", path);
 }
 
-// Usage: devoursphere_native [level] [ticks] [out.ppm] [input]
+// Usage: devoursphere_native [level] [ticks] [out.ppm] [input] [auto] [seed]
 //   level: 0 = title screen, >= 1 = play on that planet level
 //   input: button bits held during the ticks (default: 0)
+//   auto:  1 = the AI drives the player
 int main(int argc, char **argv) {
   int level = argc > 1 ? std::atoi(argv[1]) : 0;
   int ticks = argc > 2 ? std::atoi(argv[2]) : 60;
   const char *path = argc > 3 ? argv[3] : "devoursphere.ppm";
   uint32_t input = argc > 4 ? (uint32_t)std::atoi(argv[4]) : 0;
+  int autoPlay = argc > 5 ? std::atoi(argv[5]) : 0;
+  uint32_t seed = argc > 6 ? (uint32_t)std::atoi(argv[6]) : 12345u;
 
-  ds_init(12345);
+  ds_init(seed);
   if (level > 0) ds_debug_start(level, 0);
+  ds_debug_auto(autoPlay);
   auto t0 = std::chrono::steady_clock::now();
   for (int i = 0; i < ticks; i++) ds_tick(input);
   auto t1 = std::chrono::steady_clock::now();

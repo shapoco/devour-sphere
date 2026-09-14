@@ -8,3 +8,6 @@ if(DEVOURSPHERE_SANITIZE)
     target_compile_options(devoursphere_render PRIVATE -fsanitize=address,undefined -g)
 endif()
 add_test(NAME devoursphere_tests COMMAND devoursphere_tests)
+
+add_executable(devoursphere_sim_bench sim_bench.cpp)
+target_link_libraries(devoursphere_sim_bench PRIVATE devoursphere::sim)

@@ -120,8 +120,12 @@ void Game::updateBullets() {
     b.frame.t = orthonormalizeQ30(b.frame.t, b.frame.n);
 
     int32_t br = bulletRadius(b);
-    for (int j = 0; j < MAX_CREATURES; j++) {
+    int64_t dz = (int64_t)(maxBodyRadius_ + br) << Z_SHIFT;
+    for (int k = creatureLowerBound(b.frame.n.z - dz); k < creatureOrderCount_;
+         k++) {
+      int j = creatureOrder_[k];
       Creature &o = creatures[j];
+      if (o.frame.n.z > b.frame.n.z + dz) break;
       if (!o.alive || j == b.owner) continue;
       if (!canAttack(b.ownerSize, o.size)) continue;
       int32_t reach = o.bodyRadius + br;
@@ -285,11 +289,12 @@ void Game::updateParticles() {
   }
 }
 
-// Keep an index sorted by n.z for the floating parts and the particles.
-// The previous order is reused (insertion sort is nearly linear then).
-template <typename T>
+// Keep an index sorted by n.z for the creatures, the floating parts and the
+// particles. The previous order is reused (insertion sort is nearly linear
+// then).
+template <typename T, typename ZFn>
 static void rebuildOrder(const T *items, int count, int16_t *order,
-                         int &orderCount) {
+                         int &orderCount, ZFn zOf) {
   bool listed[MAX_FLOATING_PARTS] = {};
   int n = 0;
   for (int i = 0; i < orderCount; i++) {
@@ -305,9 +310,9 @@ static void rebuildOrder(const T *items, int count, int16_t *order,
   orderCount = n;
   for (int i = 1; i < n; i++) {
     int16_t v = order[i];
-    int32_t z = items[v].n.z;
+    int32_t z = zOf(items[v]);
     int j = i - 1;
-    while (j >= 0 && items[order[j]].n.z > z) {
+    while (j >= 0 && zOf(items[order[j]]) > z) {
       order[j + 1] = order[j];
       j--;
     }
@@ -316,8 +321,34 @@ static void rebuildOrder(const T *items, int count, int16_t *order,
 }
 
 void Game::rebuildOrders() {
-  rebuildOrder(floatingParts, MAX_FLOATING_PARTS, partOrder_, partOrderCount_);
-  rebuildOrder(particles, MAX_PARTICLES, particleOrder_, particleOrderCount_);
+  rebuildOrder(creatures, MAX_CREATURES, creatureOrder_, creatureOrderCount_,
+               [](const Creature &c) { return c.frame.n.z; });
+  rebuildOrder(floatingParts, MAX_FLOATING_PARTS, partOrder_, partOrderCount_,
+               [](const FloatingPart &p) { return p.n.z; });
+  rebuildOrder(particles, MAX_PARTICLES, particleOrder_, particleOrderCount_,
+               [](const Particle &p) { return p.n.z; });
+  maxBodyRadius_ = 0;
+  maxCoreReach_ = 0;
+  for (int i = 0; i < MAX_CREATURES; i++) {
+    const Creature &c = creatures[i];
+    if (!c.alive) continue;
+    if (c.bodyRadius > maxBodyRadius_) maxBodyRadius_ = c.bodyRadius;
+    int32_t reach = c.coreHalf + absI32(c.coreY);
+    if (reach > maxCoreReach_) maxCoreReach_ = reach;
+  }
+}
+
+// First position in the creature order whose n.z >= z
+int Game::creatureLowerBound(int64_t z) const {
+  int lo = 0, hi = creatureOrderCount_;
+  while (lo < hi) {
+    int mid = (lo + hi) >> 1;
+    if (creatures[creatureOrder_[mid]].frame.n.z < z)
+      lo = mid + 1;
+    else
+      hi = mid;
+  }
+  return lo;
 }
 
 template <typename T>
@@ -350,6 +381,8 @@ void Game::handleEating() {
       FloatingPart &fp = floatingParts[partOrder_[k]];
       if (fp.n.z > c.frame.n.z + dz) break;
       if (!fp.alive) continue;
+      // Parts smaller than 1/32 of the body are beneath notice
+      if ((1u << fp.sizeLog2) * 32 < c.size) continue;
       int32_t lim = c.bodyRadius + partHalfSize(fp.sizeLog2);
       int64_t d2;
       if (!tangentialDist2(c.frame.n, fp.n, lim, d2)) continue;
@@ -385,24 +418,34 @@ void Game::handleEating() {
 }
 
 void Game::handleCreatureCollisions() {
-  for (int i = 0; i < MAX_CREATURES; i++) {
+  int64_t dz = (int64_t)(maxCoreReach_ * 2) << Z_SHIFT;
+  for (int ka = 0; ka < creatureOrderCount_; ka++) {
+    int i = creatureOrder_[ka];
     Creature &a = creatures[i];
     if (!a.alive) continue;
-    for (int j = i + 1; j < MAX_CREATURES; j++) {
+    int64_t zHi = a.frame.n.z + dz;
+    for (int kb = ka + 1; kb < creatureOrderCount_; kb++) {
+      int j = creatureOrder_[kb];
       Creature &b = creatures[j];
+      if (b.frame.n.z > zHi) break;
       if (!b.alive || !a.alive) continue;
       if (a.size == b.size) continue;
       int big = a.size > b.size ? i : j, small = big == i ? j : i;
       const Creature &B = creatures[big];
       const Creature &S = creatures[small];
       if (S.invincible > 0) continue;
-      // The smaller one must fly right into the core of the bigger one
-      int32_t reach = B.coreHalf * 2 + S.coreHalf;
+      // Creatures that can fight each other do not absorb each other
+      if (canAttack(S.size, B.size)) continue;
+      // The cores must touch (in 3D, so different altitudes never collide)
+      int32_t reach = B.coreHalf + S.coreHalf;
       int64_t d2;
-      if (!tangentialDist2(B.frame.n, S.frame.n, reach, d2)) continue;
-      Vec3 core = worldPos(B.frame.n, B.r) + scaleToLength(B.frame.t, B.coreY);
-      Vec3 rel = core - worldPos(S.frame.n, S.r);
-      if (length2_64(rel) >= (int64_t)reach * reach) continue;
+      if (!tangentialDist2(B.frame.n, S.frame.n,
+                           reach + absI32(B.coreY) + absI32(S.coreY), d2)) {
+        continue;
+      }
+      Vec3 coreB = worldPos(B.frame.n, B.r) + scaleToLength(B.frame.t, B.coreY);
+      Vec3 coreS = worldPos(S.frame.n, S.r) + scaleToLength(S.frame.t, S.coreY);
+      if (length2_64(coreB - coreS) >= (int64_t)reach * reach) continue;
       absorbCreature(big, small);
     }
   }

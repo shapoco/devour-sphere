@@ -23,22 +23,28 @@ int32_t divQ30(int32_t a, int32_t b) {
   return (int32_t)clampI64(INT32_MIN, INT32_MAX, r);
 }
 
-uint32_t isqrt32(uint32_t v) { return isqrt64(v); }
+// Newton iteration from an initial guess >= sqrt(v): the sequence decreases
+// monotonically to floor(sqrt(v)). Integer only, hence deterministic.
+uint32_t isqrt32(uint32_t v) {
+  if (v < 2) return v;
+  int bits = 32 - __builtin_clz(v);
+  uint32_t r = 1u << ((bits + 1) >> 1);
+  for (;;) {
+    uint32_t nr = (r + v / r) >> 1;
+    if (nr >= r) return r;
+    r = nr;
+  }
+}
 
 uint32_t isqrt64(uint64_t v) {
-  uint64_t res = 0;
-  uint64_t bit = (uint64_t)1 << 62;
-  while (bit > v) bit >>= 2;
-  while (bit) {
-    if (v >= res + bit) {
-      v -= res + bit;
-      res = (res >> 1) + bit;
-    } else {
-      res >>= 1;
-    }
-    bit >>= 2;
+  if (v < ((uint64_t)1 << 32)) return isqrt32((uint32_t)v);
+  int bits = 64 - __builtin_clzll(v);
+  uint64_t r = (uint64_t)1 << ((bits + 1) >> 1);
+  for (;;) {
+    uint64_t nr = (r + v / r) >> 1;
+    if (nr >= r) return (uint32_t)r;
+    r = nr;
   }
-  return (uint32_t)res;
 }
 
 // atan(x) for x in [0, 1] (Q15) in brad; polynomial approximation

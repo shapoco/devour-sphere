@@ -59,10 +59,13 @@ void Game::updateAi(int idx) {
   int64_t threatD2 = INT64_MAX;
   int prey = -1;
   int64_t preyD2 = INT64_MAX;
-  for (int j = 0; j < MAX_CREATURES; j++) {
-    if (j == idx) continue;
+  int64_t sightDz = (int64_t)sight << (Q30_SHIFT - PLANET_RADIUS_SHIFT);
+  for (int k = creatureLowerBound(c.frame.n.z - sightDz);
+       k < creatureOrderCount_; k++) {
+    int j = creatureOrder_[k];
     const Creature &o = creatures[j];
-    if (!o.alive) continue;
+    if (o.frame.n.z > c.frame.n.z + sightDz) break;
+    if (j == idx || !o.alive) continue;
     int64_t d2;
     if (!tangentialDist2(c.frame.n, o.frame.n, sight, d2)) continue;
     if (o.size > c.size) {
@@ -71,9 +74,10 @@ void Game::updateAi(int idx) {
       constexpr int64_t NEAR2 = (int64_t)(40 * PU) * (40 * PU);
       bool dangerous = (canAttack(o.size, c.size) && planetLevel_ >= 2 &&
                         o.size * 4 > c.size * 5) ||
-                       (o.size >= c.size * 2 && d2 < NEAR2);
+                       (!canAttack(c.size, o.size) && d2 < NEAR2);
       if (dangerous && d2 < threatD2) threat = j, threatD2 = d2;
-    } else if (canAttack(c.size, o.size) && planetLevel_ >= 2 && d2 < preyD2) {
+    } else if (canAttack(c.size, o.size) && (planetLevel_ >= 2 || c.isPlayer) &&
+               d2 < preyD2) {
       prey = j, preyD2 = d2;  // equal or smaller: fair game
     }
   }
@@ -206,15 +210,17 @@ static void addForce(int64_t &fx, int64_t &fy, int32_t px, int32_t py,
     fx += A;  // coincident: push sideways
     return;
   }
-  int64_t d = isqrt64((uint64_t)d2);
+  uint32_t d = isqrt64((uint64_t)d2);
   if (d == 0) d = 1;
-  int64_t q = ((int64_t)d0 << 12) / d;  // d0 / d in Q12
+  // inv = 2^24 / d (one 32-bit division; d < 2^24 in practice)
+  int64_t inv = (d < (1u << 24)) ? (int64_t)((1u << 24) / d) : 1;
+  int64_t q = ((int64_t)d0 * inv) >> 12;  // d0 / d in Q12
   if (q > (8 << 12)) q = 8 << 12;
   int64_t F = (A * q * q * (4096 - q)) >> 36;
   if (F < -4 * (int64_t)A) F = -4 * A;
   if (q < 4096 && F < A / 8) F = A / 8;  // far away: minimum attraction
-  fx += F * dx / d;
-  fy += F * dy / d;
+  fx += (F * dx * inv) >> 24;
+  fy += (F * dy * inv) >> 24;
 }
 
 void Game::updateLayout(Creature &c) {

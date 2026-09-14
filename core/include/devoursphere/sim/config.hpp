@@ -84,8 +84,8 @@ static inline bool canAttack(uint32_t self, uint32_t other) {
 // --- Parts inside a creature ------------------------------------------------
 constexpr int32_t PART_MERGE_DIST_NUM = 5,
                   PART_MERGE_DIST_DEN = 8;  // fraction of kite half-size
-constexpr int32_t LAYOUT_STEP_SHIFT =
-    3;  // max displacement per tick = halfSize >> shift
+constexpr int32_t LAYOUT_NEAR_PU =
+    90;  // full-rate part physics within this distance of the player
 
 // --- Floating parts and particles ------------------------------------------
 constexpr int32_t PARTICLE_LIFETIME = 12 * TICK_RATE;  // ticks
@@ -98,6 +98,11 @@ constexpr int32_t FLOATING_DRIFT_TICKS =
 constexpr int INITIAL_CREATURES = 200;
 constexpr int PLAYER_START_SIZE_LOG2 = 2;  // size 4
 constexpr int RESPAWN_INTERVAL = TICK_RATE / 2;
+// Free food: parts that condense out of the cyber space
+constexpr int INITIAL_FOOD_PARTS = 320;
+constexpr int FOOD_TARGET = 400;  // keep at least this many floating parts
+constexpr int FOOD_SPAWN_INTERVAL = 4;  // ticks
+constexpr int FOOD_MAX_SIZE_LOG2 = 3;
 
 // --- Colors (hues 0..255; the renderer maps them to its palette) ----------
 constexpr uint8_t ENEMY_HUES[] = {0, 21, 42, 64, 85, 170, 190, 213, 235};
