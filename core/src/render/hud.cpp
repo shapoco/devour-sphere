@@ -42,6 +42,11 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
       drawCenteredText(g, oy + 130, "grow by devouring, become the largest",
                        HUD_DIM);
       if (blinkOn) drawCenteredText(g, oy + 200, "PRESS A TO START", HUD_TEXT);
+      if (game.highScore() > 0) {
+        g.setFont(&ShapoSansP_s08c07);
+        std::snprintf(buf, sizeof(buf), "HIGH SCORE %u", game.highScore());
+        drawCenteredText(g, oy + 236, buf, HUD_DIM);
+      }
       g.setFont(&ShapoSansP_s08c07);
       drawCenteredText(g, oy + 280, "MOVE: ARROWS / WASD    A: SPACE / IJKL",
                        HUD_DIM);
@@ -94,8 +99,18 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
         g.drawString(gx + gw + 8, gy - 1, "DASH");
       }
 
-      // Rank and size
+      // Score (top center)
       g.setFont(&ShapoSansP_s12c09a01w02);
+      std::snprintf(buf, sizeof(buf), "%u", game.score());
+      {
+        int tw = g.measureText(buf);
+        g.setTextColor(HUD_SHADOW);
+        g.drawString((w_ - tw) / 2 + 1, oy + 9, buf);
+        g.setTextColor(HUD_TEXT);
+        g.drawString((w_ - tw) / 2, oy + 8, buf);
+      }
+
+      // Rank and size
       std::snprintf(buf, sizeof(buf), "RANK %d / %d", game.playerRank(),
                     game.aliveEntities());
       g.setTextColor(HUD_SHADOW);
@@ -140,9 +155,17 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
         drawCenteredText(g, oy + 100, "YOU WERE DEVOURED",
                          g2::makeColor(255, 90, 90));
         g.setFont(&ShapoSansP_s12c09a01w02);
+        std::snprintf(buf, sizeof(buf), "SCORE %u", game.score());
+        drawCenteredText(g, oy + 135, buf, HUD_TEXT);
+        std::snprintf(buf, sizeof(buf), "HIGH SCORE %u", game.highScore());
+        drawCenteredText(g, oy + 152, buf,
+                         game.score() >= game.highScore() && game.score() > 0
+                             ? g2::makeColor(255, 230, 120)
+                             : HUD_DIM);
+        g.setFont(&ShapoSansP_s08c07);
         std::snprintf(buf, sizeof(buf), "spheres devoured: %d",
                       game.spheresCleared());
-        drawCenteredText(g, oy + 135, buf, HUD_TEXT);
+        drawCenteredText(g, oy + 172, buf, HUD_DIM);
         if (game.stateTimer() > 2 * sim::TICK_RATE && blinkOn) {
           drawCenteredText(g, oy + 200, "PRESS A", HUD_TEXT);
         }

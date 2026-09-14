@@ -60,6 +60,9 @@ DS_EXPORT void ds_render(float dt) {
 }
 
 DS_EXPORT int ds_get_state() { return (int)game.state(); }
+DS_EXPORT uint32_t ds_get_score() { return game.score(); }
+// The high score is stored by the platform (browser: localStorage)
+DS_EXPORT void ds_set_high_score(uint32_t v) { game.setHighScore(v); }
 DS_EXPORT int ds_get_tick_rate() { return sim::TICK_RATE; }
 
 }  // extern "C"

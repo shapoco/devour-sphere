@@ -209,6 +209,7 @@ static void testGameplay() {
   for (int i = 0; i < 3 * TICK_RATE + 5; i++) q.tick(0);
   CHECK(q.state() == GameState::PLAYING);
   CHECK(q.sphereLevel() == 2);
+  CHECK(q.score() >= 2000);  // clear bonus on sphere 1
   CHECK(q.player().size < 64);
   CHECK(q.playerDisplayScaleLog2() > 0);
   checkInvariants(q);
@@ -256,6 +257,7 @@ static void testCombatAndLayout() {
   }
   CHECK(g.debugStats().hits > 0);
   CHECK(died || g.entities[enemy].hp < hp0 / 2);
+  if (died) CHECK(g.score() >= 100);  // equal size: 100 x 2^0 x 1.0
 
   // Contact: size flows gradually from the smaller entity to the bigger one
   {

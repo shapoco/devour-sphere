@@ -128,6 +128,23 @@ constexpr int ENEMY_HUE_COUNT = 9;
 constexpr uint8_t PLAYER_HUE = 135;
 constexpr uint8_t FRAGMENT_HUE = 120;  // floating fragments (teal)
 
+// --- Score ------------------------------------------------------------------
+// Every gain is base * 2^(sphere level - 1) * stay factor. The stay factor is
+// 1.0 for the first SCORE_STAY_FULL_TICKS on a sphere and falls linearly to
+// SCORE_STAY_MIN (Q8) at SCORE_STAY_MIN_TICKS, so lingering pays less and
+// less. The score is kept in Q8 (1 point = 256).
+constexpr int32_t SCORE_KILL_BASE = 100;    // x (enemy size / own size)^2
+constexpr int32_t SCORE_DEVOUR_BASE = 30;   // enemy consumed by contact
+constexpr int32_t SCORE_FRAGMENT_BASE = 1;  // fragment joined the body
+constexpr int32_t SCORE_CLEAR_BASE = 2000;  // x speed factor
+constexpr int SCORE_STAY_FULL_TICKS = 2 * 60 * TICK_RATE;
+constexpr int SCORE_STAY_MIN_TICKS = 6 * 60 * TICK_RATE;
+constexpr int32_t SCORE_STAY_MIN_Q8 = 51;  // 0.2
+constexpr int SCORE_CLEAR_FAST_TICKS = 3 * 60 * TICK_RATE;
+constexpr int SCORE_CLEAR_SLOW_TICKS = 8 * 60 * TICK_RATE;
+constexpr int32_t SCORE_CLEAR_SLOW_Q8 = 128;  // 0.5
+constexpr int32_t SCORE_RATIO_MIN_PCT = 25, SCORE_RATIO_MAX_PCT = 300;
+
 // --- Enemy AI ---------------------------------------------------------------
 constexpr int AI_THINK_INTERVAL = 8;  // ticks between decisions (staggered)
 // Chance (out of 256) that an enemy hunting a target fires during a think

@@ -47,6 +47,20 @@ async function startDevourSphere(opts) {
     }
     if (params.get('auto') === '1') ex.ds_debug_auto(1);
 
+    // High score: kept in the browser
+    const HS_KEY = 'devoursphere.highscore';
+    let highScore = 0;
+    try { highScore = parseInt(localStorage.getItem(HS_KEY) || '0', 10) >>> 0; } catch (e) { /* ignore */ }
+    ex.ds_set_high_score(highScore);
+    function updateHighScore() {
+      const score = ex.ds_get_score() >>> 0;
+      if (score > highScore) {
+        highScore = score;
+        ex.ds_set_high_score(highScore);
+        try { localStorage.setItem(HS_KEY, String(highScore)); } catch (e) { /* ignore */ }
+      }
+    }
+
     const W = ex.ds_get_width();
     const H = ex.ds_get_height();
     const fbPtr = ex.ds_get_fb();
@@ -100,6 +114,7 @@ async function startDevourSphere(opts) {
         frames++;
       }
       if (now - fpsTime >= 1000) {
+        updateHighScore();
         if (fpsEl) fpsEl.textContent = `${(frames * 1000 / (now - fpsTime)).toFixed(0)} fps`;
         frames = 0;
         fpsTime = now;

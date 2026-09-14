@@ -70,6 +70,8 @@ cmake --build build
 | `ds_tick(buttons)` | 1 tick 進める。`buttons` は sim::Button のビット (LEFT=1, RIGHT=2, UP=4, DOWN=8, A=16) |
 | `ds_render(dt)` | 現在の状態をフレームバッファに描画する。`dt` は前回描画からの秒数 (カメラの補間のみに使う) |
 | `ds_get_state()` | GameState (0 TITLE, 1 WEAPON_SELECT, 2 PLAYING, 3 LAUNCH, 4 DEAD) |
+| `ds_get_score()` | 現在のスコア |
+| `ds_set_high_score(v)` | ハイスコアを渡す (表示用)。JS 側が localStorage の `devoursphere.highscore` に保持し、毎秒スコアと比べて更新する |
 | `ds_debug_start(level, weapon)` | デバッグ用: メニューを飛ばして指定レベルのスフィアで開始 |
 | `ds_debug_auto(on)` | デバッグ用: AI にプレイヤーを操作させる |
 

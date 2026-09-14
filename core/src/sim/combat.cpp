@@ -191,7 +191,16 @@ void Game::damageEntity(int idx, int32_t dmg, int attacker) {
       c.evadeDir = (int8_t)(rng_.below(2) ? 1 : -1);
     }
   }
-  if (c.hp <= 0) killEntity(idx);
+  if (c.hp <= 0) {
+    if (!c.isPlayer && attacker == playerIndex_) {
+      // Kill score grows with the square of the size ratio
+      const Entity &p = entities[playerIndex_];
+      int64_t pct = p.size > 0 ? (int64_t)c.size * 100 / p.size : 100;
+      pct = clampI64(SCORE_RATIO_MIN_PCT, SCORE_RATIO_MAX_PCT, pct);
+      addScore((int64_t)SCORE_KILL_BASE * 256 * pct * pct / 10000);
+    }
+    killEntity(idx);
+  }
 }
 
 void Game::killEntity(int idx) {
@@ -240,6 +249,7 @@ void Game::transferSize(int from, int to) {
     S.hp = 0;
     stats_.absorbs++;
     if (S.isPlayer) events_ |= Event::PLAYER_DIED;
+    if (B.isPlayer) addScore((int64_t)SCORE_DEVOUR_BASE * 256);
     return;
   }
   syncFragments(S, 0, 0);
@@ -413,7 +423,10 @@ void Game::handleEating() {
       c.absorbGuard = ABSORB_GUARD_TICKS;
       fp.alive = false;
       stats_.fragmentsEaten++;
-      if (c.isPlayer) events_ |= Event::PLAYER_ATE_FRAGMENT;
+      if (c.isPlayer) {
+        events_ |= Event::PLAYER_ATE_FRAGMENT;
+        addScore((int64_t)SCORE_FRAGMENT_BASE * 256);
+      }
     }
   }
 }

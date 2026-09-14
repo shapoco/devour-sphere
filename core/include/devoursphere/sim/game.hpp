@@ -82,6 +82,12 @@ class Game {
   int playerRank() const { return entities[playerIndex_].rank; }
   int aliveEntities() const { return aliveEntities_; }
   uint32_t playerDisplayScaleLog2() const { return displayScaleLog2_; }
+  uint32_t score() const { return (uint32_t)(scoreQ8_ >> 8); }
+  int sphereTicks() const { return sphereTicks_; }  // ticks on this sphere
+  // The high score lives outside the simulation (platform storage); it is
+  // only kept here for display
+  void setHighScore(uint32_t v) { highScore_ = v; }
+  uint32_t highScore() const { return highScore_; }
 
   // Hash of the whole state (for determinism tests)
   uint32_t stateHash() const;
@@ -114,6 +120,11 @@ class Game {
   uint32_t displayScaleLog2_ = 0;
   uint8_t prevButtons_ = 0;
   bool autoPlayer_ = false;
+  uint64_t scoreQ8_ = 0;
+  int sphereTicks_ = 0;
+  uint32_t highScore_ = 0;
+  void addScore(int64_t baseQ8);
+  int32_t stayFactorQ8() const;
   DebugStats stats_ = {};
   EffectEvent effects_[MAX_EFFECTS];
   int effectCount_ = 0;

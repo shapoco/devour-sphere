@@ -32,6 +32,7 @@ void Game::debugStartSphere(int level, int weapon) {
   spheresCleared_ = level - 1;
   selectedWeapon_ = weapon % WEAPON_COUNT;
   displayScaleLog2_ = 0;
+  scoreQ8_ = 0;
   setState(GameState::PLAYING);
   startSphere(false);
 }
@@ -50,6 +51,7 @@ int Game::findFreeEntity() const {
 
 void Game::startSphere(bool keepPlayer) {
   sphereSeed_ = rng_.next();
+  sphereTicks_ = 0;
   Entity saved;
   if (keepPlayer) saved = entities[playerIndex_];
 
@@ -252,6 +254,15 @@ void Game::checkTransitions() {
         setState(GameState::DEAD);
       } else if (p.rank == 1 && stateTimer_ > CLEAR_GRACE_TICKS) {
         events_ |= Event::SPHERE_CLEARED;
+        // Clear bonus: full when fast, half when slow
+        int32_t speedQ8 = 256;
+        if (sphereTicks_ > SCORE_CLEAR_FAST_TICKS) {
+          int64_t over = sphereTicks_ - SCORE_CLEAR_FAST_TICKS;
+          int64_t span = SCORE_CLEAR_SLOW_TICKS - SCORE_CLEAR_FAST_TICKS;
+          if (over > span) over = span;
+          speedQ8 = (int32_t)(256 - (256 - SCORE_CLEAR_SLOW_Q8) * over / span);
+        }
+        addScore((int64_t)SCORE_CLEAR_BASE * speedQ8);
         setState(GameState::LAUNCH);
       }
       break;
@@ -275,6 +286,7 @@ void Game::tick(uint8_t buttons) {
   effectCount_ = 0;
   tickCount_++;
   stateTimer_++;
+  if (state_ == GameState::PLAYING) sphereTicks_++;
 
   // Menu handling
   switch (state_) {
@@ -292,6 +304,7 @@ void Game::tick(uint8_t buttons) {
         sphereLevel_ = 1;
         spheresCleared_ = 0;
         displayScaleLog2_ = 0;
+        scoreQ8_ = 0;
         setState(GameState::PLAYING);
         startSphere(false);
       }
@@ -348,6 +361,27 @@ void Game::tick(uint8_t buttons) {
   checkTransitions();
 }
 
+// Stay factor (Q8): lingering on a sphere pays less and less
+int32_t Game::stayFactorQ8() const {
+  if (sphereTicks_ <= SCORE_STAY_FULL_TICKS) return 256;
+  int64_t over = sphereTicks_ - SCORE_STAY_FULL_TICKS;
+  int64_t span = SCORE_STAY_MIN_TICKS - SCORE_STAY_FULL_TICKS;
+  if (over >= span) return SCORE_STAY_MIN_Q8;
+  return (int32_t)(256 - (256 - SCORE_STAY_MIN_Q8) * over / span);
+}
+
+// baseQ8: base points in Q8; multiplied by the sphere multiplier and the
+// stay factor (saturating)
+void Game::addScore(int64_t baseQ8) {
+  if (baseQ8 <= 0) return;
+  int lv = sphereLevel_ - 1;
+  if (lv > 20) lv = 20;
+  if (lv < 0) lv = 0;
+  uint64_t gain = ((uint64_t)baseQ8 << lv) * (uint64_t)stayFactorQ8() >> 8;
+  uint64_t limit = (uint64_t)0xFFFFFFFFu << 8;
+  scoreQ8_ = (scoreQ8_ + gain > limit) ? limit : scoreQ8_ + gain;
+}
+
 void Game::pushEffect(EffectKind kind, int entity, const Vec3 &n, int32_t r,
                       int32_t size) {
   if (effectCount_ >= MAX_EFFECTS) return;
@@ -370,10 +404,11 @@ uint32_t Game::stateHash() const {
   h = fnv(h, entities, sizeof(entities));
   h = fnv(h, floatingFragments, sizeof(floatingFragments));
   h = fnv(h, bullets, sizeof(bullets));
-  uint32_t scalars[] = {(uint32_t)state_,      tickCount_,
-                        (uint32_t)stateTimer_, (uint32_t)sphereLevel_,
-                        rng_.state(),          (uint32_t)playerIndex_,
-                        displayScaleLog2_};
+  uint32_t scalars[] = {
+      (uint32_t)state_,       tickCount_,         (uint32_t)stateTimer_,
+      (uint32_t)sphereLevel_, rng_.state(),       (uint32_t)playerIndex_,
+      displayScaleLog2_,      (uint32_t)scoreQ8_, (uint32_t)(scoreQ8_ >> 32),
+      (uint32_t)sphereTicks_};
   h = fnv(h, scalars, sizeof(scalars));
   return h;
 }
