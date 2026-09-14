@@ -32,8 +32,9 @@ int main(int argc, char **argv) {
     if (g.events() & Event::PLAYER_DIED) deaths++;
     if (g.events() & Event::PLANET_CLEARED) clears++;
     if (g.state() == GameState::DEAD) {
-      std::printf("t=%3ds player died (rank %d)\n", t / TICK_RATE,
-                  g.playerRank());
+      std::printf("t=%3ds player died (rank %d, %s)\n", t / TICK_RATE,
+                  g.playerRank(),
+                  g.player().hp <= 0 ? "shot down" : "absorbed");
       break;
     }
     if (t % (10 * TICK_RATE) == 0) {
