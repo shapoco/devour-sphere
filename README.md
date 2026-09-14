@@ -2,7 +2,11 @@
 
 サイバー空間の「スフィア」上空で、他のエンティティと戦い、フラグメントを喰らって巨大化していく
 3D シューティングゲーム。組み込み機器 (RP2350) とブラウザ (WebAssembly) で同じ
-コアプログラムが動く。描画は [ShapoGFX](https://github.com/shapoco/shapo-gfx)。
+コアプログラムが動く。
+
+このゲームは組み込み向けグラフィックスライブラリ [ShapoGFX](https://github.com/shapoco/shapo-gfx)
+のデモとして作られたサンプルアプリケーションで、描画 (フレームバッファ不要のスキャンライン 3D、
+線・点プリミティブ、2D 描画とフォント) はすべて ShapoGFX で行っている。
 
 - **遊ぶ:** https://shapoco.github.io/devour-sphere/play/
 - **仕様:** [SPEC.md](SPEC.md), [core/SPEC.md](core/SPEC.md), [impl/wasm/SPEC.md](impl/wasm/SPEC.md)
