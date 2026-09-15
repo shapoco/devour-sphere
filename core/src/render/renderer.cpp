@@ -526,9 +526,16 @@ void Renderer::drawBullets() {
       case sim::Weapon::LASER: {
         const g3::Material &m =
             palette_[b.fromPlayer ? PAL_LASER_PLAYER : PAL_BULLET_ENEMY];
-        // Long beam (the hit test sweeps the path of the last tick, so it
-        // can be drawn as long as it flies)
-        putQuad(pos, fwd, right, base * 12.0f + 4.0f, base * 0.12f + 0.06f, m);
+        // Long beam trailing behind the bullet's head, never longer than
+        // the distance flown so far (so it grows out of the muzzle instead
+        // of appearing behind the shooter)
+        const sim::WeaponSpec &ws = sim::WEAPON_SPECS[(int)b.kind];
+        float flown = (float)(ws.lifetime - b.life) * b.speed / (float)FU;
+        float len = base * 24.0f + 8.0f;
+        if (len > flown) len = flown;
+        if (len < 0.5f) len = 0.5f;
+        putQuad(pos - fwd * (len * 0.5f), fwd, right, len * 0.5f,
+                base * 0.12f + 0.06f, m);
         break;
       }
       case sim::Weapon::MISSILE: {
