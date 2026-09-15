@@ -231,7 +231,7 @@ void Game::killEntity(int idx) {
       dir = normalizeQ30(dir);
       // Scatter briskly, bigger bodies burst wider
       int32_t sp =
-          (FU / 2 + rng_.range(0, FU / 2)) * (8 + log2Floor(c.size)) / 8;
+          (FU / 4 + rng_.range(0, FU / 4)) * (8 + log2Floor(c.size)) / 8;
       Vec3 drift = scaleToLength(dir, sp);
       spawnFloatingFragment(normalizeQ30(center + off), c.r, p.sizeLog2, drift);
     }

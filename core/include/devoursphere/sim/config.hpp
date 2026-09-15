@@ -109,9 +109,9 @@ constexpr int32_t LAYOUT_NEAR_FU =
 constexpr uint32_t FOOD_NOTICE_RATIO = 32;
 // Floating fragments within bodyRadius + ATTRACT_RANGE_FU of the player are
 // drawn towards it
-constexpr int32_t ATTRACT_RANGE_FU = 14;
+constexpr int32_t ATTRACT_RANGE_FU = 32;
 constexpr int32_t ATTRACT_ACCEL = FU / 16;  // units per tick per tick
-constexpr int32_t ATTRACT_MAX_SPEED = FU * 3 / 4;
+constexpr int32_t ATTRACT_MAX_SPEED = FU * 4;
 
 // --- Floating fragments ------------------------------------------------------
 constexpr int32_t FLOATING_DRIFT_TICKS =
