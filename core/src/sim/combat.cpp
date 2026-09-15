@@ -206,6 +206,19 @@ void Game::damageEntity(int idx, int32_t dmg, int attacker) {
 void Game::killEntity(int idx) {
   Entity &c = entities[idx];
   if (!c.alive) return;
+  // Death effect when it happens within the player's surroundings
+  {
+    const Entity &p = entities[playerIndex_];
+    int64_t d2;
+    if (c.isPlayer) {
+      pushEffect(EffectKind::PLAYER_KILLED, idx, c.frame.n, c.r,
+                 (int32_t)c.size);
+    } else if (tangentialDist2(c.frame.n, p.frame.n, EFFECT_RANGE_FU * FU,
+                               d2)) {
+      pushEffect(EffectKind::ENTITY_KILLED, idx, c.frame.n, c.r,
+                 (int32_t)c.size);
+    }
+  }
   Vec3 center = worldPos(c.frame.n, c.r);
   Vec3 right = c.frame.right();
   for (int i = 0; i < c.fragmentCount; i++) {
@@ -301,10 +314,25 @@ static void applyDrift(Vec3 &n, int32_t r, Vec3 &drift, int decayShift) {
 }
 
 void Game::updateFloatingFragments() {
+  const Entity &p = entities[playerIndex_];
+  bool attract = p.alive && state_ == GameState::PLAYING;
+  int32_t attractRange = p.bodyRadius + ATTRACT_RANGE_FU * FU;
+  Vec3 playerPos = worldPos(p.frame.n, p.r);
   for (int i = 0; i < MAX_FLOATING_FRAGMENTS; i++) {
     FloatingFragment &fp = floatingFragments[i];
     if (!fp.alive) continue;
     if (fp.age < INT16_MAX) fp.age++;
+    // Fragments near the player are drawn towards it
+    int64_t d2;
+    if (attract && tangentialDist2(fp.n, p.frame.n, attractRange, d2) &&
+        d2 < (int64_t)attractRange * attractRange) {
+      Vec3 dir = normalizeQ30(playerPos - worldPos(fp.n, fp.r));
+      fp.drift = fp.drift + scaleToLength(dir, ATTRACT_ACCEL);
+      int64_t v2 = length2_64(fp.drift);
+      if (v2 > (int64_t)ATTRACT_MAX_SPEED * ATTRACT_MAX_SPEED) {
+        fp.drift = scaleToLength(normalizeQ30(fp.drift), ATTRACT_MAX_SPEED);
+      }
+    }
     applyDrift(fp.n, fp.r, fp.drift, 5);
     fp.spin = (uint16_t)(fp.spin + 300);
     int32_t rTarget = SPHERE_RADIUS + altitudeForSize(4u << fp.sizeLog2);
@@ -443,8 +471,10 @@ void Game::handleEntityCollisions() {
       Entity &b = entities[j];
       if (b.frame.n.z > zHi) break;
       if (!b.alive || !a.alive) continue;
-      if (a.size == b.size) continue;
-      int big = a.size > b.size ? i : j, small = big == i ? j : i;
+      // Who devours whom: size weighted by the health gauge
+      int64_t ea = effectiveSizeQ8(a), eb = effectiveSizeQ8(b);
+      if (ea == eb) continue;
+      int big = ea > eb ? i : j, small = big == i ? j : i;
       const Entity &B = entities[big];
       const Entity &S = entities[small];
       if (S.invincible > 0 || S.absorbGuard > 0) continue;

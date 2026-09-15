@@ -11,6 +11,7 @@ using g3::vec3f;
 using sim::FU;
 
 static constexpr float PI = 3.14159265358979f;
+static constexpr float PICKUP_DURATION = 0.3f;  // seconds
 static const g2::Color DEBRIS_RED = g2::makeColor(255, 70, 60);
 static const g2::Color DEBRIS_GRAY = g2::makeColor(180, 185, 195);
 
@@ -61,14 +62,24 @@ void Renderer::collectEffects() {
     const sim::EffectEvent &e = g.effects()[i];
     vec3f pos = toLocal(sim::scaleToLength(e.n, e.r));
     bool mine = e.kind == sim::EffectKind::PLAYER_HIT ||
-                e.kind == sim::EffectKind::PLAYER_DRAINED;
+                e.kind == sim::EffectKind::PLAYER_DRAINED ||
+                e.kind == sim::EffectKind::PLAYER_KILLED;
     int count = 2;
-    if (e.kind != sim::EffectKind::PLAYER_DRAINED &&
-        e.kind != sim::EffectKind::ENEMY_DRAINED) {
+    float size = base * 0.6f;
+    if (e.kind == sim::EffectKind::ENTITY_KILLED ||
+        e.kind == sim::EffectKind::PLAYER_KILLED) {
+      // A death nearby: a burst of debris scaled by the victim's size
+      float victim = sim::fragmentHalfSize(
+                         sim::log2Floor((uint32_t)(e.size > 0 ? e.size : 1))) /
+                     (float)FU;
+      count = 14;
+      size = victim * 0.8f;
+    } else if (e.kind != sim::EffectKind::PLAYER_DRAINED &&
+               e.kind != sim::EffectKind::ENEMY_DRAINED) {
       int k = sim::log2Floor((uint32_t)(e.size > 0 ? e.size : 1));
       count = 1 + (k > 5 ? 5 : k) / 3;
     }
-    spawnDebris(pos, count, base * 0.6f, mine ? DEBRIS_RED : DEBRIS_GRAY);
+    spawnDebris(pos, count, size, mine ? DEBRIS_RED : DEBRIS_GRAY);
     // ... and the body flashes white
     if (e.entity >= 0 && e.entity < sim::MAX_ENTITIES) {
       flash_[e.entity] = 0.12f;
@@ -78,6 +89,26 @@ void Renderer::collectEffects() {
 
 void Renderer::updateEffects(float dt) {
   if (dt > 0.1f) dt = 0.1f;
+  // Pickup flashes (one per tick at most)
+  {
+    const sim::Game &g = *game_;
+    if ((g.events() & sim::Event::PLAYER_ATE_FRAGMENT) &&
+        g.tickCount() != lastPickupTick_ && g.player().alive) {
+      lastPickupTick_ = g.tickCount();
+      int slot = pickupCount_ < MAX_PICKUPS ? pickupCount_++ : 0;
+      pickups_[slot].age = 0;
+      pickups_[slot].angle = frand() * 2 * PI;
+    }
+    for (int i = 0; i < pickupCount_;) {
+      pickups_[i].age += dt;
+      pickups_[i].angle += dt * 9.0f;
+      if (pickups_[i].age >= PICKUP_DURATION) {
+        pickups_[i] = pickups_[--pickupCount_];
+        continue;
+      }
+      i++;
+    }
+  }
   for (int i = 0; i < sim::MAX_ENTITIES; i++) {
     if (flash_[i] > 0) flash_[i] -= dt;
   }
@@ -134,6 +165,30 @@ void Renderer::updateEffects(float dt) {
 }
 
 void Renderer::drawEffects() {
+  // Pickup flashes: triangles perpendicular to the view direction, in the
+  // player's color, spinning and shrinking onto the player
+  if (pickupCount_ > 0) {
+    const sim::Entity &p = game_->player();
+    vec3f camUp = {0, 0, 1};
+    if (std::fabs(g3::dot(viewDir_, cam_.up)) < 0.99f) camUp = cam_.up;
+    vec3f right = g3::normalize(g3::cross(viewDir_, camUp));
+    vec3f up = g3::cross(right, viewDir_);
+    float bodyR = sim::fragmentHalfSize(sim::log2Floor(p.size)) / (float)FU *
+                  (2.0f + 0.2f * p.fragmentCount);
+    g2::Color color = colorForEntity(p);
+    for (int i = 0; i < pickupCount_; i++) {
+      const Pickup &pk = pickups_[i];
+      float t = 1.0f - pk.age / PICKUP_DURATION;  // 1 -> 0
+      float radius = bodyR * (0.5f + 5.0f * t);
+      vec3f pts[3];
+      for (int k = 0; k < 3; k++) {
+        float a = pk.angle + k * (2 * PI / 3);
+        pts[k] = (right * std::cos(a) + up * std::sin(a)) * radius;
+      }
+      putLineLoop3(pts, 3, color, palette_[PAL_LINE]);
+    }
+  }
+
   // Debris: wireframe triangles
   for (int i = 0; i < debrisCount_; i++) {
     const Debris &d = debris_[i];

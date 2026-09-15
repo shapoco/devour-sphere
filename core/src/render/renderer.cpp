@@ -260,10 +260,13 @@ void Renderer::updateCamera(float dt) {
     wantRoll =
         (p.turnLevel / 256.0f) * (p.braking ? 14.0f : 9.0f) * PI / 180.0f;
   } else if (st == sim::GameState::LAUNCH) {
-    float t = g.stateTimer() / (float)sim::TICK_RATE;
-    wantDist *= 1.0f + t * 1.5f;
+    // Pull back slowly (smoothstep over the whole launch)
+    float t = g.stateTimer() / (float)sim::LAUNCH_TICKS;
+    if (t > 1) t = 1;
+    float e = t * t * (3 - 2 * t);
+    wantDist *= 1.0f + e * 1.5f;
     nominalDist = wantDist;
-    wantHeight *= 1.0f + t * 0.8f;
+    wantHeight *= 1.0f + e * 0.8f;
     wantFov = 70.0f * PI / 180.0f;
   } else if (st == sim::GameState::TITLE ||
              st == sim::GameState::WEAPON_SELECT) {
@@ -273,9 +276,10 @@ void Renderer::updateCamera(float dt) {
     wantHeight *= 1.6f;
     fwd = rotateAroundAxis(fwd, up, time_ * 0.25f);
   } else if (st == sim::GameState::DEAD) {
-    wantDist *= 1.6f;
+    // Follow the cruising ghost of the player, a little farther back
+    wantDist *= 1.3f;
     nominalDist = wantDist;
-    wantHeight *= 2.0f;
+    wantHeight *= 1.2f;
   }
 
   if (!camValid_) {
@@ -288,7 +292,11 @@ void Renderer::updateCamera(float dt) {
     camDown_ = wantDown;
     camValid_ = true;
   } else {
-    float k = 1.0f - std::exp(-dt * 5.0f);
+    // The camera eases more slowly during the launch and after death
+    float rate = (st == sim::GameState::LAUNCH || st == sim::GameState::DEAD)
+                     ? 1.5f
+                     : 5.0f;
+    float k = 1.0f - std::exp(-dt * rate);
     camDist_ += (wantDist - camDist_) * k;
     camNominal_ += (nominalDist - camNominal_) * k;
     camHeight_ += (wantHeight - camHeight_) * k;
@@ -339,7 +347,9 @@ void Renderer::updateCamera(float dt) {
 const g3::Material &Renderer::materialForEntity(const sim::Entity &c) const {
   if (c.isPlayer) return palette_[PAL_PLAYER];
   const sim::Entity &p = game_->player();
-  return palette_[c.size > p.size ? PAL_ENEMY_BIG : PAL_ENEMY_SMALL];
+  return palette_[sim::effectiveSizeQ8(c) > sim::effectiveSizeQ8(p)
+                      ? PAL_ENEMY_BIG
+                      : PAL_ENEMY_SMALL];
 }
 
 g2::Color Renderer::colorForEntity(const sim::Entity &c) const {

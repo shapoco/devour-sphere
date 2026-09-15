@@ -87,6 +87,14 @@ struct Entity {
   uint32_t seed;  // per-entity random seed (visual variation)
 };
 
+// Effective size for absorption and color: size * (0.7 + 0.3 * hp / hpMax),
+// in Q8 (so a weakened entity can be devoured by a slightly smaller one)
+static inline int64_t effectiveSizeQ8(const Entity &e) {
+  int64_t hpTerm = e.hpMax > 0 ? (int64_t)e.hp * 256 / e.hpMax : 256;
+  if (hpTerm < 0) hpTerm = 0;
+  return (int64_t)e.size * (7 * 256 + 3 * hpTerm) / 10;
+}
+
 struct FloatingFragment {
   bool alive;
   Vec3 n;      // unit normal (Q30)

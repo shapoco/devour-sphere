@@ -34,15 +34,27 @@ static int16_t headingError(const Frame &f, const Vec3 &d) {
   return (int16_t)atan2Brad(s, c);
 }
 
-static int8_t steerTowards(const Entity &c, const Vec3 &targetN, bool flee) {
+// errOut: the signed heading error (brad) to the (fled) target
+static int8_t steerTowards(const Entity &c, const Vec3 &targetN, bool flee,
+                           int16_t *errOut = nullptr) {
   Vec3 d = tangentTowards(c.frame.n, targetN);
   if (flee) d = -d;
+  if (errOut) *errOut = 0;
   if (d.x == 0 && d.y == 0 && d.z == 0) return 0;
   int16_t err = headingError(c.frame, d);
+  if (errOut) *errOut = err;
   constexpr int16_t DEAD = (int16_t)degToBrad(4);
   if (err > DEAD) return -1;  // target is on the left
   if (err < -DEAD) return 1;
   return 0;
+}
+
+// A target far around and close by: brake for a quick turn instead of
+// circling with a wide turning radius
+static bool wantsQuickTurn(int16_t err, int64_t d2) {
+  int32_t a = err < 0 ? -err : err;
+  return a > (int32_t)AI_QUICK_TURN_ANGLE &&
+         d2 < (int64_t)(AI_QUICK_TURN_FU * FU) * (AI_QUICK_TURN_FU * FU);
 }
 
 void Game::updateAi(int idx) {
@@ -68,7 +80,7 @@ void Game::updateAi(int idx) {
     if (j == idx || !o.alive) continue;
     int64_t d2;
     if (!tangentialDist2(c.frame.n, o.frame.n, sight, d2)) continue;
-    if (o.size > c.size) {
+    if (effectiveSizeQ8(o) > effectiveSizeQ8(c)) {
       // Bigger attackers are a threat in sight (when they can attack);
       // absorbers only when close
       constexpr int64_t NEAR2 = (int64_t)(40 * FU) * (40 * FU);
@@ -76,7 +88,9 @@ void Game::updateAi(int idx) {
       // than somebody; fleeing from every giant in sight would paralyze the
       // small ones): 1.25x within 60 FU, anything bigger within 40 FU
       constexpr int64_t FLEE2 = (int64_t)(60 * FU) * (60 * FU);
-      bool dangerous = (o.size * 4 > c.size * 5 && d2 < FLEE2) || d2 < NEAR2;
+      int64_t ec = effectiveSizeQ8(c), eo = effectiveSizeQ8(o);
+      bool dangerous =
+          (eo * 4 > ec * 5 && d2 < FLEE2) || (eo > ec && d2 < NEAR2);
       if (dangerous && d2 < threatD2) threat = j, threatD2 = d2;
     } else if (o.size * 4 >= c.size && d2 < preyD2) {
       prey = j, preyD2 = d2;  // equal or smaller (but not tiny): fair game
@@ -129,21 +143,21 @@ void Game::updateAi(int idx) {
   if (food >= 0 && (prey < 0 || foodD2 <= preyD2 * 4)) {
     c.aiMode = AiMode::HUNT_FRAGMENT;
     c.aiTarget = (int16_t)food;
-    c.turn = steerTowards(c, floatingFragments[food].n, false);
+    int16_t err;
+    c.turn = steerTowards(c, floatingFragments[food].n, false, &err);
+    c.braking = wantsQuickTurn(err, foodD2);
     return;
   }
   if (prey >= 0) {
     c.aiMode = AiMode::HUNT_ENTITY;
     c.aiTarget = (int16_t)prey;
     const Entity &o = entities[prey];
-    c.turn = steerTowards(c, o.frame.n, false);
+    int16_t err;
+    c.turn = steerTowards(c, o.frame.n, false, &err);
     Vec3 d = tangentTowards(c.frame.n, o.frame.n);
     Vec3 dn = normalizeQ30(d);
-    // Overshot a nearby prey (it is behind us): quick turn under brake
-    constexpr int64_t QUICK2 = (int64_t)(30 * FU) * (30 * FU);
-    if (dotQ30(c.frame.t, dn) < -(Q30_ONE / 5) && preyD2 < QUICK2) {
-      c.braking = true;
-    }
+    // Prey far around and close by: quick turn under brake
+    c.braking = wantsQuickTurn(err, preyD2);
     const WeaponSpec &ws = WEAPON_SPECS[(int)c.weapon];
     int64_t range = (int64_t)bulletSpeed(ws, c.size) * ws.lifetime;
     if (dotQ30(c.frame.t, dn) > COS_FIRE_CONE && preyD2 < range * range) {
@@ -223,8 +237,12 @@ void Game::moveEntity(Entity &c) {
   int32_t rTarget = SPHERE_RADIUS + altitudeForSize(c.size);
   int approach = ALT_APPROACH_SHIFT;
   if (c.isPlayer && state_ == GameState::LAUNCH) {
-    rTarget = SPHERE_RADIUS + 900 * FU;
-    approach = 4;
+    // Slow, accelerating ascent
+    int64_t t = stateTimer_;
+    rTarget =
+        SPHERE_RADIUS + ALTITUDE +
+        (int32_t)(900 * FU * t * t / ((int64_t)LAUNCH_TICKS * LAUNCH_TICKS));
+    approach = 3;
   }
   int32_t dr = rTarget - c.r;
   int32_t rs = dr >> approach;

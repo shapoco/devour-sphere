@@ -37,6 +37,8 @@ enum class EffectKind : uint8_t {
   PLAYER_DRAINED,  // the player is being absorbed
   ENEMY_HIT,       // an enemy was hit by the player's bullet
   ENEMY_DRAINED,   // an enemy is being absorbed by the player
+  ENTITY_KILLED,   // an enemy near the player was shot down (many debris)
+  PLAYER_KILLED,   // the player was shot down
 };
 
 struct EffectEvent {
@@ -51,6 +53,8 @@ struct EffectEvent {
 struct DebugStats {
   uint32_t shots, hits, kills, absorbs, fragmentsEaten, fragmentsHealed;
 };
+
+extern const int LAUNCH_TICKS;  // length of the LAUNCH state
 
 class Game {
  public:

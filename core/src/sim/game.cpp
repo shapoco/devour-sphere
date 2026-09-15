@@ -6,7 +6,7 @@
 
 namespace devoursphere::sim {
 
-static constexpr int LAUNCH_TICKS = 3 * TICK_RATE;
+const int LAUNCH_TICKS = 6 * TICK_RATE;
 static constexpr int DEAD_WAIT_TICKS = 2 * TICK_RATE;
 static constexpr int CLEAR_GRACE_TICKS = 4 * TICK_RATE;
 
@@ -219,7 +219,8 @@ void Game::updateRanks() {
     aliveEntities_++;
     if (i != playerIndex_ && c.size > p.size) rank++;
   }
-  p.rank = (uint16_t)rank;
+  // The rank is frozen once the sphere is cleared
+  if (state_ != GameState::LAUNCH) p.rank = (uint16_t)rank;
 }
 
 void Game::updateRespawns() {
@@ -320,6 +321,15 @@ void Game::tick(uint8_t buttons) {
   }
 
   Entity &p = entities[playerIndex_];
+  if (state_ == GameState::DEAD && !p.alive) {
+    // The camera keeps following the ghost of the player, cruising ahead
+    int32_t ang = (int32_t)(((int64_t)cruiseSpeedForSize(p.size ? p.size : 1)
+                             << Q30_SHIFT) /
+                            p.r);
+    p.frame.n = normalizeQ30(p.frame.n + scaleQ30(p.frame.t, ang));
+    p.frame.t = orthonormalizeQ30(p.frame.t, p.frame.n);
+    p.bank = (int16_t)(p.bank - (p.bank >> 3));
+  }
   if (state_ == GameState::PLAYING && p.alive && !autoPlayer_) {
     updatePlayerControls(buttons);
   } else if (state_ == GameState::LAUNCH) {

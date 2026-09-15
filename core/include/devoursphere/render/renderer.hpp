@@ -52,6 +52,13 @@ struct Debris {
   g2::Color color;
 };
 
+// Pickup flash: a big triangle facing the camera that spins and shrinks
+// onto the player
+struct Pickup {
+  float age;    // seconds
+  float angle;  // radians
+};
+
 // Dust streak of the dash effect (world static; streams towards the camera)
 struct Dust {
   g3::vec3f pos;
@@ -139,6 +146,10 @@ class Renderer {
   int debrisCount_ = 0;
   Dust dust_[MAX_DUST];
   int dustCount_ = 0;
+  static constexpr int MAX_PICKUPS = 4;
+  Pickup pickups_[MAX_PICKUPS];
+  int pickupCount_ = 0;
+  uint32_t lastPickupTick_ = 0xFFFFFFFFu;
   float dustSpawnAcc_ = 0;
   uint32_t lastEffectTick_ = 0xFFFFFFFFu;
   float flash_[sim::MAX_ENTITIES] = {};  // seconds left of the white flash

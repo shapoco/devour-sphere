@@ -107,6 +107,11 @@ constexpr int32_t LAYOUT_NEAR_FU =
 
 // A fragment smaller than size / FOOD_NOTICE_RATIO cannot be eaten
 constexpr uint32_t FOOD_NOTICE_RATIO = 32;
+// Floating fragments within bodyRadius + ATTRACT_RANGE_FU of the player are
+// drawn towards it
+constexpr int32_t ATTRACT_RANGE_FU = 14;
+constexpr int32_t ATTRACT_ACCEL = FU / 16;  // units per tick per tick
+constexpr int32_t ATTRACT_MAX_SPEED = FU * 3 / 4;
 
 // --- Floating fragments ------------------------------------------------------
 constexpr int32_t FLOATING_DRIFT_TICKS =
@@ -156,6 +161,12 @@ constexpr int AI_FIRE_CHANCE_LEVELS = 4;
 // AI_EVADE_TICKS (quick turn, then dash away on level 2 and up)
 constexpr int AI_EVADE_HITS = 3;
 constexpr int AI_EVADE_TICKS = 40;
+// Steering: brake (quick turn) when the target is more than this far around
+// and closer than AI_QUICK_TURN_FU
+constexpr uint16_t AI_QUICK_TURN_ANGLE = degToBrad(60);
+constexpr int32_t AI_QUICK_TURN_FU = 30;
+// Death effects are reported within this distance of the player
+constexpr int32_t EFFECT_RANGE_FU = 90;
 constexpr int32_t AI_SIGHT_FU = 120;  // detection range in FU
 
 }  // namespace devoursphere::sim
