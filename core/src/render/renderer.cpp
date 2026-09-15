@@ -672,6 +672,9 @@ void Renderer::buildScene() {
 
   drawStars();
   buildSphere();
+  // Upgrades first: their horizon markers must never be crowded out by
+  // the enemies' markers
+  drawFloatingUpgrades();
 
   // Visible entities sorted by distance
   struct Vis {
@@ -689,7 +692,7 @@ void Renderer::buildScene() {
       // Beyond the horizon: opponents of a comparable size (1/4 .. 4x) get
       // a marker on the horizon in their direction
       uint32_t ps = g.player().size;
-      if (c.isPlayer || markerCount_ >= MAX_MARKERS || c.size * 4 < ps ||
+      if (c.isPlayer || markerCount_ >= MAX_ENEMY_MARKERS || c.size * 4 < ps ||
           c.size > ps * 4) {
         continue;
       }
@@ -778,7 +781,6 @@ void Renderer::buildScene() {
   }
 
   drawFloatingFragments();
-  drawFloatingUpgrades();
   drawBullets();
   drawLance();
   drawPresenceAuras();

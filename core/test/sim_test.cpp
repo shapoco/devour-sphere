@@ -181,6 +181,21 @@ static void testGameplay() {
   CHECK(sawFragment);
   CHECK(deaths > 0);
   CHECK(f.debugStats().crits > 0);  // ~1 in 30 hits knocks a fragment out
+  // Upgrades are never lost: carried + floating + taken == assigned
+  {
+    int carried = 0, floating = 0;
+    for (int i = 0; i < MAX_ENTITIES; i++) {
+      if (f.entities[i].alive &&
+          f.entities[i].upgrade != (uint8_t)UpgradeKind::NONE) {
+        carried++;
+      }
+    }
+    for (int i = 0; i < MAX_FLOATING_UPGRADES; i++)
+      floating += f.floatingUpgrades[i].alive;
+    int taken = f.totalUpgradeLevel() + (f.cores() - CORES_START);
+    int total = carried + floating + taken;
+    CHECK(total == 3 || total == 4);
+  }
 
   // Kill the player to reach the DEAD state, then restart
   Game h;

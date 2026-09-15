@@ -200,7 +200,7 @@ constexpr int MAX_FLOATING_UPGRADES = 8;
 constexpr uint32_t EXTRA_CORE_CHANCE_DEN = 3;  // 1 in 3 spheres carry one
 // Shield: damage taken in percent per level, level 3 regenerates
 constexpr int32_t SHIELD_DAMAGE_PCT[UPGRADE_MAX_LEVEL + 1] = {100, 75, 50, 50};
-constexpr int32_t SHIELD_REGEN_PCT_PER_SEC = 10;
+constexpr int32_t SHIELD_REGEN_PCT_PER_SEC = 3;
 // Overdrive: fire cooldown in percent per level
 constexpr int32_t OVERDRIVE_COOLDOWN_PCT[UPGRADE_MAX_LEVEL + 1] = {100, 67, 50,
                                                                    50};

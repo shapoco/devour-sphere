@@ -90,7 +90,8 @@ class Renderer {
   static constexpr int PALETTE_SIZE = 24;
   static constexpr int MAX_SPHERE_LEVEL = 7;
   static constexpr int MAX_GAUGES = 64;
-  static constexpr int MAX_MARKERS = 32;
+  static constexpr int MAX_MARKERS = 40;
+  static constexpr int MAX_ENEMY_MARKERS = 32;  // the rest is kept for upgrades
   static constexpr int MAX_DEBRIS = 64;
   static constexpr int MAX_DUST = 64;
 
