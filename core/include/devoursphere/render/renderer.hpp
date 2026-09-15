@@ -139,7 +139,6 @@ class Renderer {
   int gaugeCount_ = 0;
   Marker2D markers_[MAX_MARKERS];
   int markerCount_ = 0;
-  float rearWarning_ = 0;  // 0..1: an enemy close behind is heading at us
 
   // Effects (float, render side only)
   Debris debris_[MAX_DEBRIS];
@@ -190,8 +189,7 @@ class Renderer {
   void drawFloatingFragments();
   void drawBullets();
   void drawStars();
-  void updateRearWarning();
-  void drawRearWarning(const g2::Surface &dst, int y, int h, int dstY);
+  void drawPresenceAuras();
   const g3::Material &materialForEntity(const sim::Entity &c) const;
   g2::Color colorForEntity(const sim::Entity &c) const;
 

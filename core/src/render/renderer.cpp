@@ -544,53 +544,81 @@ void Renderer::drawStars() {
   }
 }
 
-// An enemy just behind the player, outside the screen, heading at the
-// player: warn with a red glow at the bottom of the screen
-void Renderer::updateRearWarning() {
+// Presence auras: enemies close to the player but outside the screen are
+// shown as a soft glow at the screen edge in their direction (a fan whose
+// color fades from the enemy's color at the center to black at the rim,
+// added onto the frame). Nearer enemies get bigger and brighter auras.
+void Renderer::drawPresenceAuras() {
   const sim::Game &g = *game_;
-  const sim::Entity &p = g.player();
-  rearWarning_ = 0;
-  if (!p.alive || g.state() != sim::GameState::PLAYING) return;
-  vec3f fwd = q30ToF(p.frame.t);
-  constexpr float RANGE = 45.0f;  // FU
-  for (int i = 0; i < sim::MAX_ENTITIES; i++) {
+  if (g.state() != sim::GameState::PLAYING) return;
+  constexpr float RANGE = 60.0f;  // FU
+  constexpr int SEGMENTS = 12;
+  constexpr int MAX_AURAS = 12;
+  constexpr float DEPTH = 2.0f;  // view-space distance of the fan
+  vec3f camUp =
+      std::fabs(g3::dot(viewDir_, cam_.up)) < 0.99f ? cam_.up : vec3f{0, 0, 1};
+  vec3f right = g3::normalize(g3::cross(viewDir_, camUp));
+  vec3f up = g3::cross(right, viewDir_);
+  float tanY = std::tan(camFov_ * 0.5f);
+  float tanX = tanY * (float)w_ / (float)h_;
+  int drawn = 0;
+  for (int i = 0; i < sim::MAX_ENTITIES && drawn < MAX_AURAS; i++) {
     const sim::Entity &c = g.entities[i];
     if (!c.alive || c.isPlayer) continue;
     vec3f pos = toLocal(sim::scaleToLength(c.frame.n, c.r));
-    float d = g3::length(pos);
-    if (d > RANGE || d < 0.5f) continue;
-    if (g3::dot(pos, fwd) > 0) continue;  // ahead of the player
+    float d = g3::length(pos);  // distance from the player
+    if (d > RANGE || d < 0.1f) continue;
     float sx, sy;
     if (project(pos, sx, sy) && sx >= 0 && sx < w_ && sy >= 0 && sy < h_) {
-      continue;  // visible on screen: no warning needed
+      continue;  // visible: no aura needed
     }
-    vec3f toPlayer = pos * (-1.0f / d);
-    float align = g3::dot(q30ToF(c.frame.t), toPlayer);
-    if (align < 0.6f) continue;
-    float v = (align - 0.6f) / 0.4f * (1.0f - d / RANGE);
-    if (v > rearWarning_) rearWarning_ = v;
-  }
-  if (rearWarning_ > 1) rearWarning_ = 1;
-}
-
-// Additive red gradient over the bottom quarter of the screen
-void Renderer::drawRearWarning(const g2::Surface &dst, int y, int h, int dstY) {
-  if (rearWarning_ <= 0.02f || dst.format != g2::PixelFormat::RGB565BE) return;
-  int top = h_ * 3 / 4;
-  for (int row = y; row < y + h; row++) {
-    if (row < top || row >= h_) continue;
-    float t = (float)(row - top) / (float)(h_ - top);  // 0 at the top edge
-    int r5 = (int)(rearWarning_ * t * t * 31.0f + 0.5f);
-    if (r5 <= 0) continue;
-    uint8_t *line =
-        (uint8_t *)dst.pixels + (size_t)(row - y + dstY) * dst.stride;
-    g2::CursorRgb565BE cur;
-    cur.init(line, 0);
-    for (int x = 0; x < w_; x++) {
-      uint32_t px = cur.read();
-      cur.write(g2::addSaturateRgb565((uint16_t)px, (uint32_t)r5, 0, 0));
-      cur.next();
+    // Direction on the screen from the view-space position
+    vec3f v = view_.transformPoint(pos);
+    float dx = v.x, dy = -v.y;  // screen y points down
+    float len = std::sqrt(dx * dx + dy * dy);
+    if (len < 1e-4f) continue;
+    dx /= len, dy /= len;
+    // Intersect the ray from the screen center with the screen rectangle
+    float hx = w_ * 0.5f, hy = h_ * 0.5f;
+    float tx = dx != 0 ? hx / std::fabs(dx) : 1e9f;
+    float ty = dy != 0 ? hy / std::fabs(dy) : 1e9f;
+    float tEdge = tx < ty ? tx : ty;
+    float near = 1.0f - d / RANGE;  // 0 far .. 1 close
+    float radiusPx = 30.0f + 100.0f * near;
+    float cx = hx + dx * (tEdge - radiusPx * 0.35f);
+    float cy = hy + dy * (tEdge - radiusPx * 0.35f);
+    // Screen -> view space at DEPTH
+    float vx = (cx / w_ * 2.0f - 1.0f) * tanX * DEPTH;
+    float vy = (1.0f - cy / h_ * 2.0f) * tanY * DEPTH;
+    vec3f center = cam_.eye + viewDir_ * DEPTH + right * vx + up * vy;
+    float radius = radiusPx / focalPx_ * DEPTH;
+    g2::Color col = colorForEntity(c);
+    float bright = 0.3f + 0.7f * near;
+    g2::Color centerCol = g2::makeColor((int)(g2::colorR(col) * bright),
+                                        (int)(g2::colorG(col) * bright),
+                                        (int)(g2::colorB(col) * bright));
+    g3::Vertex verts[SEGMENTS + 2];
+    uint16_t idx[SEGMENTS + 2];
+    verts[0].position = center;
+    verts[0].normal = {0, 1, 0};
+    verts[0].uv = {0, 0};
+    verts[0].color = centerCol;
+    idx[0] = 0;
+    for (int k = 0; k <= SEGMENTS; k++) {
+      float a = k * (2.0f * PI / SEGMENTS);
+      verts[k + 1].position =
+          center + (right * std::cos(a) + up * std::sin(a)) * radius;
+      verts[k + 1].normal = {0, 1, 0};
+      verts[k + 1].uv = {0, 0};
+      verts[k + 1].color = g2::makeColor(0, 0, 0);
+      idx[k + 1] = (uint16_t)(k + 1);
     }
+    g3::VertexBuffer vb = {(uint16_t)(SEGMENTS + 2), verts};
+    g3::Primitive prim = {g3::PrimitiveType::TRIANGLE_FAN, &vb,
+                          (uint16_t)(SEGMENTS + 2), idx,
+                          &palette_[PAL_LINE_ADD]};
+    g3d_.putPrimitive(prim);
+    drawn++;
   }
 }
 
@@ -662,7 +690,7 @@ void Renderer::buildScene() {
   // Triangle budget: what is left after the wireframe, minus a reserve for
   // fragments, bullets and effects
   g3::Stats st = g3d_.getStats();
-  int triBudget = st.triCapacity - st.triCount - 220;
+  int triBudget = st.triCapacity - st.triCount - 380;
   for (int k = 0; k < n; k++) {
     const sim::Entity &c = g.entities[vis[k].idx];
     int fullTris = (1 + 2 * c.fragmentCount) * 2;
@@ -694,6 +722,7 @@ void Renderer::buildScene() {
 
   drawFloatingFragments();
   drawBullets();
+  drawPresenceAuras();
   drawEffects();
   g3d_.endScene();
 }
@@ -711,7 +740,6 @@ void Renderer::beginFrame(const sim::Game &game, float dt) {
   entitiesDrawn_ = 0;
   kites_ = 0;
   updateCamera(dt);
-  updateRearWarning();
   collectEffects();
   updateEffects(dt);
   buildScene();
@@ -723,7 +751,6 @@ void Renderer::renderBand(const g2::Surface &dst, int y, int h, int dstY) {
   g.setClipRect(0, dstY, w_, h);
   g.clear(g2::makeColor(0, 0, 4));
   g3d_.render(0, (int16_t)y, (int16_t)w_, (int16_t)h, dst, 0, (int16_t)dstY);
-  drawRearWarning(dst, y, h, dstY);
   int oy = dstY - y;
   for (int i = 0; i < markerCount_; i++) {
     const Marker2D &mk = markers_[i];
