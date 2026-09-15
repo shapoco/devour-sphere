@@ -80,7 +80,13 @@ void Game::updateAi(int idx) {
     if (j == idx || !o.alive) continue;
     int64_t d2;
     if (!tangentialDist2(c.frame.n, o.frame.n, sight, d2)) continue;
-    if (effectiveSizeQ8(o) > effectiveSizeQ8(c)) {
+    // A well shielded player is attacked even when bigger than us
+    int64_t preyLimit = effectiveSizeQ8(c);
+    if (o.isPlayer) {
+      preyLimit *=
+          1 + AI_PREY_PLAYER_BIG_PER_SHIELD * upgradeLevel(UpgradeKind::SHIELD);
+    }
+    if (effectiveSizeQ8(o) > preyLimit) {
       // Bigger attackers are a threat in sight (when they can attack);
       // absorbers only when close
       constexpr int64_t NEAR2 = (int64_t)(40 * FU) * (40 * FU);

@@ -22,18 +22,34 @@ g2::Color upgradeColor(int kind) {
   }
 }
 
+// A convex solid; every triangle is wound counter-clockwise seen from
+// outside (normal away from the centroid), so back-face culling works
 void Renderer::putSolid(const vec3f *verts, int nv, const uint16_t *idx, int ni,
                         const g3::Material &m) {
   g3::Vertex v[12];
-  if (nv > 12) return;
+  uint16_t order[24];
+  if (nv > 12 || ni > 24) return;
+  vec3f center = {0, 0, 0};
+  for (int i = 0; i < nv; i++) center = center + verts[i];
+  center = center * (1.0f / nv);
   for (int i = 0; i < nv; i++) {
     v[i].position = verts[i];
     v[i].normal = {0, 1, 0};
     v[i].uv = {0, 0};
     v[i].color = g3::VERTEX_WHITE;
   }
+  for (int t = 0; t + 2 < ni; t += 3) {
+    const vec3f &a = verts[idx[t]], &b = verts[idx[t + 1]],
+                &c = verts[idx[t + 2]];
+    vec3f n = g3::cross(b - a, c - a);
+    vec3f out = (a + b + c) * (1.0f / 3) - center;
+    bool flip = g3::dot(n, out) < 0;
+    order[t] = idx[t];
+    order[t + 1] = flip ? idx[t + 2] : idx[t + 1];
+    order[t + 2] = flip ? idx[t + 1] : idx[t + 2];
+  }
   g3::VertexBuffer vb = {(uint16_t)nv, v};
-  g3::Primitive prim = {g3::PrimitiveType::TRIANGLES, &vb, (uint16_t)ni, idx,
+  g3::Primitive prim = {g3::PrimitiveType::TRIANGLES, &vb, (uint16_t)ni, order,
                         &m};
   g3d_.putPrimitive(prim);
   kites_ += ni / 6;
@@ -72,6 +88,7 @@ void Renderer::drawFloatingUpgrades() {
       mk.x = (int16_t)sx;
       mk.y = (int16_t)sy;
       mk.color = col;
+      mk.kind = u.kind;
       continue;
     }
     vec3f pos = toLocal(sim::scaleToLength(u.n, u.r)) + up * (s * 0.5f);

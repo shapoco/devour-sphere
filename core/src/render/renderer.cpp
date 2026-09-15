@@ -75,10 +75,15 @@ void Renderer::init(int width, int height, void *arena, size_t arenaSize) {
   palette_[PAL_LINE_ADD] = vertexColorMaterial(true);
   palette_[PAL_FRAGMENT_WHITE] = flatMaterial(g2::makeColor(235, 240, 245));
   palette_[PAL_FLASH_RED] = flatMaterial(g2::makeColor(255, 60, 60));
+  // Solids: single sided (back faces culled) so that they do not add up
+  // to a bright blob
   palette_[PAL_UP_SHIELD] = addMaterial(upgradeColor(1), 0.8f);
   palette_[PAL_UP_OVERDRIVE] = addMaterial(upgradeColor(2), 0.8f);
   palette_[PAL_UP_THRUSTER] = addMaterial(upgradeColor(3), 0.8f);
   palette_[PAL_UP_CORE] = addMaterial(upgradeColor(4), 0.8f);
+  for (int i = PAL_UP_SHIELD; i <= PAL_UP_CORE; i++) {
+    palette_[i].flags &= ~g3::MaterialFlags::DOUBLE_SIDED;
+  }
   palette_[PAL_LANCE] =
       addMaterial(hueColor(sim::FRAGMENT_HUE, 160, 255), 0.7f);
   palette_[PAL_LANCE_CORE] = addMaterial(g2::makeColor(255, 255, 255), 1.0f);
@@ -287,7 +292,7 @@ void Renderer::updateCamera(float dt) {
     nominalDist = wantDist;
     wantHeight *= 1.6f;
     fwd = rotateAroundAxis(fwd, up, time_ * 0.25f);
-  } else if (st == sim::GameState::DEAD) {
+  } else if (st == sim::GameState::DEAD || !p.alive) {
     // Follow the cruising ghost of the player, a little farther back
     wantDist *= 1.3f;
     nominalDist = wantDist;
@@ -305,9 +310,10 @@ void Renderer::updateCamera(float dt) {
     camValid_ = true;
   } else {
     // The camera eases more slowly during the launch and after death
-    float rate = (st == sim::GameState::LAUNCH || st == sim::GameState::DEAD)
-                     ? 1.5f
-                     : 5.0f;
+    float rate =
+        (st == sim::GameState::LAUNCH || st == sim::GameState::DEAD || !p.alive)
+            ? 1.5f
+            : 5.0f;
     float k = 1.0f - std::exp(-dt * rate);
     camDist_ += (wantDist - camDist_) * k;
     camNominal_ += (nominalDist - camNominal_) * k;
@@ -690,6 +696,7 @@ void Renderer::buildScene() {
       Marker2D &mk = markers_[markerCount_++];
       mk.x = (int16_t)sx;
       mk.y = (int16_t)sy;
+      mk.kind = 0;
       g2::Color col = colorForEntity(c);
       float k = MARKER_MIN_BRIGHTNESS + (1.0f - MARKER_MIN_BRIGHTNESS) * fade;
       mk.color =
@@ -784,7 +791,14 @@ void Renderer::renderBand(const g2::Surface &dst, int y, int h, int dstY) {
   int oy = dstY - y;
   for (int i = 0; i < markerCount_; i++) {
     const Marker2D &mk = markers_[i];
-    // Downward triangle just above the horizon point
+    if (mk.kind != 0) {
+      // Upgrade: its icon just above the horizon point
+      int cy = mk.y + oy - 10;
+      if (cy + 8 < dstY || cy - 8 >= dstY + h) continue;
+      drawUpgradeIcon(g, mk.kind, mk.x, cy, mk.color);
+      continue;
+    }
+    // Enemy: downward triangle just above the horizon point
     int x = mk.x, yb = mk.y + oy - 3, yt = yb - 7;
     if (yb < dstY || yt >= dstY + h) continue;
     g.fillTriangle(x - 5, yt, x + 5, yt, x, yb, mk.color);

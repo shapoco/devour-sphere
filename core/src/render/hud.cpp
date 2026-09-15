@@ -26,9 +26,8 @@ void Renderer::drawCenteredText(g2::Graphics2D &g, int y, const char *text,
   g.drawString(x, y, text);
 }
 
-// Icons of the upgrade kinds, centered at (cx, cy), about 12 px tall
-static void drawUpgradeIcon(g2::Graphics2D &g, int kind, int cx, int cy,
-                            g2::Color c) {
+// Icons of the upgrade kinds, centered at (cx, cy), about 14 px tall
+void drawUpgradeIcon(g2::Graphics2D &g, int kind, int cx, int cy, g2::Color c) {
   switch ((sim::UpgradeKind)kind) {
     case sim::UpgradeKind::SHIELD: {  // tall diamond
       const g2::vec2i pts[4] = {

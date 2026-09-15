@@ -191,8 +191,12 @@ static void testGameplay() {
   hp.hp = 1;
   hp.alive = false;  // simulate death
   h.tick(0);
-  // One spare core: the player respawns smaller with a fresh gauge
+  // One spare core: after watching the wreck the player respawns smaller
+  // with a fresh gauge
   CHECK(h.state() == GameState::PLAYING);
+  CHECK(!h.player().alive);
+  CHECK(h.respawnDelay() > 0);
+  for (int i = 0; i < RESPAWN_DELAY_TICKS + 1; i++) h.tick(0);
   CHECK(h.player().alive);
   CHECK(h.cores() == 0);
   CHECK(h.player().hp == h.player().hpMax);
@@ -255,7 +259,7 @@ static void testCombatAndLayout() {
   e.invincible = 0;
   int32_t hp0 = e.hp;
   bool died = false;
-  for (int t = 0; t < 6 * TICK_RATE && !died; t++) {
+  for (int t = 0; t < 12 * TICK_RATE && !died; t++) {
     // keep both entities still by braking (the enemy is not AI driven
     // while its think tick is skipped: force its controls every tick)
     g.entities[enemy].braking = true;
@@ -265,7 +269,7 @@ static void testCombatAndLayout() {
     died = !g.entities[enemy].alive;
   }
   CHECK(g.debugStats().hits > 0);
-  CHECK(died || g.entities[enemy].hp < hp0 / 2);
+  CHECK(died || g.entities[enemy].hp < hp0 * 3 / 4);
   if (died) CHECK(g.score() > 0);  // a kill scores (ratio depends on growth)
 
   // Upgrades: three (sometimes four) enemies carry one at the start; a

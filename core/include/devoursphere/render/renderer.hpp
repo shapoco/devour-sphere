@@ -42,7 +42,11 @@ struct Gauge2D {
 struct Marker2D {
   int16_t x, y;
   g2::Color color;
+  uint8_t kind;  // 0 = enemy (triangle), else sim::UpgradeKind icon
 };
+
+// Icon of an upgrade kind, centered at (cx, cy), about 14 px tall
+void drawUpgradeIcon(g2::Graphics2D &g, int kind, int cx, int cy, g2::Color c);
 
 // A piece of debris: a small spinning wireframe triangle that shrinks away
 struct Debris {
@@ -57,6 +61,9 @@ struct Debris {
 struct Pickup {
   float age;    // seconds
   float angle;  // radians
+  float duration;
+  float scale;  // radius multiplier
+  g2::Color color;
 };
 
 // Dust streak of the dash effect (world static; streams towards the camera)

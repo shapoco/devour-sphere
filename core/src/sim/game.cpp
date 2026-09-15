@@ -45,6 +45,9 @@ void Game::setState(GameState s) {
 
 int Game::findFreeEntity() const {
   for (int i = 0; i < MAX_ENTITIES; i++) {
+    // The player's slot is never reused (a dead player is a ghost that the
+    // camera follows until the respawn or the game over)
+    if (i == playerIndex_) continue;
     if (!entities[i].alive) return i;
   }
   return -1;
@@ -257,7 +260,15 @@ void Game::checkTransitions() {
       break;
     case GameState::PLAYING:
       if (!p.alive) {
-        if (!respawnPlayer()) setState(GameState::DEAD);
+        // Watch the wreck for a while, then come back (or game over)
+        if (cores_ <= 0) {
+          respawnDelay_ = 0;
+          setState(GameState::DEAD);
+        } else if (respawnDelay_ == 0) {
+          respawnDelay_ = RESPAWN_DELAY_TICKS;
+        } else if (--respawnDelay_ == 0) {
+          respawnPlayer();
+        }
       } else if (p.rank == 1 && stateTimer_ > CLEAR_GRACE_TICKS) {
         events_ |= Event::SPHERE_CLEARED;
         // Clear bonus: full when fast, half when slow
@@ -327,7 +338,7 @@ void Game::tick(uint8_t buttons) {
   }
 
   Entity &p = entities[playerIndex_];
-  if (state_ == GameState::DEAD && !p.alive) {
+  if ((state_ == GameState::DEAD || state_ == GameState::PLAYING) && !p.alive) {
     // The camera keeps following the ghost of the player, cruising ahead
     int32_t ang = (int32_t)(((int64_t)cruiseSpeedForSize(p.size ? p.size : 1)
                              << Q30_SHIFT) /

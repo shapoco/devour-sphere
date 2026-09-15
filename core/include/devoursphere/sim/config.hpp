@@ -112,11 +112,11 @@ constexpr WeaponSpec WEAPON_SPECS[WEAPON_COUNT] = {
     // opponent dies after ~26 vulcan hits, ~6 laser hits or ~14 missile hits
     // speed (FU/s)  life (1/30 s)  cooldown  power  spread  homing (deg/s)
     // radius
-    {fuPerSec(75), (int16_t)ticks30(45), (int16_t)ticks30(4), 10, degToBrad(5),
+    {fuPerSec(75), (int16_t)ticks30(45), (int16_t)ticks30(4), 5, degToBrad(5),
      0, 6},  // VULCAN
-    {fuPerSec(240), (int16_t)ticks30(28), (int16_t)ticks30(14), 40, 0, 0,
+    {fuPerSec(240), (int16_t)ticks30(28), (int16_t)ticks30(14), 20, 0, 0,
      4},  // LASER
-    {fuPerSec(52), (int16_t)ticks30(100), (int16_t)ticks30(12), 18,
+    {fuPerSec(52), (int16_t)ticks30(100), (int16_t)ticks30(12), 10,
      degToBrad(20), turnPerTick(120), 8},  // MISSILE
 };
 
@@ -228,6 +228,7 @@ constexpr int32_t SCORE_UPGRADE_BONUS_BASE = 500;
 constexpr int RESPAWN_SIZE_DIV = 2;
 constexpr int RESPAWN_CANDIDATES = 24;
 constexpr int RESPAWN_INVINCIBLE_TICKS = 2 * TICK_RATE;
+constexpr int RESPAWN_DELAY_TICKS = 3 * TICK_RATE;  // watch the wreck first
 // Difficulty: enemies get stronger with the player's total upgrade level
 constexpr int32_t DIFF_FIRE_PCT_PER_LEVEL = 15;    // fire chance
 constexpr int32_t DIFF_DAMAGE_PCT_PER_LEVEL = 10;  // bullet damage
@@ -238,6 +239,9 @@ constexpr int32_t DIFF_DAMAGE_PCT_PER_LEVEL = 10;  // bullet damage
 // AI_PREY_PLAYER_BIAS_PCT * Shield level percent nearer when choosing prey
 constexpr uint32_t AI_PREY_MIN_RATIO = 4;
 constexpr int32_t AI_PREY_PLAYER_BIAS_PCT = 25;
+// ... and a player up to (1 + AI_PREY_PLAYER_BIG_PER_SHIELD * Shield level)
+// times the enemy's effective size is still attacked rather than fled from
+constexpr int32_t AI_PREY_PLAYER_BIG_PER_SHIELD = 1;
 
 // --- Enemy AI ---------------------------------------------------------------
 constexpr int AI_THINK_INTERVAL =

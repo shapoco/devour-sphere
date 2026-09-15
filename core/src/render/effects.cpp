@@ -92,17 +92,30 @@ void Renderer::updateEffects(float dt) {
   // Pickup flashes (one per tick at most)
   {
     const sim::Game &g = *game_;
-    if ((g.events() & sim::Event::PLAYER_ATE_FRAGMENT) &&
-        g.tickCount() != lastPickupTick_ && g.player().alive) {
+    bool upgraded = (g.events() & sim::Event::PLAYER_UPGRADED) != 0;
+    bool ate = (g.events() & sim::Event::PLAYER_ATE_FRAGMENT) != 0;
+    if ((upgraded || ate) && g.tickCount() != lastPickupTick_ &&
+        g.player().alive) {
       lastPickupTick_ = g.tickCount();
       int slot = pickupCount_ < MAX_PICKUPS ? pickupCount_++ : 0;
-      pickups_[slot].age = 0;
-      pickups_[slot].angle = frand() * 2 * PI;
+      Pickup &pk = pickups_[slot];
+      pk.age = 0;
+      pk.angle = frand() * 2 * PI;
+      if (upgraded) {
+        // Upgrades: a bigger, longer flash in the upgrade's color
+        pk.duration = PICKUP_DURATION * 2.0f;
+        pk.scale = 1.8f;
+        pk.color = upgradeColor((int)g.lastUpgradeKind());
+      } else {
+        pk.duration = PICKUP_DURATION;
+        pk.scale = 1.0f;
+        pk.color = colorForEntity(g.player());
+      }
     }
     for (int i = 0; i < pickupCount_;) {
       pickups_[i].age += dt;
       pickups_[i].angle += dt * 9.0f;
-      if (pickups_[i].age >= PICKUP_DURATION) {
+      if (pickups_[i].age >= pickups_[i].duration) {
         pickups_[i] = pickups_[--pickupCount_];
         continue;
       }
@@ -175,11 +188,11 @@ void Renderer::drawEffects() {
     vec3f up = g3::cross(right, viewDir_);
     float bodyR = sim::fragmentHalfSize(sim::log2Floor(p.size)) / (float)FU *
                   (2.0f + 0.2f * p.fragmentCount);
-    g2::Color color = colorForEntity(p);
     for (int i = 0; i < pickupCount_; i++) {
       const Pickup &pk = pickups_[i];
-      float t = 1.0f - pk.age / PICKUP_DURATION;  // 1 -> 0
-      float radius = bodyR * (0.5f + 5.0f * t);
+      g2::Color color = pk.color;
+      float t = 1.0f - pk.age / pk.duration;  // 1 -> 0
+      float radius = bodyR * (0.5f + 5.0f * t) * pk.scale;
       vec3f pts[3];
       for (int k = 0; k < 3; k++) {
         float a = pk.angle + k * (2 * PI / 3);

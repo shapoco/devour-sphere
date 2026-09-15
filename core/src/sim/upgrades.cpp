@@ -83,6 +83,7 @@ void Game::takeUpgrade(UpgradeKind k) {
       bonus = true;
   }
   if (bonus) addScore((int64_t)SCORE_UPGRADE_BONUS_BASE * 256);
+  lastUpgradeKind_ = k;
   events_ |= Event::PLAYER_UPGRADED;
 }
 

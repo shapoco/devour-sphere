@@ -137,6 +137,9 @@ class Game {
   int chargeGauge() const { return chargeGauge_; }  // 0..256
   int chargeTimer() const { return chargeTimer_; }
   bool lanceActive() const { return chargeState_ == ChargeState::LANCE; }
+  UpgradeKind lastUpgradeKind() const { return lastUpgradeKind_; }
+  // Ticks until the player respawns (0 when alive or game over)
+  int respawnDelay() const { return respawnDelay_; }
   bool ramActive() const { return chargeState_ == ChargeState::RAM; }
   // Geometry of the Lance beam (world units)
   int32_t lanceLength() const;
@@ -167,6 +170,8 @@ class Game {
   int chargeTimer_ = 0;
   int32_t regenAccQ8_ = 0;
   uint8_t ramHit_[MAX_ENTITIES / 8] = {};
+  UpgradeKind lastUpgradeKind_ = UpgradeKind::NONE;
+  int respawnDelay_ = 0;
   void resetUpgrades();
   void assignUpgrades();
   void releaseUpgrade(int idx);
