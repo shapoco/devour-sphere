@@ -233,13 +233,14 @@ constexpr int RESPAWN_DELAY_TICKS = 3 * TICK_RATE;  // watch the wreck first
 constexpr int32_t DIFF_FIRE_PCT_PER_LEVEL = 15;    // fire chance
 constexpr int32_t DIFF_DAMAGE_PCT_PER_LEVEL = 10;  // bullet damage
 
-// Enemies hunt prey no smaller than 1 / AI_PREY_MIN_RATIO of themselves. The
-// player's highest upgrade level L makes the enemies more eager: the ratio is
-// multiplied by 2^L, the player looks AI_PREY_PLAYER_BIAS_PCT * L percent
-// nearer when choosing prey, a player up to (1 + AI_PREY_PLAYER_BIG_PER_LEVEL
-// * L) times the enemy's effective size is attacked rather than fled from,
-// and the player is detected up to (100 + AI_PLAYER_SIGHT_PCT_PER_LEVEL * L)
-// percent of the normal sight
+// Enemies hunt prey no smaller than 1 / AI_PREY_MIN_RATIO of themselves (the
+// player included, so a small player on a fresh sphere is not ganged up on).
+// The player's highest upgrade level L makes the enemies more eager: the
+// player looks AI_PREY_PLAYER_BIAS_PCT * L percent nearer when choosing prey,
+// a player up to (1 + AI_PREY_PLAYER_BIG_PER_LEVEL * L) times the enemy's
+// effective size is attacked rather than fled from, and the player is
+// detected up to (100 + AI_PLAYER_SIGHT_PCT_PER_LEVEL * L) percent of the
+// normal sight
 constexpr uint32_t AI_PREY_MIN_RATIO = 4;
 constexpr int32_t AI_PREY_PLAYER_BIAS_PCT = 25;
 constexpr int32_t AI_PREY_PLAYER_BIG_PER_LEVEL = 1;

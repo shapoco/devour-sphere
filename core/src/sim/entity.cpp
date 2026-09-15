@@ -107,12 +107,12 @@ void Game::updateAi(int idx) {
           (eo * 4 > ec * 5 && d2 < FLEE2) || (eo > ec && d2 < NEAR2);
       if (dangerous && d2 < threatD2) threat = j, threatD2 = d2;
     } else {
-      // Equal or smaller (but not tiny): fair game. An upgraded player is a
-      // worthwhile target even when much smaller, and is preferred.
+      // Equal or smaller (but not tiny): fair game. An upgraded player is
+      // preferred among the valid prey (but a much smaller player is left
+      // alone like anyone else, so a fresh sphere does not gang up on it)
       uint32_t ratio = AI_PREY_MIN_RATIO;
       int64_t weighted = d2;
       if (o.isPlayer) {
-        ratio <<= playerLevel;
         weighted = d2 * 100 / (100 + AI_PREY_PLAYER_BIAS_PCT * playerLevel);
       }
       if ((uint64_t)o.size * ratio >= c.size && weighted < preyD2) {
