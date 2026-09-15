@@ -135,8 +135,8 @@ constexpr uint32_t FOOD_NOTICE_RATIO = 32;
 // drawn towards it
 constexpr int32_t ATTRACT_RANGE_FU = 32;
 constexpr int32_t ATTRACT_ACCEL =
-    FU * 56 / (TICK_RATE * TICK_RATE);  // 56 FU/s^2, per tick per tick
-constexpr int32_t ATTRACT_MAX_SPEED = fuPerSec(120);
+    FU * 128 / (TICK_RATE * TICK_RATE);  // 128 FU/s^2, per tick per tick
+constexpr int32_t ATTRACT_MAX_SPEED = fuPerSec(480);
 
 // --- Floating fragments ------------------------------------------------------
 constexpr int32_t FLOATING_DRIFT_TICKS =
