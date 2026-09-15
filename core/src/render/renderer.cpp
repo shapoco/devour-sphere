@@ -15,6 +15,10 @@ static constexpr float Z_NEAR = 0.4f;    // FU
 static constexpr float Z_FAR = 1800.0f;  // FU
 static constexpr float SPHERE_R = (float)sim::SPHERE_RADIUS / FU;
 static constexpr float BRAD_TO_RAD = 2.0f * PI / 65536.0f;
+// Horizon markers: shown up to this angle around the sphere from the camera
+// (75 degrees, about 670 FU along the surface), fading to this brightness
+static constexpr float MARKER_MAX_ANGLE = 75.0f * PI / 180.0f;
+static constexpr float MARKER_MIN_BRIGHTNESS = 0.25f;
 static constexpr float TILT_MAX = 35.0f * PI / 180.0f;  // fragment dihedral
 
 static g3::colorf toColorf(g2::Color c) {
@@ -551,7 +555,7 @@ void Renderer::drawStars() {
 void Renderer::drawPresenceAuras() {
   const sim::Game &g = *game_;
   if (g.state() != sim::GameState::PLAYING) return;
-  constexpr float RANGE = 60.0f;  // FU
+  constexpr float RANGE = 100.0f;  // FU
   constexpr int SEGMENTS = 12;
   constexpr int MAX_AURAS = 12;
   constexpr float DEPTH = 2.0f;  // view-space distance of the fan
@@ -584,9 +588,9 @@ void Renderer::drawPresenceAuras() {
     float ty = dy != 0 ? hy / std::fabs(dy) : 1e9f;
     float tEdge = tx < ty ? tx : ty;
     float near = 1.0f - d / RANGE;  // 0 far .. 1 close
-    float radiusPx = 30.0f + 100.0f * near;
-    float cx = hx + dx * (tEdge - radiusPx * 0.35f);
-    float cy = hy + dy * (tEdge - radiusPx * 0.35f);
+    float radiusPx = 20.0f + 50.0f * near;
+    float cx = hx + dx * tEdge;
+    float cy = hy + dy * tEdge;
     // Screen -> view space at DEPTH
     float vx = (cx / w_ * 2.0f - 1.0f) * tanX * DEPTH;
     float vy = (1.0f - cy / h_ * 2.0f) * tanY * DEPTH;
@@ -653,7 +657,16 @@ void Renderer::buildScene() {
           c.size > ps * 4) {
         continue;
       }
-      vec3f d = up - camUnit_ * g3::dot(up, camUnit_);
+      // Fade with the distance along the surface; enemies farther than
+      // MARKER_MAX_ANGLE around the sphere are not shown at all
+      float cosDist = g3::dot(up, camUnit_);
+      float ang = std::acos(cosDist > 1 ? 1 : (cosDist < -1 ? -1 : cosDist));
+      if (ang > MARKER_MAX_ANGLE) continue;
+      float fade =
+          1.0f - (ang - horizonAngle_) / (MARKER_MAX_ANGLE - horizonAngle_);
+      if (fade < 0) fade = 0;
+      if (fade > 1) fade = 1;
+      vec3f d = up - camUnit_ * cosDist;
       float len = g3::length(d);
       if (len < 1e-5f) continue;
       d = d * (1.0f / len);
@@ -666,7 +679,11 @@ void Renderer::buildScene() {
       Marker2D &mk = markers_[markerCount_++];
       mk.x = (int16_t)sx;
       mk.y = (int16_t)sy;
-      mk.color = colorForEntity(c);
+      g2::Color col = colorForEntity(c);
+      float k = MARKER_MIN_BRIGHTNESS + (1.0f - MARKER_MIN_BRIGHTNESS) * fade;
+      mk.color =
+          g2::makeColor((int)(g2::colorR(col) * k), (int)(g2::colorG(col) * k),
+                        (int)(g2::colorB(col) * k));
       continue;
     }
     vec3f pos = toLocal(sim::scaleToLength(c.frame.n, c.r));
