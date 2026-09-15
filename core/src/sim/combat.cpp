@@ -311,6 +311,7 @@ void Game::transferSize(int from, int to) {
   Vec3 rel = worldPos(S.frame.n, S.r) - worldPos(B.frame.n, B.r);
   setEntitySize(B, B.size + t);
   syncFragments(B, dotQ30(rel, B.frame.right()), dotQ30(rel, B.frame.t));
+  healBySize(B, t);  // the absorber heals by what it took
   setEntitySize(S, S.size - t);
   if (S.size == 0) {
     releaseUpgrade(from);

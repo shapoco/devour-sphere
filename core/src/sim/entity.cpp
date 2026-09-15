@@ -445,16 +445,20 @@ void Game::pushFragment(Entity &c, int sizeLog2, int32_t lx, int32_t ly) {
   p.y = clampI32(-lim, lim, ly);
   p.vx = p.vy = 0;
   p.sizeLog2 = (uint8_t)clampI32(0, MAX_SIZE_LOG2, sizeLog2);
-  healByFragment(c, sizeLog2);
+  // (no healing here: this is only the visual decomposition, which is also
+  // rebuilt when a body shrinks)
 }
 
-// Touching a fragment heals in proportion to its size
-void Game::healByFragment(Entity &c, int sizeLog2) {
-  int64_t heal =
-      (int64_t)HP_PER_SIZE * HEAL_PER_FRAGMENT_MUL * (1u << sizeLog2);
+// Taking in size heals in proportion to it (eating, absorbing an enemy)
+void Game::healBySize(Entity &c, uint32_t sizeUnits) {
+  int64_t heal = (int64_t)HP_PER_SIZE * HEAL_PER_FRAGMENT_MUL * sizeUnits;
   if (heal > c.hpMax) heal = c.hpMax;
   c.hp += (int32_t)heal;
   if (c.hp > c.hpMax) c.hp = c.hpMax;
+}
+
+void Game::healByFragment(Entity &c, int sizeLog2) {
+  healBySize(c, 1u << sizeLog2);
 }
 
 // Change the size, keeping the health ratio
@@ -471,6 +475,7 @@ void Game::addFragmentToEntity(Entity &c, int sizeLog2, int32_t lx,
   int k = clampI32(0, MAX_SIZE_LOG2, sizeLog2);
   setEntitySize(c, c.size + (1u << k));
   pushFragment(c, k, lx, ly);
+  healByFragment(c, k);
 }
 
 // Bring the visual decomposition back in line with `size` after it changed

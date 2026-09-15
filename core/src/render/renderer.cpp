@@ -406,6 +406,14 @@ void Renderer::drawEntity(const sim::Entity &c, const vec3f &pos, float px,
     return;
   }
   if (full) {
+    bool carrier = !c.isPlayer && c.upgrade != (uint8_t)sim::UpgradeKind::NONE;
+    g2::Color outline = g2::makeColor(0, 0, 0);
+    if (carrier) {
+      g2::Color base = colorForEntity(c);
+      auto up8 = [](int v) { return v + (255 - v) * 2 / 5; };
+      outline = g2::makeColor(up8(g2::colorR(base)), up8(g2::colorG(base)),
+                              up8(g2::colorB(base)));
+    }
     // Dihedral: fragments tilt outwards (around the heading) the farther
     // they are from the body's axis, so the body looks like it has volume
     float bodyR = c.bodyRadius * k * 1.4f;
@@ -428,7 +436,15 @@ void Renderer::drawEntity(const sim::Entity &c, const vec3f &pos, float px,
         dx /= len, dy /= len;
         vec3f dir = rightT * dx + fwd * dy;
         vec3f perp = rightT * (-dy) + fwd * dx;
-        putKite(pos + right * x + fwd * ly, dir, perp, s, s * 2.5f, bodyMat);
+        vec3f kc = pos + right * x + fwd * ly;
+        putKite(kc, dir, perp, s, s * 2.5f, bodyMat);
+        if (carrier) {
+          // A slightly brighter outline shows that this enemy carries an
+          // upgrade (only visible up close)
+          const vec3f pts[4] = {kc + dir * (s * 2.5f), kc + perp * s,
+                                kc - dir * s, kc - perp * s};
+          putLineLoop3(pts, 4, outline, palette_[PAL_LINE]);
+        }
       }
     }
     // Core (white, pointing forward)

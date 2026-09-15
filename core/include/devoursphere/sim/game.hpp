@@ -235,6 +235,7 @@ class Game {
   void setEntitySize(Entity &e, uint32_t size);
   void pushFragment(Entity &e, int sizeLog2, int32_t lx, int32_t ly);
   void healByFragment(Entity &e, int sizeLog2);
+  void healBySize(Entity &e, uint32_t sizeUnits);
   void syncFragments(Entity &e, int32_t lx, int32_t ly);
   void spawnFloatingFragment(const Vec3 &n, int32_t r, int sizeLog2,
                              const Vec3 &drift, int owner = -1);
