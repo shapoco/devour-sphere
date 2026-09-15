@@ -74,6 +74,7 @@ void Renderer::init(int width, int height, void *arena, size_t arenaSize) {
   palette_[PAL_LINE] = vertexColorMaterial(false);
   palette_[PAL_LINE_ADD] = vertexColorMaterial(true);
   palette_[PAL_FRAGMENT_WHITE] = flatMaterial(g2::makeColor(235, 240, 245));
+  palette_[PAL_FLASH_RED] = flatMaterial(g2::makeColor(255, 60, 60));
 
   camValid_ = false;
   originValid_ = false;
@@ -382,7 +383,9 @@ void Renderer::drawEntity(const sim::Entity &c, const vec3f &pos, float px,
   // Hit flash: the whole body turns white for a moment
   int idx = (int)(&c - game_->entities);
   bool flashing = idx >= 0 && idx < sim::MAX_ENTITIES && flash_[idx] > 0;
-  const g3::Material &bodyMat = flashing ? palette_[PAL_CORE] : m;
+  // (the player flashes red, everyone else white)
+  const g3::Material &bodyMat =
+      flashing ? palette_[c.isPlayer ? PAL_FLASH_RED : PAL_CORE] : m;
 
   if (blink) {
     entitiesDrawn_++;

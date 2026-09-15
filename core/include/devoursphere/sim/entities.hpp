@@ -102,7 +102,9 @@ struct FloatingFragment {
   Vec3 drift;  // tangential velocity (units per tick, decays)
   uint8_t sizeLog2;
   int16_t age;
-  uint16_t spin;  // render hint (brad)
+  uint16_t spin;       // render hint (brad)
+  int16_t owner;       // entity that lost it (-1 = none)
+  int16_t ownerGuard;  // ticks during which the owner cannot take it back
 };
 
 struct Bullet {

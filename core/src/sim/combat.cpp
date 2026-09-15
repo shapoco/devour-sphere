@@ -163,9 +163,45 @@ void Game::updateBullets() {
   }
 }
 
+// Critical hit: a fragment of about a tenth of the body breaks off and
+// flies away from `from` (the shooter's position)
+void Game::criticalHit(int idx, const Vec3 &from) {
+  Entity &c = entities[idx];
+  uint32_t target = c.size / CRIT_FRACTION_DIV;
+  if (target < 1) target = 1;
+  int k = log2Floor(target);
+  uint32_t piece = 1u << k;
+  if (piece >= c.size) return;  // would be the whole body
+  // Eject: the fragment leaves from the far side of the body
+  Vec3 center = worldPos(c.frame.n, c.r);
+  Vec3 away = center - worldPos(from, c.r);
+  Vec3 dir = normalizeQ30(away - scaleQ30(c.frame.n, dotQ30(away, c.frame.n)));
+  if (dotQ30(dir, dir) < (Q30_ONE >> 2)) dir = c.frame.right();
+  Vec3 start = center + scaleToLength(dir, c.bodyRadius + FU);
+  spawnFloatingFragment(normalizeQ30(start), c.r, k,
+                        scaleToLength(dir, CRIT_EJECT_SPEED), idx);
+  setEntitySize(c, c.size - piece);
+  syncFragments(c, 0, 0);
+  stats_.crits++;
+}
+
 void Game::damageEntity(int idx, int32_t dmg, int attacker) {
   Entity &c = entities[idx];
   if (!c.alive || c.invincible > 0) return;
+  // Critical hit: knocks a fragment out instead of taking health
+  if (rng_.below(CRIT_CHANCE_DEN) == 0 && c.size > 1) {
+    Vec3 from = attacker >= 0 && attacker < MAX_ENTITIES
+                    ? entities[attacker].frame.n
+                    : c.frame.n;
+    criticalHit(idx, from);
+    if (c.isPlayer) {
+      events_ |= Event::PLAYER_HIT;
+      pushEffect(EffectKind::PLAYER_HIT, idx, c.frame.n, c.r, dmg * 4);
+    } else if (attacker == playerIndex_) {
+      pushEffect(EffectKind::ENEMY_HIT, idx, c.frame.n, c.r, dmg * 4);
+    }
+    return;
+  }
   // The player never loses more than PLAYER_MAX_HIT_PERCENT of the gauge
   // from one hit (no one-shot kills by huge enemies)
   if (c.isPlayer) {
@@ -277,7 +313,7 @@ void Game::transferSize(int from, int to) {
 }
 
 void Game::spawnFloatingFragment(const Vec3 &n, int32_t r, int sizeLog2,
-                                 const Vec3 &drift) {
+                                 const Vec3 &drift, int owner) {
   int slot = -1, oldest = -1;
   for (int i = 0; i < MAX_FLOATING_FRAGMENTS; i++) {
     if (!floatingFragments[i].alive) {
@@ -295,6 +331,8 @@ void Game::spawnFloatingFragment(const Vec3 &n, int32_t r, int sizeLog2,
   fp.drift = drift;
   fp.sizeLog2 = (uint8_t)sizeLog2;
   fp.age = 0;
+  fp.owner = (int16_t)owner;
+  fp.ownerGuard = (int16_t)(owner >= 0 ? FRAGMENT_OWNER_GUARD_TICKS : 0);
   fp.spin = rng_.brad();
 }
 
@@ -322,9 +360,12 @@ void Game::updateFloatingFragments() {
     FloatingFragment &fp = floatingFragments[i];
     if (!fp.alive) continue;
     if (fp.age < INT16_MAX) fp.age++;
-    // Fragments near the player are drawn towards it
+    if (fp.ownerGuard > 0) fp.ownerGuard--;
+    // Fragments near the player are drawn towards it (not ones it just lost)
     int64_t d2;
-    if (attract && tangentialDist2(fp.n, p.frame.n, attractRange, d2) &&
+    bool guarded = fp.ownerGuard > 0 && fp.owner == playerIndex_;
+    if (attract && !guarded &&
+        tangentialDist2(fp.n, p.frame.n, attractRange, d2) &&
         d2 < (int64_t)attractRange * attractRange) {
       Vec3 dir = normalizeQ30(playerPos - worldPos(fp.n, fp.r));
       fp.drift = fp.drift + scaleToLength(dir, ATTRACT_ACCEL);
@@ -433,6 +474,7 @@ void Game::handleEating() {
       FloatingFragment &fp = floatingFragments[fragmentOrder_[k]];
       if (fp.n.z > c.frame.n.z + dz) break;
       if (!fp.alive) continue;
+      if (fp.ownerGuard > 0 && fp.owner == i) continue;  // just lost it
       int32_t lim = c.bodyRadius + fragmentHalfSize(fp.sizeLog2);
       int64_t d2;
       if (!tangentialDist2(c.frame.n, fp.n, lim, d2)) continue;

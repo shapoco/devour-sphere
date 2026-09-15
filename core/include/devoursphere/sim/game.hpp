@@ -52,7 +52,7 @@ struct EffectEvent {
 
 // Counters for tuning and tests (never reset except by reset())
 struct DebugStats {
-  uint32_t shots, hits, kills, absorbs, fragmentsEaten, fragmentsHealed;
+  uint32_t shots, hits, kills, absorbs, fragmentsEaten, fragmentsHealed, crits;
 };
 
 extern const int LAUNCH_TICKS;  // length of the LAUNCH state
@@ -173,7 +173,8 @@ class Game {
   void healByFragment(Entity &e, int sizeLog2);
   void syncFragments(Entity &e, int32_t lx, int32_t ly);
   void spawnFloatingFragment(const Vec3 &n, int32_t r, int sizeLog2,
-                             const Vec3 &drift);
+                             const Vec3 &drift, int owner = -1);
+  void criticalHit(int idx, const Vec3 &from);
   void updateRanks();
   void updateRespawns();
   void spawnFood(bool farFromPlayer);

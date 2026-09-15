@@ -449,7 +449,21 @@ void Game::syncFragments(Entity &c, int32_t lx, int32_t ly) {
   uint32_t sum = 0;
   for (int i = 0; i < c.fragmentCount; i++)
     sum += 1u << c.fragments[i].sizeLog2;
-  while (sum > c.size && c.fragmentCount > 1) {
+  while (sum > c.size) {
+    if (c.fragmentCount <= 1) {
+      // A single fragment that is too big: split it in two halves so that
+      // one of them can go
+      Fragment &f = c.fragments[0];
+      if (c.fragmentCount < 1 || f.sizeLog2 == 0 ||
+          c.fragmentCount >= MAX_FRAGMENTS_PER_ENTITY) {
+        break;
+      }
+      f.sizeLog2--;
+      Fragment half = f;
+      half.x = f.x + fragmentHalfSize(f.sizeLog2);
+      c.fragments[c.fragmentCount++] = half;
+      continue;
+    }
     int a = 0;
     for (int i = 1; i < c.fragmentCount; i++) {
       if (c.fragments[i].sizeLog2 < c.fragments[a].sizeLog2) a = i;

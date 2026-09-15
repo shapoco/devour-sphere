@@ -166,6 +166,7 @@ class Renderer {
     PAL_LINE,      // vertex colored lines and points (wireframe, stars, debris)
     PAL_LINE_ADD,  // vertex colored additive lines (dash dust)
     PAL_FRAGMENT_WHITE,  // floating fragments the player cannot eat (heal only)
+    PAL_FLASH_RED,       // the player's hit flash
   };
   g3::Material palette_[PALETTE_SIZE];
 

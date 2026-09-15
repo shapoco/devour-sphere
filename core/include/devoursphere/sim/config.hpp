@@ -82,6 +82,14 @@ constexpr int32_t HP_PER_SIZE = 32;  // hpMax = HP_PER_SIZE * size
 constexpr int32_t HEAL_PER_FRAGMENT_MUL = 3;
 // One bullet hit takes at most this much of the player's gauge
 constexpr int32_t PLAYER_MAX_HIT_PERCENT = 30;
+// Critical hit: one hit in CRIT_CHANCE_DEN knocks a fragment of about
+// size / CRIT_FRACTION_DIV out of the body instead of taking health. The
+// fragment flies off at CRIT_EJECT_SPEED and its former owner cannot take it
+// back for FRAGMENT_OWNER_GUARD_TICKS.
+constexpr uint32_t CRIT_CHANCE_DEN = 30;
+constexpr uint32_t CRIT_FRACTION_DIV = 10;
+constexpr int32_t CRIT_EJECT_SPEED = fuPerSec(90);
+constexpr int FRAGMENT_OWNER_GUARD_TICKS = 3 * TICK_RATE;
 constexpr int ABSORB_GUARD_TICKS =
     TICK_RATE;  // no absorption right after eating
 

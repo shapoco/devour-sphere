@@ -180,6 +180,7 @@ static void testGameplay() {
   }
   CHECK(sawFragment);
   CHECK(deaths > 0);
+  CHECK(f.debugStats().crits > 0);  // ~1 in 30 hits knocks a fragment out
 
   // Kill the player to reach the DEAD state, then restart
   Game h;
