@@ -314,6 +314,18 @@ void Game::transferSize(int from, int to) {
   setEntitySize(S, S.size - t);
   if (S.size == 0) {
     releaseUpgrade(from);
+    // Devoured: the same burst of debris as a kill (when near the player)
+    {
+      const Entity &p = entities[playerIndex_];
+      int64_t d2;
+      if (S.isPlayer) {
+        pushEffect(EffectKind::PLAYER_KILLED, from, S.frame.n, S.r, (int32_t)t);
+      } else if (tangentialDist2(S.frame.n, p.frame.n, EFFECT_RANGE_FU * FU,
+                                 d2)) {
+        pushEffect(EffectKind::ENTITY_KILLED, from, S.frame.n, S.r,
+                   (int32_t)B.size / 8);
+      }
+    }
     S.alive = false;
     S.hp = 0;
     stats_.absorbs++;

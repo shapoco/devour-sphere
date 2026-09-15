@@ -132,6 +132,12 @@ class Game {
   int totalUpgradeLevel() const {
     return upgradeLevels_[0] + upgradeLevels_[1] + upgradeLevels_[2];
   }
+  int maxUpgradeLevel() const {
+    int m = upgradeLevels_[0];
+    if (upgradeLevels_[1] > m) m = upgradeLevels_[1];
+    if (upgradeLevels_[2] > m) m = upgradeLevels_[2];
+    return m;
+  }
   int cores() const { return cores_; }
   ChargeState chargeState() const { return chargeState_; }
   int chargeGauge() const { return chargeGauge_; }  // 0..256

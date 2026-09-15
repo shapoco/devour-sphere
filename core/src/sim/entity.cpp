@@ -71,20 +71,28 @@ void Game::updateAi(int idx) {
   int64_t threatD2 = INT64_MAX;
   int prey = -1;
   int64_t preyD2 = INT64_MAX;
-  int64_t sightDz = (int64_t)sight << (Q30_SHIFT - SPHERE_RADIUS_SHIFT);
+  // The player's best upgrade level makes every enemy more eager: seen from
+  // farther away, attacked even when bigger, preferred over other prey
+  int playerLevel = maxUpgradeLevel();
+  int32_t playerSight =
+      sight * (100 + AI_PLAYER_SIGHT_PCT_PER_LEVEL * playerLevel) / 100;
+  int32_t scanSight = playerSight > sight ? playerSight : sight;
+  int64_t sightDz = (int64_t)scanSight << (Q30_SHIFT - SPHERE_RADIUS_SHIFT);
   for (int k = entityLowerBound(c.frame.n.z - sightDz); k < entityOrderCount_;
        k++) {
     int j = entityOrder_[k];
     const Entity &o = entities[j];
     if (o.frame.n.z > c.frame.n.z + sightDz) break;
     if (j == idx || !o.alive) continue;
+    if (o.isPlayer && c.isPlayer) continue;
     int64_t d2;
-    if (!tangentialDist2(c.frame.n, o.frame.n, sight, d2)) continue;
-    // A well shielded player is attacked even when bigger than us
+    if (!tangentialDist2(c.frame.n, o.frame.n, o.isPlayer ? playerSight : sight,
+                         d2)) {
+      continue;
+    }
     int64_t preyLimit = effectiveSizeQ8(c);
     if (o.isPlayer) {
-      preyLimit *=
-          1 + AI_PREY_PLAYER_BIG_PER_SHIELD * upgradeLevel(UpgradeKind::SHIELD);
+      preyLimit *= 1 + AI_PREY_PLAYER_BIG_PER_LEVEL * playerLevel;
     }
     if (effectiveSizeQ8(o) > preyLimit) {
       // Bigger attackers are a threat in sight (when they can attack);
@@ -99,14 +107,13 @@ void Game::updateAi(int idx) {
           (eo * 4 > ec * 5 && d2 < FLEE2) || (eo > ec && d2 < NEAR2);
       if (dangerous && d2 < threatD2) threat = j, threatD2 = d2;
     } else {
-      // Equal or smaller (but not tiny): fair game. A shielded player is a
+      // Equal or smaller (but not tiny): fair game. An upgraded player is a
       // worthwhile target even when much smaller, and is preferred.
       uint32_t ratio = AI_PREY_MIN_RATIO;
       int64_t weighted = d2;
       if (o.isPlayer) {
-        int shield = upgradeLevel(UpgradeKind::SHIELD);
-        ratio <<= shield;
-        weighted = d2 * 100 / (100 + AI_PREY_PLAYER_BIAS_PCT * shield);
+        ratio <<= playerLevel;
+        weighted = d2 * 100 / (100 + AI_PREY_PLAYER_BIAS_PCT * playerLevel);
       }
       if ((uint64_t)o.size * ratio >= c.size && weighted < preyD2) {
         prey = j, preyD2 = weighted;

@@ -79,7 +79,7 @@ constexpr int32_t HP_PER_SIZE = 32;  // hpMax = HP_PER_SIZE * size
 // per unit of fragment size, i.e. a fragment of 1/32 of the body heals ~9%.
 // Fragments too small to be eaten (< size / FOOD_NOTICE_RATIO) are consumed
 // for their health only.
-constexpr int32_t HEAL_PER_FRAGMENT_MUL = 3;
+constexpr int32_t HEAL_PER_FRAGMENT_MUL = 1;
 // One bullet hit takes at most this much of the player's gauge
 constexpr int32_t PLAYER_MAX_HIT_PERCENT = 30;
 // Critical hit: one hit in CRIT_CHANCE_DEN knocks a fragment of about
@@ -233,15 +233,17 @@ constexpr int RESPAWN_DELAY_TICKS = 3 * TICK_RATE;  // watch the wreck first
 constexpr int32_t DIFF_FIRE_PCT_PER_LEVEL = 15;    // fire chance
 constexpr int32_t DIFF_DAMAGE_PCT_PER_LEVEL = 10;  // bullet damage
 
-// Enemies hunt prey no smaller than 1 / AI_PREY_MIN_RATIO of themselves; for
-// the player that ratio is multiplied by 2^(Shield level) (a shielded player
-// is worth attacking even for giants), and the player looks
-// AI_PREY_PLAYER_BIAS_PCT * Shield level percent nearer when choosing prey
+// Enemies hunt prey no smaller than 1 / AI_PREY_MIN_RATIO of themselves. The
+// player's highest upgrade level L makes the enemies more eager: the ratio is
+// multiplied by 2^L, the player looks AI_PREY_PLAYER_BIAS_PCT * L percent
+// nearer when choosing prey, a player up to (1 + AI_PREY_PLAYER_BIG_PER_LEVEL
+// * L) times the enemy's effective size is attacked rather than fled from,
+// and the player is detected up to (100 + AI_PLAYER_SIGHT_PCT_PER_LEVEL * L)
+// percent of the normal sight
 constexpr uint32_t AI_PREY_MIN_RATIO = 4;
 constexpr int32_t AI_PREY_PLAYER_BIAS_PCT = 25;
-// ... and a player up to (1 + AI_PREY_PLAYER_BIG_PER_SHIELD * Shield level)
-// times the enemy's effective size is still attacked rather than fled from
-constexpr int32_t AI_PREY_PLAYER_BIG_PER_SHIELD = 1;
+constexpr int32_t AI_PREY_PLAYER_BIG_PER_LEVEL = 1;
+constexpr int32_t AI_PLAYER_SIGHT_PCT_PER_LEVEL = 50;
 
 // --- Enemy AI ---------------------------------------------------------------
 constexpr int AI_THINK_INTERVAL =
