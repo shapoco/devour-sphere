@@ -19,6 +19,8 @@ static constexpr float BRAD_TO_RAD = 2.0f * PI / 65536.0f;
 // (75 degrees, about 670 FU along the surface), fading to this brightness
 static constexpr float MARKER_MAX_ANGLE = 75.0f * PI / 180.0f;
 static constexpr float MARKER_MIN_BRIGHTNESS = 0.25f;
+// With this rank or better, markers of every bigger enemy are always shown
+static constexpr int MARKER_ALWAYS_RANK = 5;
 static constexpr float TILT_MAX = 35.0f * PI / 180.0f;  // fragment dihedral
 
 static g3::colorf toColorf(g2::Color c) {
@@ -407,13 +409,7 @@ void Renderer::drawEntity(const sim::Entity &c, const vec3f &pos, float px,
   }
   if (full) {
     bool carrier = !c.isPlayer && c.upgrade != (uint8_t)sim::UpgradeKind::NONE;
-    g2::Color outline = g2::makeColor(0, 0, 0);
-    if (carrier) {
-      g2::Color base = colorForEntity(c);
-      auto up8 = [](int v) { return v + (255 - v) * 2 / 5; };
-      outline = g2::makeColor(up8(g2::colorR(base)), up8(g2::colorG(base)),
-                              up8(g2::colorB(base)));
-    }
+    g2::Color outline = g2::makeColor(255, 255, 255);  // carriers: white
     // Dihedral: fragments tilt outwards (around the heading) the farther
     // they are from the body's axis, so the body looks like it has volume
     float bodyR = c.bodyRadius * k * 1.4f;
@@ -691,10 +687,13 @@ void Renderer::buildScene() {
         continue;
       }
       // Fade with the distance along the surface; enemies farther than
-      // MARKER_MAX_ANGLE around the sphere are not shown at all
+      // MARKER_MAX_ANGLE around the sphere are not shown at all, except
+      // the bigger ones when the player is close to the top (rank <= 5):
+      // those are the remaining targets, wherever they are
+      bool remaining = g.playerRank() <= MARKER_ALWAYS_RANK && c.size > ps;
       float cosDist = g3::dot(up, camUnit_);
       float ang = std::acos(cosDist > 1 ? 1 : (cosDist < -1 ? -1 : cosDist));
-      if (ang > MARKER_MAX_ANGLE) continue;
+      if (ang > MARKER_MAX_ANGLE && !remaining) continue;
       float fade =
           1.0f - (ang - horizonAngle_) / (MARKER_MAX_ANGLE - horizonAngle_);
       if (fade < 0) fade = 0;
