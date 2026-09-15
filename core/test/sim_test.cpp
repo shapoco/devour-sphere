@@ -191,6 +191,14 @@ static void testGameplay() {
   hp.hp = 1;
   hp.alive = false;  // simulate death
   h.tick(0);
+  // One spare core: the player respawns smaller with a fresh gauge
+  CHECK(h.state() == GameState::PLAYING);
+  CHECK(h.player().alive);
+  CHECK(h.cores() == 0);
+  CHECK(h.player().hp == h.player().hpMax);
+  // Second death: game over
+  h.entities[h.playerIndex()].alive = false;
+  h.tick(0);
   CHECK(h.state() == GameState::DEAD);
   for (int i = 0; i < 2 * TICK_RATE + 10; i++) h.tick(0);
   h.tick(Button::A);
@@ -259,6 +267,41 @@ static void testCombatAndLayout() {
   CHECK(g.debugStats().hits > 0);
   CHECK(died || g.entities[enemy].hp < hp0 / 2);
   if (died) CHECK(g.score() > 0);  // a kill scores (ratio depends on growth)
+
+  // Upgrades: three (sometimes four) enemies carry one at the start; a
+  // floating one raises the level when the player touches it
+  {
+    Game u;
+    u.reset(8);
+    u.debugStartSphere(1, 0);
+    int carriers = 0;
+    for (int i = 0; i < MAX_ENTITIES; i++) {
+      if (u.entities[i].alive &&
+          u.entities[i].upgrade != (uint8_t)UpgradeKind::NONE)
+        carriers++;
+    }
+    CHECK(carriers == 3 || carriers == 4);
+    CHECK(u.cores() == CORES_START);
+    CHECK(u.upgradeLevel(UpgradeKind::SHIELD) == 0);
+    const Entity &p = u.player();
+    u.floatingUpgrades[0] = {
+        true, (uint8_t)UpgradeKind::SHIELD, p.frame.n, p.r, {0, 0, 0}, 0};
+    u.tick(Button::DOWN);
+    CHECK(u.upgradeLevel(UpgradeKind::SHIELD) == 1);
+    CHECK(!u.floatingUpgrades[0].alive);
+    // Extra cores cap at CORES_MAX; beyond that the pickup scores
+    for (int n = 0; n < 4; n++) {
+      u.floatingUpgrades[0] = {true,
+                               (uint8_t)UpgradeKind::EXTRA_CORE,
+                               u.player().frame.n,
+                               u.player().r,
+                               {0, 0, 0},
+                               0};
+      u.tick(Button::DOWN);
+    }
+    CHECK(u.cores() == CORES_MAX);
+    CHECK(u.score() > 0);
+  }
 
   // Contact: size flows gradually from the smaller entity to the bigger one
   {

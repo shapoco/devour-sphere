@@ -7,6 +7,7 @@ add_library(devoursphere_sim STATIC
     src/sim/game.cpp
     src/sim/entity.cpp
     src/sim/combat.cpp
+    src/sim/upgrades.cpp
 )
 add_library(devoursphere::sim ALIAS devoursphere_sim)
 target_include_directories(devoursphere_sim PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
@@ -17,6 +18,7 @@ add_library(devoursphere_render STATIC
     src/render/renderer.cpp
     src/render/sphere.cpp
     src/render/effects.cpp
+    src/render/upgrades.cpp
     src/render/hud.cpp
 )
 add_library(devoursphere::render ALIAS devoursphere_render)

@@ -65,6 +65,9 @@ struct Dust {
   float age;
 };
 
+// Colors of the upgrade kinds (index = sim::UpgradeKind)
+g2::Color upgradeColor(int kind);
+
 struct Camera {
   g3::vec3f eye, target, up;  // FU, relative to the player's position
   float fovY;                 // radians
@@ -77,7 +80,7 @@ struct RenderStats {
 
 class Renderer {
  public:
-  static constexpr int PALETTE_SIZE = 16;
+  static constexpr int PALETTE_SIZE = 24;
   static constexpr int MAX_SPHERE_LEVEL = 7;
   static constexpr int MAX_GAUGES = 64;
   static constexpr int MAX_MARKERS = 32;
@@ -167,6 +170,12 @@ class Renderer {
     PAL_LINE_ADD,  // vertex colored additive lines (dash dust)
     PAL_FRAGMENT_WHITE,  // floating fragments the player cannot eat (heal only)
     PAL_FLASH_RED,       // the player's hit flash
+    PAL_UP_SHIELD,       // floating upgrades (additive solids)
+    PAL_UP_OVERDRIVE,
+    PAL_UP_THRUSTER,
+    PAL_UP_CORE,
+    PAL_LANCE,  // the Lance beam
+    PAL_LANCE_CORE,
   };
   g3::Material palette_[PALETTE_SIZE];
 
@@ -191,6 +200,11 @@ class Renderer {
   void drawBullets();
   void drawStars();
   void drawPresenceAuras();
+  // upgrades.cpp
+  void drawFloatingUpgrades();
+  void drawLance();
+  void putSolid(const g3::vec3f *verts, int nv, const uint16_t *idx, int ni,
+                const g3::Material &m);
   const g3::Material &materialForEntity(const sim::Entity &c) const;
   g2::Color colorForEntity(const sim::Entity &c) const;
 
@@ -209,6 +223,7 @@ class Renderer {
 
   // hud.cpp
   void drawHud(g2::Graphics2D &g, int offsetY);
+  void drawUpgradeStatus(g2::Graphics2D &g, int offsetY);
   void drawCenteredText(g2::Graphics2D &g, int y, const char *text,
                         g2::Color color);
 };

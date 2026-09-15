@@ -166,7 +166,11 @@ void Game::updateAi(int idx) {
       int lv = sphereLevel_ - 1;
       if (lv >= AI_FIRE_CHANCE_LEVELS) lv = AI_FIRE_CHANCE_LEVELS - 1;
       if (lv < 0) lv = 0;
-      c.firing = c.isPlayer || rng_.below(256) < AI_FIRE_CHANCE[lv];
+      int32_t chance = AI_FIRE_CHANCE[lv] *
+                       (100 + DIFF_FIRE_PCT_PER_LEVEL * totalUpgradeLevel()) /
+                       100;
+      if (chance > 255) chance = 255;
+      c.firing = c.isPlayer || (int32_t)rng_.below(256) < chance;
     }
     c.dashing = sphereLevel_ >= 3 && preyD2 > (int64_t)(40 * FU) * (40 * FU) &&
                 c.hp > (c.hpMax >> 1);
@@ -190,6 +194,10 @@ void Game::moveEntity(Entity &c) {
   }
   int32_t dashExtra =
       cruise * (DASH_SPEED_NUM - DASH_SPEED_DEN) / DASH_SPEED_DEN;
+  if (c.isPlayer) {
+    dashExtra = dashExtra *
+                THRUSTER_DASH_PCT[upgradeLevel(UpgradeKind::THRUSTER)] / 100;
+  }
   int32_t target = cruise + (int32_t)(((int64_t)dashExtra * c.dashLevel) >> 8);
   uint16_t rate = TURN_RATE;
   if (c.braking) {

@@ -50,7 +50,14 @@ void Game::fireWeapon(int idx) {
   }
   if (slot < 0) return;
 
-  c.fireCooldown = ws.cooldown;
+  int32_t cooldown = ws.cooldown;
+  if (c.isPlayer && chargeState_ != ChargeState::COOLDOWN) {
+    cooldown = cooldown *
+               OVERDRIVE_COOLDOWN_PCT[upgradeLevel(UpgradeKind::OVERDRIVE)] /
+               100;
+  }
+  if (cooldown < 1) cooldown = 1;
+  c.fireCooldown = (int16_t)cooldown;
   Bullet &b = bullets[slot];
   b.alive = true;
   Vec3 muzzle = worldPos(c.frame.n, c.r) + scaleToLength(c.frame.t, c.coreY);
@@ -185,11 +192,22 @@ void Game::criticalHit(int idx, const Vec3 &from) {
   stats_.crits++;
 }
 
-void Game::damageEntity(int idx, int32_t dmg, int attacker) {
+void Game::damageEntity(int idx, int32_t dmg, int attacker, bool allowCrit) {
   Entity &c = entities[idx];
   if (!c.alive || c.invincible > 0) return;
+  if (c.isPlayer) {
+    if (chargeState_ == ChargeState::RAM) return;  // ramming: invulnerable
+    // Shield reduces the damage
+    dmg = (int32_t)((int64_t)dmg *
+                    SHIELD_DAMAGE_PCT[upgradeLevel(UpgradeKind::SHIELD)] / 100);
+  } else if (attacker >= 0 && attacker < MAX_ENTITIES &&
+             !entities[attacker].isPlayer) {
+    // Enemy fire scales with the player's upgrades (difficulty)
+    dmg = (int32_t)((int64_t)dmg * enemyDamagePct() / 100);
+  }
+  if (dmg < 1) dmg = 1;
   // Critical hit: knocks a fragment out instead of taking health
-  if (rng_.below(CRIT_CHANCE_DEN) == 0 && c.size > 1) {
+  if (allowCrit && rng_.below(CRIT_CHANCE_DEN) == 0 && c.size > 1) {
     Vec3 from = attacker >= 0 && attacker < MAX_ENTITIES
                     ? entities[attacker].frame.n
                     : c.frame.n;
@@ -272,6 +290,7 @@ void Game::killEntity(int idx) {
       spawnFloatingFragment(normalizeQ30(center + off), c.r, p.sizeLog2, drift);
     }
   }
+  releaseUpgrade(idx);
   c.alive = false;
   c.hp = 0;
   stats_.kills++;
@@ -294,6 +313,7 @@ void Game::transferSize(int from, int to) {
   syncFragments(B, dotQ30(rel, B.frame.right()), dotQ30(rel, B.frame.t));
   setEntitySize(S, S.size - t);
   if (S.size == 0) {
+    releaseUpgrade(from);
     S.alive = false;
     S.hp = 0;
     stats_.absorbs++;
@@ -520,6 +540,7 @@ void Game::handleEntityCollisions() {
       const Entity &B = entities[big];
       const Entity &S = entities[small];
       if (S.invincible > 0 || S.absorbGuard > 0) continue;
+      if (S.isPlayer && chargeState_ == ChargeState::RAM) continue;
       // Bodies overlapping (in 3D, so a much higher entity is out of reach)
       int32_t reach = (B.bodyRadius + S.bodyRadius) >> 1;
       int64_t d2;

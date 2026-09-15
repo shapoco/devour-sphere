@@ -33,6 +33,7 @@ void Game::debugStartSphere(int level, int weapon) {
   selectedWeapon_ = weapon % WEAPON_COUNT;
   displayScaleLog2_ = 0;
   scoreQ8_ = 0;
+  resetUpgrades();
   setState(GameState::PLAYING);
   startSphere(false);
 }
@@ -58,6 +59,7 @@ void Game::startSphere(bool keepPlayer) {
   std::memset(entities, 0, sizeof(entities));
   std::memset(floatingFragments, 0, sizeof(floatingFragments));
   std::memset(bullets, 0, sizeof(bullets));
+  std::memset(floatingUpgrades, 0, sizeof(floatingUpgrades));
   entityOrderCount_ = 0;
   fragmentOrderCount_ = 0;
 
@@ -86,6 +88,9 @@ void Game::startSphere(bool keepPlayer) {
   for (int i = 0; i < INITIAL_FOOD_FRAGMENTS; i++) spawnFood(false);
   respawnTimer_ = RESPAWN_INTERVAL;
   foodTimer_ = FOOD_SPAWN_INTERVAL;
+  assignUpgrades();
+  chargeState_ = ChargeState::IDLE;
+  chargeGauge_ = 0;
   updateRanks();
   rebuildOrders();
 }
@@ -252,7 +257,7 @@ void Game::checkTransitions() {
       break;
     case GameState::PLAYING:
       if (!p.alive) {
-        setState(GameState::DEAD);
+        if (!respawnPlayer()) setState(GameState::DEAD);
       } else if (p.rank == 1 && stateTimer_ > CLEAR_GRACE_TICKS) {
         events_ |= Event::SPHERE_CLEARED;
         // Clear bonus: full when fast, half when slow
@@ -306,6 +311,7 @@ void Game::tick(uint8_t buttons) {
         spheresCleared_ = 0;
         displayScaleLog2_ = 0;
         scoreQ8_ = 0;
+        resetUpgrades();
         setState(GameState::PLAYING);
         startSphere(false);
       }
@@ -332,6 +338,7 @@ void Game::tick(uint8_t buttons) {
   }
   if (state_ == GameState::PLAYING && p.alive && !autoPlayer_) {
     updatePlayerControls(buttons);
+    updateCharge(buttons);
   } else if (state_ == GameState::LAUNCH) {
     p.turn = 0;
     p.dashing = true;
@@ -350,6 +357,10 @@ void Game::tick(uint8_t buttons) {
       updateAi(i);
     }
     moveEntity(c);
+    if (c.isPlayer && chargeState_ == ChargeState::RAM) {
+      c.speed = cruiseSpeedForSize(c.size) * DASH_SPEED_NUM / DASH_SPEED_DEN *
+                RAM_SPEED_MUL;
+    }
     // The fragment physics of entities far from the player runs at a lower rate
     int64_t d2;
     bool near = c.isPlayer ||
@@ -361,8 +372,14 @@ void Game::tick(uint8_t buttons) {
     if (c.firing) fireWeapon(i);
   }
 
+  if (state_ == GameState::PLAYING && p.alive) {
+    if (chargeState_ == ChargeState::LANCE) updateLance();
+    if (chargeState_ == ChargeState::RAM) updateRam();
+    updateShieldRegen();
+  }
   updateBullets();
   updateFloatingFragments();
+  updateFloatingUpgrades();
   rebuildOrders();
   handleEating();
   handleEntityCollisions();
@@ -414,11 +431,14 @@ uint32_t Game::stateHash() const {
   h = fnv(h, entities, sizeof(entities));
   h = fnv(h, floatingFragments, sizeof(floatingFragments));
   h = fnv(h, bullets, sizeof(bullets));
+  h = fnv(h, floatingUpgrades, sizeof(floatingUpgrades));
+  h = fnv(h, upgradeLevels_, sizeof(upgradeLevels_));
   uint32_t scalars[] = {
       (uint32_t)state_,       tickCount_,         (uint32_t)stateTimer_,
       (uint32_t)sphereLevel_, rng_.state(),       (uint32_t)playerIndex_,
       displayScaleLog2_,      (uint32_t)scoreQ8_, (uint32_t)(scoreQ8_ >> 32),
-      (uint32_t)sphereTicks_};
+      (uint32_t)sphereTicks_, (uint32_t)cores_,   (uint32_t)chargeState_,
+      (uint32_t)chargeGauge_};
   h = fnv(h, scalars, sizeof(scalars));
   return h;
 }

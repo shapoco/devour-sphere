@@ -82,6 +82,8 @@ struct Entity {
   int16_t aiTimer;
   uint16_t aiWanderAngle;
 
+  uint8_t upgrade;  // UpgradeKind carried (released when the entity dies)
+
   // Bookkeeping
   uint16_t rank;  // 1 = largest on the sphere (updated periodically)
   uint32_t seed;  // per-entity random seed (visual variation)
@@ -105,6 +107,17 @@ struct FloatingFragment {
   uint16_t spin;       // render hint (brad)
   int16_t owner;       // entity that lost it (-1 = none)
   int16_t ownerGuard;  // ticks during which the owner cannot take it back
+};
+
+// A drifting upgrade released by a dead enemy (never expires, only the
+// player can take it)
+struct FloatingUpgrade {
+  bool alive;
+  uint8_t kind;  // UpgradeKind
+  Vec3 n;
+  int32_t r;
+  Vec3 drift;
+  uint16_t spin;
 };
 
 struct Bullet {
