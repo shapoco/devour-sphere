@@ -669,7 +669,8 @@ void Renderer::buildScene() {
     bool full = vis[k].px >= 6.0f && triBudget >= fullTris;
     triBudget -= full ? fullTris : 6;
     vec3f pos = toLocal(sim::scaleToLength(c.frame.n, c.r));
-    bool blink = c.invincible > 0 && ((g.tickCount() >> 2) & 1);
+    bool blink =
+        c.invincible > 0 && ((g.tickCount() / (sim::TICK_RATE / 8)) & 1);
     drawEntity(c, pos, vis[k].px, full, blink);
     // Health gauge over enemies
     if (!c.isPlayer && vis[k].px >= 2.5f && gaugeCount_ < MAX_GAUGES) {

@@ -117,7 +117,7 @@ void Game::updateBullets() {
         b.frame.t = rotateAroundQ30(b.frame.t, b.frame.n, (uint16_t)err);
         // Approach the target altitude as well
         int32_t dr = o.r - b.r;
-        b.r += dr >> 3;
+        b.r += dr >> (3 + RATE_SHIFT);
       }
     }
     int32_t ang = (int32_t)(((int64_t)b.speed << Q30_SHIFT) / b.r);
@@ -268,7 +268,7 @@ void Game::transferSize(int from, int to) {
   syncFragments(S, 0, 0);
   if (S.isPlayer) events_ |= Event::PLAYER_HIT;
   if (B.isPlayer) events_ |= Event::PLAYER_ATE_FRAGMENT;
-  if ((tickCount_ % 5) == 0) {
+  if ((tickCount_ % ticks30(5)) == 0) {
     if (S.isPlayer)
       pushEffect(EffectKind::PLAYER_DRAINED, from, S.frame.n, S.r, (int32_t)t);
     if (B.isPlayer)
@@ -333,11 +333,11 @@ void Game::updateFloatingFragments() {
         fp.drift = scaleToLength(normalizeQ30(fp.drift), ATTRACT_MAX_SPEED);
       }
     }
-    applyDrift(fp.n, fp.r, fp.drift, 5);
-    fp.spin = (uint16_t)(fp.spin + 300);
+    applyDrift(fp.n, fp.r, fp.drift, 5 + RATE_SHIFT);
+    fp.spin = (uint16_t)(fp.spin + 300 * 30 / TICK_RATE);
     int32_t rTarget = SPHERE_RADIUS + altitudeForSize(4u << fp.sizeLog2);
     int32_t dr = rTarget - fp.r;
-    int32_t rs = dr >> 6;
+    int32_t rs = dr >> (6 + RATE_SHIFT);
     if (rs == 0 && dr != 0) rs = dr > 0 ? 1 : -1;
     fp.r += rs;
   }

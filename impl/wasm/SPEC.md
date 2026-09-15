@@ -66,7 +66,7 @@ cmake --build build
 | `ds_init(seed)` | ゲームとレンダラを初期化しタイトル画面にする |
 | `ds_get_width()`, `ds_get_height()` | 480, 320 |
 | `ds_get_fb()` | RGB565BE フレームバッファ (width x height x 2 バイト) の先頭アドレス |
-| `ds_get_tick_rate()` | 1 秒あたりのシミュレーション tick 数 (30) |
+| `ds_get_tick_rate()` | 1 秒あたりのシミュレーション tick 数 (60) |
 | `ds_tick(buttons)` | 1 tick 進める。`buttons` は sim::Button のビット (LEFT=1, RIGHT=2, UP=4, DOWN=8, A=16) |
 | `ds_render(dt)` | 現在の状態をフレームバッファに描画する。`dt` は前回描画からの秒数 (カメラの補間のみに使う) |
 | `ds_get_state()` | GameState (0 TITLE, 1 WEAPON_SELECT, 2 PLAYING, 3 LAUNCH, 4 DEAD) |
@@ -80,10 +80,10 @@ cmake --build build
 ## ゲームループ (play.js)
 
 - `requestAnimationFrame` で回し、経過時間をアキュムレータに足して
-  1/30 秒ごとに `ds_tick()` を呼ぶ。1 フレームに最大 4 tick まで追いつき、
+  1/60 秒ごとに `ds_tick()` を呼ぶ。1 フレームに最大 4 tick まで追いつき、
   それ以上遅れている場合は残りを捨てる (タブが隠れていた後など)。
 - tick が 1 回以上進んだフレームだけ `ds_render()` と転送を行う。
-  つまり描画も 30fps で、シミュレーションと描画は 1:1。
+  60Hz のディスプレイでは毎フレーム 1 tick 進むので描画も 60fps で、シミュレーションと描画は 1:1。
 - 転送は RGB565BE の 2 バイトを 8 ビット RGBA に展開して `putImageData()` する。
   変換テーブル (5 ビット/6 ビット → 8 ビット) を使う。
 - 入力はキーボード、ゲームパッド、仮想パッドの OR を tick ごとに渡す。

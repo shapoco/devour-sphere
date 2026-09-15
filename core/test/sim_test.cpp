@@ -191,7 +191,7 @@ static void testGameplay() {
   hp.alive = false;  // simulate death
   h.tick(0);
   CHECK(h.state() == GameState::DEAD);
-  for (int i = 0; i < 100; i++) h.tick(0);
+  for (int i = 0; i < 2 * TICK_RATE + 10; i++) h.tick(0);
   h.tick(Button::A);
   CHECK(h.state() == GameState::TITLE);
 

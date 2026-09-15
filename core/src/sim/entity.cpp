@@ -294,7 +294,7 @@ void Game::updateLayout(Entity &c) {
   for (int i = 0; i < c.fragmentCount; i++) {
     Fragment &p = c.fragments[i];
     int32_t s = half[i];
-    int32_t A = s >> 4;
+    int32_t A = s >> (4 + RATE_SHIFT);
     if (A < 1) A = 1;
     int64_t fx = 0, fy = 0;
     addForce(fx, fy, p.x, p.y, 0, c.coreY, (coreHalf + s) * 9 / 8, A);
@@ -308,17 +308,17 @@ void Game::updateLayout(Entity &c) {
     // pulled back into the body (the speed limit grows with the distance so
     // that far fragments return quickly)
     int32_t dist = absI32(p.x) > absI32(p.y) ? absI32(p.x) : absI32(p.y);
-    fx -= p.x >> 5;
-    fy -= p.y >> 5;
+    fx -= p.x >> (5 + RATE_SHIFT);
+    fy -= p.y >> (5 + RATE_SHIFT);
 
     // Heavily damped so that the layout settles instead of oscillating
     int64_t vx = ((int64_t)p.vx >> 2) + fx;
     int64_t vy = ((int64_t)p.vy >> 2) + fy;
-    int32_t vmax = (s >> 3) + (dist >> 4);
+    int32_t vmax = (s >> (3 + RATE_SHIFT)) + (dist >> (4 + RATE_SHIFT));
     p.vx = (int32_t)clampI64(-vmax, vmax, vx);
     p.vy = (int32_t)clampI64(-vmax, vmax, vy);
     // Below a small threshold the fragment is considered at rest
-    int32_t rest = (s >> 6) + 1;
+    int32_t rest = (s >> (6 + RATE_SHIFT)) + 1;
     if (absI32(p.vx) <= rest && absI32(p.vy) <= rest) p.vx = p.vy = 0;
     p.x += p.vx;
     p.y += p.vy;

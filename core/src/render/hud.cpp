@@ -31,7 +31,7 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
   const sim::Entity &p = game.player();
   char buf[64];
   uint32_t t = game.tickCount();
-  bool blinkOn = (t / 15) & 1;
+  bool blinkOn = (t / (sim::TICK_RATE / 2)) & 1;
 
   switch (game.state()) {
     case sim::GameState::TITLE: {
