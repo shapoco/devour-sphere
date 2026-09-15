@@ -92,8 +92,19 @@ void Game::updateAi(int idx) {
       bool dangerous =
           (eo * 4 > ec * 5 && d2 < FLEE2) || (eo > ec && d2 < NEAR2);
       if (dangerous && d2 < threatD2) threat = j, threatD2 = d2;
-    } else if (o.size * 4 >= c.size && d2 < preyD2) {
-      prey = j, preyD2 = d2;  // equal or smaller (but not tiny): fair game
+    } else {
+      // Equal or smaller (but not tiny): fair game. A shielded player is a
+      // worthwhile target even when much smaller, and is preferred.
+      uint32_t ratio = AI_PREY_MIN_RATIO;
+      int64_t weighted = d2;
+      if (o.isPlayer) {
+        int shield = upgradeLevel(UpgradeKind::SHIELD);
+        ratio <<= shield;
+        weighted = d2 * 100 / (100 + AI_PREY_PLAYER_BIAS_PCT * shield);
+      }
+      if ((uint64_t)o.size * ratio >= c.size && weighted < preyD2) {
+        prey = j, preyD2 = weighted;
+      }
     }
   }
   // Food: nearest floating fragment in sight (z-band query)

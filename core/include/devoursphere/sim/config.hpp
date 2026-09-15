@@ -210,8 +210,8 @@ constexpr int32_t THRUSTER_DASH_PCT[UPGRADE_MAX_LEVEL + 1] = {100, 150, 200,
 // Charge gauge (0..256): filled in CHARGE_TICKS, drained in COOLDOWN_TICKS
 constexpr int CHARGE_TICKS = 3 * TICK_RATE;
 constexpr int COOLDOWN_TICKS = 5 * TICK_RATE;
-constexpr int LANCE_TICKS = TICK_RATE;         // Lance beam duration
-constexpr int RAM_TICKS = TICK_RATE;           // Ram duration
+constexpr int LANCE_TICKS = 2 * TICK_RATE;     // Lance beam duration
+constexpr int RAM_TICKS = 2 * TICK_RATE;       // Ram duration
 constexpr int RAM_TRIGGER_TICKS = ticks30(9);  // window after releasing DOWN
 // Lance: a beam of LANCE_LENGTH_MUL x kite half-size (+ LANCE_LENGTH_FU) in
 // front of the player, width = bodyRadius; damage per tick = power * size / 8
@@ -231,6 +231,13 @@ constexpr int RESPAWN_INVINCIBLE_TICKS = 2 * TICK_RATE;
 // Difficulty: enemies get stronger with the player's total upgrade level
 constexpr int32_t DIFF_FIRE_PCT_PER_LEVEL = 15;    // fire chance
 constexpr int32_t DIFF_DAMAGE_PCT_PER_LEVEL = 10;  // bullet damage
+
+// Enemies hunt prey no smaller than 1 / AI_PREY_MIN_RATIO of themselves; for
+// the player that ratio is multiplied by 2^(Shield level) (a shielded player
+// is worth attacking even for giants), and the player looks
+// AI_PREY_PLAYER_BIAS_PCT * Shield level percent nearer when choosing prey
+constexpr uint32_t AI_PREY_MIN_RATIO = 4;
+constexpr int32_t AI_PREY_PLAYER_BIAS_PCT = 25;
 
 // --- Enemy AI ---------------------------------------------------------------
 constexpr int AI_THINK_INTERVAL =
