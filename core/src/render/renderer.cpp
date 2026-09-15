@@ -509,15 +509,29 @@ void Renderer::drawBullets() {
   }
 }
 
+// murmur3 finalizer: a good 32-bit mixer
+static inline uint32_t mix32(uint32_t h) {
+  h ^= h >> 16;
+  h *= 0x85EBCA6Bu;
+  h ^= h >> 13;
+  h *= 0xC2B2AE35u;
+  h ^= h >> 16;
+  return h;
+}
+
 void Renderer::drawStars() {
-  constexpr int STARS = 80;
+  constexpr int STARS = 120;
   constexpr float DIST = 1500.0f;  // inside the far plane
   g3d_.setPointSize(1);
   for (int i = 0; i < STARS; i++) {
-    uint32_t h = (uint32_t)(i + 1) * 2654435761u;
-    uint32_t h2 = h * 40503u + 12345u;
+    // Well mixed hashes (a plain multiply of consecutive indices leaves a
+    // visible lattice in the sky)
+    uint32_t h = mix32((uint32_t)i * 0x9E3779B9u + 0x1234567u);
+    uint32_t h2 = mix32(h ^ 0xA5A5A5A5u);
+    uint32_t h3 = mix32(h2 + 0x3C6EF372u);
     float z = ((h & 0xFFFF) / 32768.0f) - 1.0f;  // -1..1
-    float phi = ((h >> 16) / 65536.0f) * 6.2831853f;
+    float phi = ((h2 & 0xFFFF) / 65536.0f) * 6.2831853f;
+    h2 = h3;
     float r = std::sqrt(1.0f - z * z);
     vec3f dir = {r * std::cos(phi), r * std::sin(phi), z};
     // Only stars in front of the camera and above the sphere's limb
