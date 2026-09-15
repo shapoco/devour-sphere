@@ -76,6 +76,7 @@ async function startDevourSphere(opts) {
     setupKeyboard(input);
     setupTouchPad(input);
     setupButtons();
+    setupMobile();
 
     let acc = 0;
     let last = performance.now();
@@ -266,6 +267,36 @@ function setupTouchPad(input) {
   for (const el of [dpad, abtn]) {
     el.addEventListener('contextmenu', (e) => e.preventDefault());
   }
+}
+
+// Phones: the page becomes the console (see the CSS for body.mobile). The
+// first tap enters fullscreen where the browser allows it (Android); iPhones
+// have no element fullscreen, there the page fills the visible viewport and
+// "Add to Home Screen" (manifest.json) gives a real fullscreen app.
+function setupMobile() {
+  const coarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+  const small = Math.min(window.innerWidth, window.innerHeight) < 700;
+  if (!coarse || !small) return;
+  document.body.classList.add('mobile');
+  document.body.classList.add('touch');
+  const overlay = document.getElementById('tapstart');
+  const stage = document.getElementById('stage');
+  if (!overlay) return;
+  // Already running as an installed app: no need for the tap
+  const standalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
+    (window.matchMedia && window.matchMedia('(display-mode: fullscreen)').matches) ||
+    window.navigator.standalone === true;
+  if (standalone) return;
+  overlay.hidden = false;
+  overlay.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    overlay.hidden = true;
+    if (stage && stage.requestFullscreen) {
+      stage.requestFullscreen({ navigationUI: 'hide' }).catch(() => {});
+    } else if (stage && stage.webkitRequestFullscreen) {
+      try { stage.webkitRequestFullscreen(); } catch (err) { /* ignore */ }
+    }
+  });
 }
 
 function setupButtons() {

@@ -14,6 +14,13 @@
 </script>
 
 <title>Devour Sphere</title>
+<meta name="theme-color" content="#05060c">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Devour Sphere">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
 <link rel="stylesheet" href="../style.css">
 <style>
   /* Game screen: 480x320 pixels, scaled up but never wider than the viewport;
@@ -47,8 +54,8 @@
     background: #000;
     justify-content: center;
   }
-  /* In fullscreen keep the whole stage (screen + pad) visible */
-  body.touch #stage:fullscreen #game { width: min(100%, calc((100vh - 190px) * 1.5)); }
+  /* In fullscreen keep the whole stage (screen + pad) visible (desktop) */
+  body.touch:not(.mobile) #stage:fullscreen #game { width: min(100%, calc((100vh - 190px) * 1.5)); }
   body:not(.touch) #stage:fullscreen #game { width: min(100%, calc(100vh * 1.5)); }
   #toolbar {
     display: flex;
@@ -115,10 +122,94 @@
   }
   #abtn.down { background: #b0405a; }
   #dpad.down { border-color: var(--accent); }
+
+  /* --- Phone layout: the page becomes the game console ------------------
+     Portrait: screen on top, pad below. Landscape: the screen fills the
+     viewport height and the pad is overlaid on it. Applied by play.js
+     (body.mobile) on coarse-pointer devices with a small screen. */
+  body.mobile {
+    position: fixed;
+    inset: 0;
+    margin: 0;
+    padding: 0;
+    height: 100dvh;
+    overflow: hidden;
+    background: #000;
+    touch-action: none;
+  }
+  body.mobile h1, body.mobile #toolbar, body.mobile .help, body.mobile footer { display: none; }
+  body.mobile #status {
+    position: fixed;
+    left: 0; right: 0; bottom: 4px;
+    z-index: 5;
+    pointer-events: none;
+  }
+  body.mobile #stage {
+    position: fixed;
+    inset: 0;
+    width: auto;
+    height: 100dvh;
+    gap: 0;
+    background: #000;
+    justify-content: center;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    box-sizing: border-box;
+  }
+  body.mobile #game {
+    width: 100%;
+    max-height: 100%;
+    border: none;
+  }
+  body.mobile #pad {
+    display: flex;
+    width: 100%;
+    flex: 1 1 auto;
+    padding: 12px 20px;
+    justify-content: space-between;
+    align-items: center;
+  }
+  @media (orientation: landscape) {
+    body.mobile #game {
+      width: min(100vw, calc(100dvh * 1.5));
+      height: auto;
+    }
+    body.mobile #pad {
+      position: absolute;
+      inset: 0;
+      width: auto;
+      flex: none;
+      padding: 0 16px 16px;
+      align-items: flex-end;
+      pointer-events: none;
+    }
+    body.mobile #dpad, body.mobile #abtn {
+      pointer-events: auto;
+      opacity: 0.55;
+    }
+  }
+  /* First tap: enters fullscreen where the browser allows it */
+  #tapstart {
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    background: rgba(0, 0, 0, 0.7);
+    color: #fff;
+    font-size: 22px;
+    letter-spacing: 0.2em;
+    touch-action: none;
+  }
+  #tapstart small { font-size: 12px; letter-spacing: 0.05em; color: var(--dim); }
+  #tapstart[hidden] { display: none; }
 </style>
 </head>
 <body>
 <h1>Devour Sphere</h1>
+<div id="tapstart" hidden>TAP TO START<small>rotate the phone for a bigger screen</small></div>
 <div id="stage">
   <div id="game"><canvas id="screen" width="480" height="320"></canvas></div>
   <div id="pad">
