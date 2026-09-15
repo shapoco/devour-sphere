@@ -189,6 +189,9 @@ class Game {
   void updateRam();
   void updateShieldRegen();
   bool respawnPlayer();
+  // After clearing a sphere the player is frozen: no hits, no eating, no
+  // absorption in either direction, so the body keeps its shape
+  bool playerFrozen() const { return state_ == GameState::LAUNCH; }
   int32_t enemyDamagePct() const;
   int sphereTicks_ = 0;
   uint32_t highScore_ = 0;

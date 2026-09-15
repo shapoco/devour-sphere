@@ -145,6 +145,7 @@ void Game::updateBullets() {
       Entity &o = entities[j];
       if (o.frame.n.z > b.frame.n.z + dz) break;
       if (!o.alive || j == b.owner) continue;
+      if (o.isPlayer && playerFrozen()) continue;
       int32_t reach = o.bodyRadius + br;
       int64_t d2;
       if (!tangentialDist2(b.frame.n, o.frame.n, reach + b.speed, d2)) continue;
@@ -195,6 +196,7 @@ void Game::criticalHit(int idx, const Vec3 &from) {
 void Game::damageEntity(int idx, int32_t dmg, int attacker, bool allowCrit) {
   Entity &c = entities[idx];
   if (!c.alive || c.invincible > 0) return;
+  if (c.isPlayer && playerFrozen()) return;
   if (c.isPlayer) {
     if (chargeState_ == ChargeState::RAM) return;  // ramming: invulnerable
     // Shield reduces the damage
@@ -495,6 +497,7 @@ void Game::handleEating() {
   for (int i = 0; i < MAX_ENTITIES; i++) {
     Entity &c = entities[i];
     if (!c.alive) continue;
+    if (c.isPlayer && playerFrozen()) continue;
     Vec3 center = worldPos(c.frame.n, c.r);
     Vec3 right = c.frame.right();
 
@@ -546,6 +549,7 @@ void Game::handleEntityCollisions() {
       Entity &b = entities[j];
       if (b.frame.n.z > zHi) break;
       if (!b.alive || !a.alive) continue;
+      if ((a.isPlayer || b.isPlayer) && playerFrozen()) continue;
       // Who devours whom: size weighted by the health gauge
       int64_t ea = effectiveSizeQ8(a), eb = effectiveSizeQ8(b);
       if (ea == eb) continue;
