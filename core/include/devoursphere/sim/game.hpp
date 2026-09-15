@@ -23,11 +23,12 @@ enum class GameState : uint8_t {
 // Event flags raised during the last tick (for effects; cleared every tick)
 namespace Event {
 constexpr uint32_t PLAYER_HIT = 1 << 0;
-constexpr uint32_t PLAYER_ATE_FRAGMENT = 1 << 1;
+constexpr uint32_t PLAYER_ATE_FRAGMENT = 1 << 1;  // a fragment joined the body
 constexpr uint32_t PLAYER_DIED = 1 << 3;
 constexpr uint32_t SPHERE_CLEARED = 1 << 4;
 constexpr uint32_t PLAYER_FIRED = 1 << 5;
 constexpr uint32_t PLAYER_MERGED = 1 << 6;
+constexpr uint32_t PLAYER_HEALED = 1 << 7;  // a heal-only (white) fragment
 }  // namespace Event
 
 // Positions of things worth an effect during the last tick (cleared every

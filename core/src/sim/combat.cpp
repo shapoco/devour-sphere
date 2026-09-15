@@ -442,7 +442,7 @@ void Game::handleEating() {
         healByFragment(c, fp.sizeLog2);
         fp.alive = false;
         stats_.fragmentsHealed++;
-        if (c.isPlayer) events_ |= Event::PLAYER_ATE_FRAGMENT;
+        if (c.isPlayer) events_ |= Event::PLAYER_HEALED;
         continue;
       }
       Vec3 rel = worldPos(fp.n, fp.r) - center;
