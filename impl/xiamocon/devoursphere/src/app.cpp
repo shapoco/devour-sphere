@@ -126,9 +126,6 @@ uint32_t g_simTickUs = 0;  // ... same
 
 Sim simLoad() { return stateLoad<Sim>(g_sim); }
 void simStore(Sim s) { stateStore(g_sim, s); }
-void waitSim(Sim want) {
-  while (simLoad() != want) xmc::tightLoopContents();
-}
 
 bool core1Task() {
   static bool started = false;
@@ -136,10 +133,17 @@ bool core1Task() {
     started = true;
     ds::stackWatchInitCore1();
   }
+  static bool sawIdle = false;
+  if (!sawIdle) {
+    sawIdle = true;
+    ds::trace("core1 alive", 0);
+  }
   if (simLoad() != Sim::RUN) {
     ds::frameIdle();
     return true;
   }
+  static int batches = 0;
+  if (batches < 3) ds::trace("core1 batch in", g_simWanted);
   const uint32_t t0 = (uint32_t)xmc::getTimeUs();
   for (int i = 0; i < g_simWanted; i++) {
     g_game->tick(g_simButtons);
@@ -150,6 +154,10 @@ bool core1Task() {
   g_simTickUs = (uint32_t)xmc::getTimeUs() - t0;
   g_simRan = g_simWanted;
   simStore(Sim::DONE);
+  if (batches < 3) {
+    batches++;
+    ds::trace("core1 batch out", g_simTickUs);
+  }
   return true;
 }
 
@@ -261,10 +269,15 @@ void xmcAppLoop(void) {
   if (xmc::input::wasPressed(xmc::input::Button::FUNC)) g_prof.toggle();
 
 #if DS_SPLIT == DS_SPLIT_SIM
-  // Collect the batch core1 ran while we rasterized the previous frame
-  const uint32_t wait0 = (uint32_t)xmc::getTimeUs();
-  if (simLoad() == Sim::RUN) waitSim(Sim::DONE);
-  g_prof.core1WaitUs = (uint32_t)xmc::getTimeUs() - wait0;
+  // Collect the batch core1 ran while we rasterized the previous frame. If it
+  // is still going, come back on the next libLoop() rather than spinning
+  // here: this is the only core that runs system::service(), which is what
+  // polls the power button and services the IO expander.
+  if (simLoad() == Sim::RUN) {
+    g_prof.core1WaitUs += (uint32_t)(xmc::getTimeUs() - nowUs);
+    return;
+  }
+  g_prof.core1WaitUs = 0;
 
   int ran = 0;
   if (simLoad() == Sim::DONE) {
@@ -290,6 +303,12 @@ void xmcAppLoop(void) {
   // This is what costs a frame of latency: these buttons reach the screen one
   // frame later.
   const int want = ticksDue();
+  static int loops = 0;
+  if (loops < 3) {
+    loops++;
+    ds::trace("loop ran", (uint32_t)ran);
+    ds::trace("loop want", (uint32_t)want);
+  }
   if (want > 0) {
     g_simWanted = want;
     g_simButtons = buttons;
@@ -354,7 +373,8 @@ XmcStatus xmcAppTerminate(xmc::system::ShutdownReason reason) {
 #if DS_SPLIT == DS_SPLIT_RENDER
   if (frameLoad() != Frame::IDLE) waitFrame(Frame::DONE);
 #elif DS_SPLIT == DS_SPLIT_SIM
-  if (simLoad() == Sim::RUN) waitSim(Sim::DONE);
+  // The batch will finish on its own; core1 never blocks
+  while (simLoad() == Sim::RUN) xmc::tightLoopContents();
 #endif
   g_bands.drain();
   return XMC_OK;
