@@ -141,9 +141,13 @@ void Game::updateShieldRegen() {
   }
 }
 
-// Enemy bullet damage grows with the player's upgrades (difficulty)
+// Enemy bullet damage against the player grows with the sphere level and
+// the player's upgrades (difficulty); the two factors multiply
 int32_t Game::enemyDamagePct() const {
-  return 100 + DIFF_DAMAGE_PCT_PER_LEVEL * totalUpgradeLevel();
+  int lv = sphereLevel_ > 1 ? sphereLevel_ - 1 : 0;
+  int64_t spherePct = 100 + (int64_t)DIFF_DAMAGE_PCT_PER_SPHERE * lv;
+  int64_t upgradePct = 100 + DIFF_DAMAGE_PCT_PER_LEVEL * totalUpgradeLevel();
+  return (int32_t)(spherePct * upgradePct / 100);
 }
 
 // The Charge / Lance / Ram state machine. Called with the player's buttons

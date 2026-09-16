@@ -390,9 +390,152 @@ static void testCombatAndLayout() {
     CHECK(q.fragments[k].vx == 0 && q.fragments[k].vy == 0);
 }
 
+// A bullet resting on `target`, fired by `owner`, that hits on the next tick
+static void plantBullet(Game &g, int slot, int owner, int target,
+                        int32_t power, bool fromPlayer) {
+  const Entity &o = g.entities[owner];
+  const Entity &t = g.entities[target];
+  Bullet &b = g.bullets[slot];
+  b = {};
+  b.alive = true;
+  b.frame = t.frame;
+  b.prevN = t.frame.n;
+  b.r = t.r;
+  b.speed = 1;
+  b.life = 2;
+  b.owner = (int16_t)owner;
+  b.kind = Weapon::VULCAN;
+  b.ownerSize = o.size;
+  b.power = power;
+  b.target = -1;
+  b.fromPlayer = fromPlayer;
+}
+
+static int firstEnemy(const Game &g, uint32_t minSize) {
+  for (int i = 0; i < MAX_ENTITIES; i++) {
+    if (i != g.playerIndex() && g.entities[i].alive &&
+        g.entities[i].size >= minSize)
+      return i;
+  }
+  return -1;
+}
+
+// Largest health drop of `victim` over a few planted hits. A critical hit
+// takes no health but shrinks the body (and the gauge with it), so ticks on
+// which hpMax changed are ignored; the maximum is the plain damage of one hit
+static int32_t maxHitDrop(Game &g, int shooter, int victim, int32_t power,
+                          bool fromPlayer) {
+  int32_t maxDrop = 0;
+  for (int n = 0; n < 6; n++) {
+    g.entities[victim].invincible = 0;
+    g.entities[victim].hp = g.entities[victim].hpMax;  // never dies here
+    plantBullet(g, n, shooter, victim, power, fromPlayer);
+    int32_t hp0 = g.entities[victim].hp, hpMax0 = g.entities[victim].hpMax;
+    g.tick(Button::DOWN);
+    if (g.entities[victim].hpMax != hpMax0) continue;
+    int32_t drop = hp0 - g.entities[victim].hp;
+    if (drop > maxDrop) maxDrop = drop;
+  }
+  return maxDrop;
+}
+
+// Enemy fire hurts the player more on higher spheres, the player's own fire
+// never scales, the shield is applied before the per-hit cap, and an enemy
+// under fire breaks out of the line of fire with a quick turn and a dash
+static void testDifficultyAndEvade() {
+  // Enemy bullet damage: x (100 + 40 * 3) % on sphere 4 against the player
+  int32_t playerDrop[2] = {0, 0}, enemyDrop[2] = {0, 0};
+  for (int k = 0; k < 2; k++) {
+    int level = k == 0 ? 1 : 4;
+    Game g;
+    g.reset(31);
+    g.debugStartSphere(level, 0);
+    int e = firstEnemy(g, 8);
+    CHECK(e > 0);
+    playerDrop[k] = maxHitDrop(g, e, g.playerIndex(), 8, false);
+    enemyDrop[k] = maxHitDrop(g, g.playerIndex(), e, 8, true);
+  }
+  CHECK(playerDrop[0] == 8);
+  CHECK(playerDrop[1] == 8 * (100 + 3 * DIFF_DAMAGE_PCT_PER_SPHERE) / 100);
+  CHECK(enemyDrop[0] == 8);
+  CHECK(enemyDrop[1] == 8);
+
+  // Shield before the cap: with Shield Lv.3 (50 %) and three upgrade levels
+  // (x 130 %), a 40 point hit takes 40 * 1.3 * 0.5 = 26, below the 30 % cap;
+  // capping first would leave only 19
+  {
+    Game g;
+    g.reset(31);
+    g.debugStartSphere(1, 0);
+    for (int n = 0; n < UPGRADE_MAX_LEVEL; n++) {
+      const Entity &p = g.player();
+      g.floatingUpgrades[0] = {
+          true, (uint8_t)UpgradeKind::SHIELD, p.frame.n, p.r, {0, 0, 0}, 0};
+      g.tick(Button::DOWN);
+    }
+    CHECK(g.upgradeLevel(UpgradeKind::SHIELD) == UPGRADE_MAX_LEVEL);
+    int e = firstEnemy(g, 8);
+    int32_t cap = g.player().hpMax * PLAYER_MAX_HIT_PERCENT / 100;
+    CHECK(cap > 26);
+    CHECK(maxHitDrop(g, e, g.playerIndex(), 40, false) == 26);
+    // ... and the cap still bounds a huge hit after the shield
+    cap = g.player().hpMax * PLAYER_MAX_HIT_PERCENT / 100;
+    CHECK(maxHitDrop(g, e, g.playerIndex(), 100000, false) == cap);
+  }
+
+  // Evasion: an equal enemy straight ahead under vulcan fire starts evading
+  // after two quick hits, remembers the shooter, dashes and leaves the line
+  // of fire sideways
+  {
+    Game g;
+    g.reset(2024);
+    g.debugStartSphere(1, 0);
+    Entity &p = g.entities[g.playerIndex()];
+    int enemy = firstEnemy(g, 1);
+    Entity &e = g.entities[enemy];
+    e.size = p.size;
+    e.hpMax = HP_PER_SIZE * (int32_t)e.size;
+    e.hp = e.hpMax;
+    e.fragmentCount = p.fragmentCount;
+    for (int k = 0; k < p.fragmentCount; k++) e.fragments[k] = p.fragments[k];
+    e.frame.t = p.frame.t;
+    e.frame.n = normalizeQ30(
+        p.frame.n +
+        scaleQ30(p.frame.t, (20 * FU) << (Q30_SHIFT - SPHERE_RADIUS_SHIFT)));
+    e.frame.t = orthonormalizeQ30(e.frame.t, e.frame.n);
+    e.r = p.r;
+    e.invincible = 0;
+    bool evaded = false, dashed = false, fromPlayer = false;
+    int32_t lateralMax = 0;
+    int after = 0;
+    for (int t = 0; t < 8 * TICK_RATE && g.entities[enemy].alive; t++) {
+      g.tick(Button::DOWN | Button::A);
+      const Entity &c = g.entities[enemy];
+      const Entity &q = g.player();
+      if (c.evadeTicks > 0) {
+        evaded = true;
+        if (c.evadeFrom == g.playerIndex()) fromPlayer = true;
+      }
+      if (evaded) {
+        if (c.dashing) dashed = true;
+        Vec3 rel = scaleToLength(c.frame.n, c.r) - scaleToLength(q.frame.n, q.r);
+        int32_t lateral = dotQ30(rel, q.frame.right());
+        if (lateral < 0) lateral = -lateral;
+        if (lateral > lateralMax) lateralMax = lateral;
+        if (++after > 3 * TICK_RATE) break;
+      }
+    }
+    CHECK(evaded);
+    CHECK(fromPlayer);
+    CHECK(dashed);
+    CHECK(lateralMax > 8 * FU);
+  }
+}
+
 int main() {
   testFixed();
   testCombatAndLayout();
+  testDifficultyAndEvade();
   testDeterminism();
   testGameplay();
   if (failures) {

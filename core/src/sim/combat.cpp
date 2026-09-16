@@ -197,15 +197,15 @@ void Game::damageEntity(int idx, int32_t dmg, int attacker, bool allowCrit) {
   Entity &c = entities[idx];
   if (!c.alive || c.invincible > 0) return;
   if (c.isPlayer && playerFrozen()) return;
+  bool enemyAttacker = attacker >= 0 && attacker < MAX_ENTITIES &&
+                       !entities[attacker].isPlayer;
   if (c.isPlayer) {
     if (chargeState_ == ChargeState::RAM) return;  // ramming: invulnerable
-    // Shield reduces the damage
+    // Enemy fire scales with the sphere level and the player's upgrades
+    // (difficulty), then the shield reduces it; the per-hit cap comes last
+    if (enemyAttacker) dmg = (int32_t)((int64_t)dmg * enemyDamagePct() / 100);
     dmg = (int32_t)((int64_t)dmg *
                     SHIELD_DAMAGE_PCT[upgradeLevel(UpgradeKind::SHIELD)] / 100);
-  } else if (attacker >= 0 && attacker < MAX_ENTITIES &&
-             !entities[attacker].isPlayer) {
-    // Enemy fire scales with the player's upgrades (difficulty)
-    dmg = (int32_t)((int64_t)dmg * enemyDamagePct() / 100);
   }
   if (dmg < 1) dmg = 1;
   // Critical hit: knocks a fragment out instead of taking health
@@ -223,7 +223,8 @@ void Game::damageEntity(int idx, int32_t dmg, int attacker, bool allowCrit) {
     return;
   }
   // The player never loses more than PLAYER_MAX_HIT_PERCENT of the gauge
-  // from one hit (no one-shot kills by huge enemies)
+  // from one hit (no one-shot kills by huge enemies); applied after every
+  // multiplier, right before the health drops
   if (c.isPlayer) {
     int32_t cap = c.hpMax * PLAYER_MAX_HIT_PERCENT / 100;
     if (cap < 1) cap = 1;
@@ -237,14 +238,25 @@ void Game::damageEntity(int idx, int32_t dmg, int attacker, bool allowCrit) {
   } else if (attacker == playerIndex_) {
     pushEffect(EffectKind::ENEMY_HIT, idx, c.frame.n, c.r, dmg);
   }
-  // Enemies that keep getting hit break off (see updateAi)
-  if (!c.isPlayer && c.evadeTicks == 0) {
-    if (c.hitStreak < 255) c.hitStreak++;
-    if (c.hitStreak >= AI_EVADE_HITS) {
-      c.hitStreak = 0;
-      c.evadeTicks =
-          (int16_t)(AI_EVADE_TICKS + rng_.range(0, AI_EVADE_TICKS / 2));
-      c.evadeDir = (int8_t)(rng_.below(2) ? 1 : -1);
+  // Enemies that keep getting hit break off, out of the shooter's line of
+  // fire (see updateAi)
+  if (!c.isPlayer) {
+    if (c.evadeTicks == 0) {
+      if (c.hitStreak < 255) c.hitStreak++;
+      if (c.hitStreak >= AI_EVADE_HITS) {
+        c.hitStreak = 0;
+        c.evadeTicks =
+            (int16_t)(AI_EVADE_TICKS + rng_.range(0, AI_EVADE_TICKS / 2));
+        c.evadeFrom = (int16_t)(attacker >= 0 && attacker < MAX_ENTITIES
+                                    ? attacker
+                                    : -1);
+        c.evadeDir = (int8_t)(rng_.below(2) ? 1 : -1);
+      }
+    } else {
+      // Still under fire: keep evading (from the latest shooter)
+      if (attacker >= 0 && attacker < MAX_ENTITIES)
+        c.evadeFrom = (int16_t)attacker;
+      if (c.evadeTicks < AI_EVADE_TICKS / 2) c.evadeTicks = AI_EVADE_TICKS / 2;
     }
   }
   if (c.hp <= 0) {

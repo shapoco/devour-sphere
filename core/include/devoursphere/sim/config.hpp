@@ -232,6 +232,10 @@ constexpr int RESPAWN_DELAY_TICKS = 3 * TICK_RATE;  // watch the wreck first
 // Difficulty: enemies get stronger with the player's total upgrade level
 constexpr int32_t DIFF_FIRE_PCT_PER_LEVEL = 15;    // fire chance
 constexpr int32_t DIFF_DAMAGE_PCT_PER_LEVEL = 10;  // bullet damage
+// ... and enemy fire hurts the player more on every sphere: damage x
+// (100 + DIFF_DAMAGE_PCT_PER_SPHERE * (sphere level - 1)) %, multiplied with
+// the upgrade factor above. The player's own bullets never scale.
+constexpr int32_t DIFF_DAMAGE_PCT_PER_SPHERE = 40;
 
 // Enemies hunt prey no smaller than 1 / AI_PREY_MIN_RATIO of themselves (the
 // player included, so a small player on a fresh sphere is not ganged up on).
@@ -254,10 +258,15 @@ constexpr int AI_THINK_INTERVAL =
 // beyond
 constexpr uint8_t AI_FIRE_CHANCE[] = {40, 110, 200, 255};
 constexpr int AI_FIRE_CHANCE_LEVELS = 4;
-// After AI_EVADE_HITS hits in a short time an enemy breaks off for about
-// AI_EVADE_TICKS (quick turn, then dash away on level 2 and up)
-constexpr int AI_EVADE_HITS = 3;
-constexpr int AI_EVADE_TICKS = ticks30(40);
+// After AI_EVADE_HITS hits in a short time an enemy breaks off for
+// AI_EVADE_TICKS (+ up to half as much at random): it steers out of the
+// shooter's line of fire (sideways, leaning away), with a quick turn under
+// brake while the escape heading is more than AI_EVADE_TURN_ANGLE off and a
+// dash once it points there. Hits taken meanwhile keep at least
+// AI_EVADE_TICKS / 2 of the maneuver ahead.
+constexpr int AI_EVADE_HITS = 2;
+constexpr int AI_EVADE_TICKS = 2 * TICK_RATE;
+constexpr uint16_t AI_EVADE_TURN_ANGLE = degToBrad(45);
 // Steering: brake (quick turn) when the target is more than this far around
 // and closer than AI_QUICK_TURN_FU
 constexpr uint16_t AI_QUICK_TURN_ANGLE = degToBrad(60);

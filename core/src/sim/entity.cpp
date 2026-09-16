@@ -147,12 +147,36 @@ void Game::updateAi(int idx) {
 
   if (c.hitStreak > 0) c.hitStreak--;
   if (c.evadeTicks > 0) {
-    // Under sustained fire: break off in a fixed direction (quick turn
-    // under brake at first, then dash away on higher levels)
+    // Under sustained fire: get out of the shooter's line of fire. The
+    // escape heading is sideways to the shooter (the side that needs the
+    // smaller turn, so the enemy keeps crossing the line rather than
+    // reversing), leaning away from it. Quick turn under brake while far
+    // off that heading, dash once pointing there.
     c.aiMode = AiMode::FLEE;
-    c.turn = c.evadeDir;
-    c.braking = c.evadeTicks > AI_EVADE_TICKS / 2;
-    c.dashing = !c.braking && sphereLevel_ >= 2;
+    int from = c.evadeFrom;
+    Vec3 escape = {0, 0, 0};
+    if (from >= 0 && from < MAX_ENTITIES && entities[from].alive) {
+      Vec3 d = normalizeQ30(tangentTowards(c.frame.n, entities[from].frame.n));
+      Vec3 side = crossQ30(c.frame.n, d);  // across the line of fire
+      int32_t along = dotQ30(side, c.frame.t);
+      constexpr int32_t AMBIGUOUS = Q30_ONE / 8;  // within ~7 deg of the line
+      if (along < AMBIGUOUS && along > -AMBIGUOUS) along = c.evadeDir;
+      if (along < 0) side = -side;
+      escape = side - Vec3{d.x >> 1, d.y >> 1, d.z >> 1};
+    }
+    if (escape.x == 0 && escape.y == 0 && escape.z == 0) {
+      // Shooter unknown or gone: break off in the remembered direction
+      c.turn = c.evadeDir;
+      c.braking = c.evadeTicks > AI_EVADE_TICKS / 2;
+      c.dashing = !c.braking;
+      return;
+    }
+    int16_t err = headingError(c.frame, escape);
+    constexpr int16_t DEAD = (int16_t)degToBrad(4);
+    c.turn = err > DEAD ? -1 : (err < -DEAD ? 1 : 0);
+    int32_t a = err < 0 ? -err : err;
+    c.braking = a > (int32_t)AI_EVADE_TURN_ANGLE;
+    c.dashing = !c.braking;
     return;
   }
   if (threat >= 0) {

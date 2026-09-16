@@ -114,6 +114,7 @@ void Game::initEntity(Entity &c, int sizeLog2, Weapon w) {
   c.alive = true;
   c.weapon = w;
   c.aiTarget = -1;
+  c.evadeFrom = -1;
   c.seed = rng_.next();
   c.fragmentCount = 0;
   c.size = 0;
