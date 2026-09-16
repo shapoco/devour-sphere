@@ -207,7 +207,7 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
         std::snprintf(alt, sizeof(alt), "HI %u", game.highScore());
         drawCenteredFit(g, oy + uiY(236), buf, alt, HUD_DIM);
       }
-      int lineH = 16 * ui_.fontMult;
+      int lineH = g.lineAdvance() + ui(6, 2);
       drawCenteredFit(g, oy + h_ - margin - 2 * lineH,
                       "MOVE: ARROWS / WASD    A: SPACE / IJKL",
                       "ARROWS: MOVE   SPACE: FIRE", HUD_DIM);
@@ -224,7 +224,7 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
       // The names sit side by side while the columns are wide enough for the
       // longest of them; on a narrow screen they stack in the middle instead
       setHudFont(g, HudFont::MEDIUM);
-      int nameH = 12 * ui_.fontMult;
+      int nameH = g.textHeight();
       int widest = 0;
       for (int i = 0; i < sim::WEAPON_COUNT; i++) {
         int tw = g.measureText(WEAPON_NAMES[i]);
@@ -232,7 +232,7 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
       }
       if (widest + ui(20, 6) > colW) {  // try the small font first
         setHudFont(g, HudFont::SMALL);
-        nameH = 8 * ui_.fontMult;
+        nameH = g.textHeight();
         widest = 0;
         for (int i = 0; i < sim::WEAPON_COUNT; i++) {
           int tw = g.measureText(WEAPON_NAMES[i]);
@@ -240,22 +240,23 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
         }
       }
       const bool stacked = widest + ui(20, 6) > colW;
-      const int rowH = nameH + ui(10, 4);
-      const int top = stacked ? (h_ - rowH * sim::WEAPON_COUNT) / 2 : uiY(130);
+      // The box wraps the line box of the name with an even padding, so it
+      // fits the text at every font size instead of following its own scale
+      const int padX = ui(10, 3), padY = ui(6, 2);
+      const int boxH = nameH + 2 * padY;
+      const int rowH = boxH + ui(4, 2);  // stacked: one row per weapon
+      const int top = (h_ - rowH * sim::WEAPON_COUNT) / 2;
       for (int i = 0; i < sim::WEAPON_COUNT; i++) {
         int cx = stacked ? w_ / 2 : colW * i + colW / 2;
-        int by = stacked ? top + rowH * i : oy + uiY(130);
+        int textY = stacked ? oy + top + rowH * i + padY : oy + uiY(136);
         bool on = i == sel;
         g2::Color c = on ? g2::makeColor(255, 230, 120) : HUD_DIM;
         int tw = g.measureText(WEAPON_NAMES[i]);
         if (on) {
-          g.drawRect(cx - tw / 2 - ui(10, 3), stacked ? oy + by : by,
-                     tw + ui(20, 6), stacked ? rowH : ui(24, 10), c);
+          g.drawRect(cx - tw / 2 - padX, textY - padY, tw + 2 * padX, boxH, c);
         }
         g.setTextColor(c);
-        g.drawString(cx - tw / 2,
-                     stacked ? oy + by + ui(5, 2) : oy + uiY(136),
-                     WEAPON_NAMES[i]);
+        g.drawString(cx - tw / 2, textY, WEAPON_NAMES[i]);
       }
       // Descriptions: one per column (all of them or none, so that the
       // columns stay even), or only the selected one when stacked
@@ -275,7 +276,7 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
         g.setTextColor(i == sel ? HUD_TEXT : HUD_DIM);
         g.drawString(cx - tw / 2, descY, WEAPON_DESCS[i]);
       }
-      int hintY = stacked ? oy + h_ - margin - 8 * ui_.fontMult : oy + uiY(220);
+      int hintY = stacked ? oy + h_ - margin - g.textHeight() : oy + uiY(220);
       drawCenteredFit(g, hintY, "LEFT / RIGHT: choose    A: confirm",
                       "A: confirm", HUD_DIM);
       break;
@@ -339,7 +340,7 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
       if (!ui_.tiny) {
         tw = g.measureText(WEAPON_NAMES[(int)p.weapon]);
         g.setTextColor(HUD_DIM);
-        g.drawString(w_ - margin - tw, gy + 12 * ui_.fontMult,
+        g.drawString(w_ - margin - tw, gy + g.lineAdvance() + ui(2, 1),
                      WEAPON_NAMES[(int)p.weapon]);
       }
 
