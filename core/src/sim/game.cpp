@@ -310,10 +310,12 @@ void Game::tick(uint8_t buttons) {
       if (pressed & Button::A) setState(GameState::WEAPON_SELECT);
       break;
     case GameState::WEAPON_SELECT:
-      if (pressed & Button::LEFT) {
+      // Either axis moves the cursor, so the keys match the layout whether
+      // the choices sit side by side or stack on a narrow screen
+      if (pressed & (Button::LEFT | Button::UP)) {
         selectedWeapon_ = (selectedWeapon_ + WEAPON_COUNT - 1) % WEAPON_COUNT;
       }
-      if (pressed & Button::RIGHT) {
+      if (pressed & (Button::RIGHT | Button::DOWN)) {
         selectedWeapon_ = (selectedWeapon_ + 1) % WEAPON_COUNT;
       }
       if (pressed & Button::A) {

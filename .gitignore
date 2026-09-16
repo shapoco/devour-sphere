@@ -17,3 +17,6 @@ __pycache__/
 
 # Site assets (the general *.png rule is for scratch renders)
 !docs/play/*.png
+
+# Release outputs
+releases/

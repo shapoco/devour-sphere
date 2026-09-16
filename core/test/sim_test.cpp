@@ -142,6 +142,25 @@ static void testGameplay() {
   CHECK(g.state() == GameState::TITLE);
   playTicks(g, 300, 5);  // attract mode
   checkInvariants(g);
+
+  // Weapon select: both axes move the cursor, and they wrap around
+  g.reset(777);
+  g.tick(0);  // buttons held during reset do not count as presses
+  g.tick(Button::A);
+  CHECK(g.state() == GameState::WEAPON_SELECT);
+  CHECK(g.selectedWeapon() == 0);
+  g.tick(Button::DOWN);
+  CHECK(g.selectedWeapon() == 1);
+  g.tick(0);
+  g.tick(Button::UP);
+  CHECK(g.selectedWeapon() == 0);
+  g.tick(0);
+  g.tick(Button::UP);
+  CHECK(g.selectedWeapon() == WEAPON_COUNT - 1);
+  g.tick(0);
+  g.tick(Button::RIGHT);
+  CHECK(g.selectedWeapon() == 0);
+
   g.reset(777);
   enterPlay(g);
   const Entity &p = g.player();

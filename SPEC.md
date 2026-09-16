@@ -47,6 +47,8 @@ impl/xiamocon/       Xiamocon 版 (impl/xiamocon/SPEC.md)
 docs/                公開用の静的サイト (docs/play/ がゲーム)
 submodule/shapo-gfx/ ShapoGFX (git submodule)
 launch_web_server.sh docs/ をローカルで配信する
+make_release.sh      リリース用のバイナリと zip を作る
+releases/            その出力 (git 管理外)
 ```
 
 ## ビルドとテスト
@@ -71,3 +73,26 @@ xmc build -p rp2350_pico_sdk                     # .cmake/devoursphere.uf2 だ�
 ```
 
 C/C++ のコードは .clang-format (ShapoGFX と同じ設定) で整形する。
+
+## リリース
+
+GitHub の releases に置くファイルは `./make_release.sh` が作る (Xiamocon SDK が必要)。
+
+```sh
+./make_release.sh                  # releases/devour-sphere-YYYYMMDD.zip
+./make_release.sh --date 20260101  # 日付を明示する
+./make_release.sh --clean          # .cmake / .pio を消してから (picotool を再取得するので遅い)
+```
+
+- impl/ の各ターゲットをビルドする。WASM 版は含めない
+  (ダウンロードさせるものではなく docs/play/ で公開するため)。
+- `releases/devour-sphere-YYYYMMDD/<ターゲット>/` に置いて zip にまとめる。
+  ターゲットは今のところ `xiamocon-rp2350` (devour-sphere.uf2) と
+  `xiamocon-esp32s3` (devour-sphere.factory.bin と upload.sh)。
+- ESP32S3 の factory イメージは bootloader・パーティションテーブル・boot_app0・
+  アプリをオフセット通りに連結したものなので、0x0 に 1 回書けば済む。
+  同梱の `upload.sh` は esptool を探して (`esptool` / `esptool.py` /
+  `python3 -m esptool`、5.x でのサブコマンド名の変更にも対応) それを書き込む。
+- 書き込み方と操作方法を書いた README.txt を zip の直下に入れる。ビルド元のコミットも記録する。
+- `set -euo pipefail` で、途中で失敗したらそこで止まる。zip は最後に作るので
+  中途半端な zip はできない。実行のたびに出力先を作り直す。

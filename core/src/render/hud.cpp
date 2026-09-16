@@ -274,7 +274,10 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
         g.drawString(cx - tw / 2, descY, WEAPON_DESCS[i]);
       }
       int hintY = stacked ? oy + h_ - margin - g.textHeight() : oy + uiY(220);
-      drawCenteredFit(g, hintY, "LEFT / RIGHT: choose    A: confirm",
+      // Either axis chooses, so the hint names the one that matches the layout
+      drawCenteredFit(g, hintY,
+                      stacked ? "UP / DOWN: choose    A: confirm"
+                              : "LEFT / RIGHT: choose    A: confirm",
                       "A: confirm", HUD_DIM);
       break;
     }

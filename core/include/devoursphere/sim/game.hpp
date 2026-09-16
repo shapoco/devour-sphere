@@ -14,7 +14,7 @@ namespace devoursphere::sim {
 
 enum class GameState : uint8_t {
   TITLE,          // attract mode: the player entity is driven by the AI
-  WEAPON_SELECT,  // choose a weapon with left/right, confirm with A
+  WEAPON_SELECT,  // choose a weapon with either axis, confirm with A
   PLAYING,
   LAUNCH,  // the player became the largest: leaving the sphere
   DEAD,    // game over screen
