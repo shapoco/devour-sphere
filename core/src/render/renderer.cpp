@@ -683,16 +683,9 @@ void Renderer::drawHealthWarning() {
   float band = h_ * 0.1f;  // px
 
   constexpr float DEPTH = 2.0f;  // view-space distance of the quads
-  vec3f camUp =
-      std::fabs(g3::dot(viewDir_, cam_.up)) < 0.99f ? cam_.up : vec3f{0, 0, 1};
-  vec3f right = g3::normalize(g3::cross(viewDir_, camUp));
-  vec3f up = g3::cross(right, viewDir_);
-  float tanY = std::tan(camFov_ * 0.5f);
-  float tanX = tanY * (float)w_ / (float)h_;
+  ScreenPlane sp = screenPlane();
   auto toView = [&](float sx, float sy) {
-    float vx = (sx / w_ * 2.0f - 1.0f) * tanX * DEPTH;
-    float vy = (1.0f - sy / h_ * 2.0f) * tanY * DEPTH;
-    return cam_.eye + viewDir_ * DEPTH + right * vx + up * vy;
+    return screenToWorld(sp, sx, sy, DEPTH);
   };
   // Each band: screen quad (x0,y0)-(x1,y1) with the edge side colored
   struct Band {
@@ -775,6 +768,84 @@ void Renderer::addEnemyMarker(const sim::Entity &c, bool always) {
                     (int)(g2::colorB(col) * k));
   bool carrier = c.upgrade != (uint8_t)sim::UpgradeKind::NONE;
   mk.outline = carrier ? (uint8_t)(255 * k) : 0;
+}
+
+Renderer::ScreenPlane Renderer::screenPlane() const {
+  ScreenPlane sp;
+  vec3f camUp =
+      std::fabs(g3::dot(viewDir_, cam_.up)) < 0.99f ? cam_.up : vec3f{0, 0, 1};
+  sp.right = g3::normalize(g3::cross(viewDir_, camUp));
+  sp.up = g3::cross(sp.right, viewDir_);
+  sp.tanY = std::tan(camFov_ * 0.5f);
+  sp.tanX = sp.tanY * (float)w_ / (float)h_;
+  return sp;
+}
+
+vec3f Renderer::screenToWorld(const ScreenPlane &sp, float sx, float sy,
+                              float depth) const {
+  float vx = (sx / w_ * 2.0f - 1.0f) * sp.tanX * depth;
+  float vy = (1.0f - sy / h_ * 2.0f) * sp.tanY * depth;
+  return cam_.eye + viewDir_ * depth + sp.right * vx + sp.up * vy;
+}
+
+// Horizon markers, added onto the frame (as fans on a plane just in front
+// of the camera, drawn after everything else) so that they never hide the
+// enemies flying near the horizon. Enemies: a downward triangle just above
+// the horizon point, with a white outline (fading with the distance) when
+// they carry an upgrade; upgrades: their icon (the HUD shape).
+void Renderer::drawMarkers() {
+  constexpr float DEPTH = 1.9f;  // nearer than the auras and the warning
+  ScreenPlane sp = screenPlane();
+  for (int i = 0; i < markerCount_; i++) {
+    const Marker2D &mk = markers_[i];
+    g2::vec2i pts[8];
+    int n = 0;
+    if (mk.kind != 0) {
+      n = upgradeIconPolygon(mk.kind, mk.x, mk.y - 10, pts);
+    } else {
+      int yb = mk.y - 3, yt = yb - 7;
+      pts[0] = {mk.x - 5, yt};
+      pts[1] = {mk.x + 5, yt};
+      pts[2] = {mk.x, yb};
+      n = 3;
+    }
+    if (n < 3) continue;
+    // Fan from the center (every icon is star-shaped around it)
+    float cx = 0, cy = 0;
+    for (int k = 0; k < n; k++) cx += pts[k].x, cy += pts[k].y;
+    cx /= n, cy /= n;
+    g3::Vertex verts[10];
+    uint16_t idx[10];
+    verts[0].position = screenToWorld(sp, cx, cy, DEPTH);
+    verts[0].normal = {0, 1, 0};
+    verts[0].uv = {0, 0};
+    verts[0].color = mk.color;
+    idx[0] = 0;
+    for (int k = 0; k <= n; k++) {
+      const g2::vec2i &q = pts[k % n];
+      verts[k + 1].position =
+          screenToWorld(sp, (float)q.x + 0.5f, (float)q.y + 0.5f, DEPTH);
+      verts[k + 1].normal = {0, 1, 0};
+      verts[k + 1].uv = {0, 0};
+      verts[k + 1].color = mk.color;
+      idx[k + 1] = (uint16_t)(k + 1);
+    }
+    g3::VertexBuffer vb = {(uint16_t)(n + 2), verts};
+    g3::Primitive prim = {g3::PrimitiveType::TRIANGLE_FAN, &vb,
+                          (uint16_t)(n + 2), idx, &palette_[PAL_LINE_ADD]};
+    g3d_.putPrimitive(prim);
+    if (mk.kind == 0 && mk.outline) {
+      int yb = mk.y - 3, yt = yb - 7;
+      const vec3f loop[3] = {
+          screenToWorld(sp, mk.x - 6.0f, yt - 1.0f, DEPTH),
+          screenToWorld(sp, mk.x + 6.0f, yt - 1.0f, DEPTH),
+          screenToWorld(sp, (float)mk.x, yb + 1.0f, DEPTH),
+      };
+      putLineLoop3(loop, 3,
+                   g2::makeColor(mk.outline, mk.outline, mk.outline),
+                   palette_[PAL_LINE_ADD]);
+    }
+  }
 }
 
 void Renderer::buildScene() {
@@ -875,6 +946,7 @@ void Renderer::buildScene() {
   drawPresenceAuras();
   drawEffects();
   drawHealthWarning();
+  drawMarkers();
   g3d_.endScene();
 }
 
@@ -923,28 +995,6 @@ void Renderer::renderBand(const g2::Surface &dst, int y, int h, int dstY) {
   g.clear(g2::makeColor(0, 0, 4));
   g3d_.render(0, (int16_t)y, (int16_t)w_, (int16_t)h, dst, 0, (int16_t)dstY);
   int oy = dstY - y;
-  for (int i = 0; i < markerCount_; i++) {
-    const Marker2D &mk = markers_[i];
-    if (mk.kind != 0) {
-      // Upgrade: its icon just above the horizon point
-      int cy = mk.y + oy - 10;
-      if (cy + 8 < dstY || cy - 8 >= dstY + h) continue;
-      drawUpgradeIcon(g, mk.kind, mk.x, cy, mk.color);
-      continue;
-    }
-    // Enemy: downward triangle just above the horizon point; a carrier of
-    // an upgrade gets a white outline (like its body) that fades with the
-    // distance like the fill, the others a dark one
-    int x = mk.x, yb = mk.y + oy - 3, yt = yb - 7;
-    if (yb + 1 < dstY || yt - 1 >= dstY + h) continue;
-    g.fillTriangle(x - 5, yt, x + 5, yt, x, yb, mk.color);
-    if (mk.outline) {
-      g.drawTriangle(x - 6, yt - 1, x + 6, yt - 1, x, yb + 1,
-                     g2::makeColor(mk.outline, mk.outline, mk.outline));
-    } else {
-      g.drawTriangle(x - 5, yt, x + 5, yt, x, yb, g2::makeColor(0, 0, 0, 120));
-    }
-  }
   for (int i = 0; i < gaugeCount_; i++) {
     const Gauge2D &gg = gauges_[i];
     if (gg.y + 3 <= y || gg.y >= y + h) continue;

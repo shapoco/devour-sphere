@@ -46,7 +46,10 @@ struct Marker2D {
   uint8_t outline;  // enemy: 0 = dark edge, else white edge brightness
 };
 
-// Icon of an upgrade kind, centered at (cx, cy), about 14 px tall
+// Icon of an upgrade kind, centered at (cx, cy), about 14 px tall: its
+// outline as a polygon (star-shaped around the center, up to 8 points;
+// returns the point count, 0 for an unknown kind) and a filled drawing
+int upgradeIconPolygon(int kind, int cx, int cy, g2::vec2i *pts);
 void drawUpgradeIcon(g2::Graphics2D &g, int kind, int cx, int cy, g2::Color c);
 
 // A piece of debris: a small spinning wireframe triangle that shrinks away
@@ -219,6 +222,16 @@ class Renderer {
   // its size and distance (carriers of upgrades)
   void addEnemyMarker(const sim::Entity &c, bool always);
   void drawHealthWarning();
+  void drawMarkers();
+  // Screen-space drawing inside the 3D scene: a plane facing the camera at
+  // a given view-space depth, and the world position of a screen pixel on it
+  struct ScreenPlane {
+    g3::vec3f right, up;
+    float tanX, tanY;
+  };
+  ScreenPlane screenPlane() const;
+  g3::vec3f screenToWorld(const ScreenPlane &sp, float sx, float sy,
+                          float depth) const;
   // upgrades.cpp
   void drawFloatingUpgrades();
   void putSolid(const g3::vec3f *verts, int nv, const uint16_t *idx, int ni,

@@ -27,35 +27,40 @@ void Renderer::drawCenteredText(g2::Graphics2D &g, int y, const char *text,
 }
 
 // Icons of the upgrade kinds, centered at (cx, cy), about 14 px tall
-void drawUpgradeIcon(g2::Graphics2D &g, int kind, int cx, int cy, g2::Color c) {
+int upgradeIconPolygon(int kind, int cx, int cy, g2::vec2i *pts) {
   switch ((sim::UpgradeKind)kind) {
     case sim::UpgradeKind::SHIELD: {  // tall diamond
-      const g2::vec2i pts[4] = {
+      const g2::vec2i p[4] = {
           {cx, cy - 7}, {cx + 4, cy}, {cx, cy + 7}, {cx - 4, cy}};
-      g.fillPolygon(pts, 4, c);
-      break;
+      for (int i = 0; i < 4; i++) pts[i] = p[i];
+      return 4;
     }
-    case sim::UpgradeKind::OVERDRIVE:  // triangle
-      g.fillTriangle(cx, cy - 6, cx + 6, cy + 5, cx - 6, cy + 5, c);
-      break;
+    case sim::UpgradeKind::OVERDRIVE: {  // triangle
+      const g2::vec2i p[3] = {{cx, cy - 6}, {cx + 6, cy + 5}, {cx - 6, cy + 5}};
+      for (int i = 0; i < 3; i++) pts[i] = p[i];
+      return 3;
+    }
     case sim::UpgradeKind::THRUSTER: {  // arrowhead (chevron)
-      const g2::vec2i pts[5] = {{cx, cy - 7},
-                                {cx + 6, cy + 6},
-                                {cx, cy + 2},
-                                {cx - 6, cy + 6},
-                                {cx, cy - 7}};
-      g.fillPolygon(pts, 5, c);
-      break;
+      const g2::vec2i p[4] = {
+          {cx, cy - 7}, {cx + 6, cy + 6}, {cx, cy + 2}, {cx - 6, cy + 6}};
+      for (int i = 0; i < 4; i++) pts[i] = p[i];
+      return 4;
     }
     case sim::UpgradeKind::EXTRA_CORE: {  // four-pointed star
-      const g2::vec2i pts[8] = {
+      const g2::vec2i p[8] = {
           {cx, cy - 7}, {cx + 2, cy - 2}, {cx + 7, cy}, {cx + 2, cy + 2},
           {cx, cy + 7}, {cx - 2, cy + 2}, {cx - 7, cy}, {cx - 2, cy - 2}};
-      g.fillPolygon(pts, 8, c);
-      break;
+      for (int i = 0; i < 8; i++) pts[i] = p[i];
+      return 8;
     }
-    default: break;
+    default: return 0;
   }
+}
+
+void drawUpgradeIcon(g2::Graphics2D &g, int kind, int cx, int cy, g2::Color c) {
+  g2::vec2i pts[8];
+  int n = upgradeIconPolygon(kind, cx, cy, pts);
+  if (n > 0) g.fillPolygon(pts, n, c);
 }
 
 void Renderer::drawUpgradeStatus(g2::Graphics2D &g, int oy) {
