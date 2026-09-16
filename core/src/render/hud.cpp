@@ -208,11 +208,9 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
         drawCenteredFit(g, oy + uiY(236), buf, alt, HUD_DIM);
       }
       int lineH = g.lineAdvance() + ui(6, 2);
-      drawCenteredFit(g, oy + h_ - margin - 2 * lineH,
-                      "MOVE: ARROWS / WASD    A: SPACE / IJKL",
-                      "ARROWS: MOVE   SPACE: FIRE", HUD_DIM);
-      drawCenteredFit(g, oy + h_ - margin - lineH,
-                      "UP: DASH   DOWN: BRAKE", "UP / DOWN: DASH / BRAKE",
+      drawCenteredFit(g, oy + h_ - margin - 2 * lineH, hints_.move,
+                      hints_.moveAlt, HUD_DIM);
+      drawCenteredFit(g, oy + h_ - margin - lineH, hints_.dash, hints_.dashAlt,
                       HUD_DIM);
       break;
     }

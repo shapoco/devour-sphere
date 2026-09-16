@@ -49,6 +49,18 @@ void Renderer::spawnDebris(const vec3f &pos, int count, float size,
   }
 }
 
+// Take the effects of a tick the front end has just run. A platform that
+// catches up several ticks in one frame calls this after every one of them:
+// the simulation only holds the events of the current tick, so without this
+// everything but the last tick of the batch would go unnoticed.
+void Renderer::pollEffects(const sim::Game &game) {
+  // Before the first frame there is no render origin to place the debris
+  // against; beginFrame() collects that tick instead.
+  if (!originValid_) return;
+  game_ = &game;
+  collectEffects();
+}
+
 // Turn the simulation's effect events of the last tick into debris
 void Renderer::collectEffects() {
   const sim::Game &g = *game_;

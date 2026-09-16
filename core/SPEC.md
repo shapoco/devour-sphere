@@ -109,8 +109,10 @@
 ブレーキを押しながら旋回することでクイックターンができる。
 A ボタンで攻撃。押したままで連射。
 
-PC では ↑↓←→ と WASD を方向キーとして使う。
-IJKL キーとスペースバーを A ボタンに割り当てる。
+入力装置はプラットフォームごとに違うので、キーやボタンの割り当てもプラットフォーム側が決める
+(PC では ↑↓←→ と WASD が方向キー、IJKL キーとスペースバーが A ボタン)。
+タイトル画面に出す操作の案内文は `Renderer::setControlHints()` でプラットフォームから渡す。
+既定値は PC のキーボード向けで、既定のまま使えば WASM 版の表示になる。
 
 ## 画面配置
 
@@ -160,6 +162,7 @@ include/devoursphere/
   sim/entities.hpp        Entity, Fragment, FloatingFragment, Bullet, Spark, Button
   sim/game.hpp            Game: 状態機械と tick()
   render/renderer.hpp     Renderer: beginFrame() / renderBand() / endFrame()
+                          setControlHints() / pollEffects() はプラットフォームから呼ぶ
 src/sim/                  fixed.cpp entities.cpp game.cpp entity.cpp combat.cpp
 src/render/               renderer.cpp sphere.cpp hud.cpp
 test/                     sim_test.cpp (ctest), sim_bench.cpp (バランス・負荷計測)
@@ -184,11 +187,16 @@ tools/gen_tables.py       sin テーブル (src/sim/sin_table.inc) の生成
 - 60 tick/秒固定 (`TICK_RATE`)。`Game::tick(buttons)` を呼ぶごとに 1 tick 進む。
   時間に関わる定数は秒あたりの値から `TICK_RATE` で tick あたりに換算して定義してあり
   (`ticks30()`、`fuPerSec()`、`turnPerTick()`、緩和量のシフトは `RATE_SHIFT` で補正)、
-  tick レートを変えても挙動が保たれる。ただし決定性のため WASM 版と RP2350 版は同じ値でなければならない。
-  RP2350 では sim を 60Hz で必ず回し、描画はベストエフォート (2 コア構成、必要ならオーバークロック)。
+  tick レートを変えても挙動が保たれる。ただし決定性のため、同じ入力列から同じ結果を得たい
+  プラットフォーム同士は同じ値でなければならない。
   以下の「毎 tick」の値は 30Hz 換算で書いてある。
 - 入力は 5 ビット: LEFT, RIGHT, UP (ダッシュ), DOWN (ブレーキ), A (攻撃・決定)。
 - 描画は tick と独立に何度呼んでもよい (状態を変えない)。
+- sim は 60Hz で回し、描画は追いつける範囲で行う。1 フレームに複数 tick 進めるときは
+  **tick ごとに `Renderer::pollEffects()` を呼ぶ**こと。エフェクトのイベント
+  (`Game::effects()`) は tick ごとにクリアされるので、これを怠るとフレーム内の
+  最後の tick 以外の爆発やデブリが出ない。`beginFrame()` も同じ回収を行い、
+  どちらも回収済みの tick は読み飛ばす。
 
 ### 位置と姿勢
 
@@ -496,6 +504,10 @@ PLAYING で自機が死んだとき、予備コアがあればリスポーンし
   Thruster (矢じり、黄緑) のアイコンとレベルのピップ 3 個、右下に予備コア (4 本の閃光星、ピンク) 3 個分
   (残っている分だけ明るい)。被弾時は画面の縁が赤く光る。死亡画面にはスコアとハイスコア、
   タイトルにはハイスコアを出す。
+  タイトル画面の下端には操作の案内を 2 行出す。この文字列は入力装置に依存するので
+  プラットフォームが `setControlHints()` で渡す (`ControlHints`、既定は PC のキーボード向け)。
+  各行には短い代替文字列があり、画面が狭いときはそちらに、それも入らなければ描かない。
+  「PRESS A TO START」「LEFT / RIGHT: choose  A: confirm」はボタン名だけなので固定。
 - 体力警告: 自機の体力が半分以下のとき、画面の上下左右の縁に赤いグラデーション
   (縁が赤、内側へ黒に落ちる頂点色の四角形、加算合成、視点の 2 FU 先の平面) を描く。
   幅は画面高さの 10%。明るさは体力 50% で 0 から始まり、0% に近づくにつれて 50% まで直線的に濃くなる。

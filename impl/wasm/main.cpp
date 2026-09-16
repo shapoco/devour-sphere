@@ -77,7 +77,13 @@ DS_EXPORT void ds_debug_start(int level, int weapon) {
 DS_EXPORT void ds_debug_auto(int on) { game.debugAutoPlayer(on != 0); }
 
 // One simulation tick (30 per second) with the button bits of sim::Button
-DS_EXPORT void ds_tick(uint32_t buttons) { game.tick((uint8_t)buttons); }
+DS_EXPORT void ds_tick(uint32_t buttons) {
+  game.tick((uint8_t)buttons);
+  // This front end renders after every tick, so ds_render() would pick the
+  // effects up anyway; doing it here keeps both front ends on the same rule
+  // (every tick is polled, whether or not a frame follows it).
+  renderer.pollEffects(game);
+}
 
 // Render the current state into the frame buffer; dt = seconds since the
 // previous render (camera smoothing)

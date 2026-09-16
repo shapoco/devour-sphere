@@ -76,6 +76,19 @@ struct UiMetrics {
   int wireLines = 1100;  // budget for the sphere wireframe
 };
 
+// The control hints on the title screen. Every platform has its own input
+// device, so the strings come from the front end; the defaults describe a PC
+// keyboard. Each line has a shorter alternative used when the screen is too
+// narrow for the first one (and is dropped when neither fits). The platform
+// owns the storage: pass string literals or something that outlives the
+// renderer.
+struct ControlHints {
+  const char *move = "MOVE: ARROWS / WASD    A: SPACE / IJKL";
+  const char *moveAlt = "ARROWS: MOVE   SPACE: FIRE";
+  const char *dash = "UP: DASH   DOWN: BRAKE";
+  const char *dashAlt = "UP / DOWN: DASH / BRAKE";
+};
+
 // Font roles of the HUD (the fonts themselves live in hud.cpp)
 enum class HudFont : uint8_t { SMALL, MEDIUM, LARGE, TITLE };
 
@@ -129,6 +142,17 @@ class Renderer {
   // arena: working memory of the 3D renderer (192 KB or more recommended)
   void init(int width, int height, void *arena, size_t arenaSize);
 
+  // The control hints of the title screen (init() keeps them, so this can be
+  // called once at start up whatever the frame buffer size does afterwards)
+  void setControlHints(const ControlHints &hints) { hints_ = hints; }
+
+  // Take the effects the simulation raised during the last tick. A platform
+  // that runs several ticks per frame must call this after every tick: the
+  // simulation only keeps the events of the current tick, so the ones it
+  // catches up on would be lost otherwise. beginFrame() does the same for the
+  // tick it is given, and both skip a tick that was already collected.
+  void pollEffects(const sim::Game &game);
+
   // dt: seconds since the previous frame (camera smoothing and effects)
   void beginFrame(const sim::Game &game, float dt);
   // Draw the rows [y, y + h) of the frame into dst starting at row dstY
@@ -148,6 +172,7 @@ class Renderer {
  private:
   int w_ = 0, h_ = 0;
   UiMetrics ui_;
+  ControlHints hints_;  // set by the platform, kept across init()
   // A distance of the reference layout in the pixels of this screen
   int ui(int refPx) const { return refPx * ui_.scale8 / 8; }
   // A vertical position of the reference layout as a fraction of the height
