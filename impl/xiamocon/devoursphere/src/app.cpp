@@ -28,7 +28,8 @@ namespace render = devoursphere::render;
 
 namespace {
 
-sim::Game *g_game = nullptr;  // see ds::allocGame()
+sim::Game *g_game = nullptr;       // see ds::allocGame()
+volatile bool g_core1Ran = false;  // set the first time core1's task runs
 render::Renderer g_renderer;
 uint8_t g_arena[ds::ARENA_SIZE];
 ds::BandWriter g_bands;
@@ -85,6 +86,7 @@ bool core1Task() {
   static bool started = false;
   if (!started) {
     started = true;
+    g_core1Ran = true;
     ds::stackWatchInitCore1();
   }
   if (frameLoad() != Frame::BUILD) {
@@ -131,19 +133,13 @@ bool core1Task() {
   static bool started = false;
   if (!started) {
     started = true;
+    g_core1Ran = true;
     ds::stackWatchInitCore1();
-  }
-  static bool sawIdle = false;
-  if (!sawIdle) {
-    sawIdle = true;
-    ds::trace("core1 alive", 0);
   }
   if (simLoad() != Sim::RUN) {
     ds::frameIdle();
     return true;
   }
-  static int batches = 0;
-  if (batches < 3) ds::trace("core1 batch in", g_simWanted);
   const uint32_t t0 = (uint32_t)xmc::getTimeUs();
   for (int i = 0; i < g_simWanted; i++) {
     g_game->tick(g_simButtons);
@@ -154,10 +150,6 @@ bool core1Task() {
   g_simTickUs = (uint32_t)xmc::getTimeUs() - t0;
   g_simRan = g_simWanted;
   simStore(Sim::DONE);
-  if (batches < 3) {
-    batches++;
-    ds::trace("core1 batch out", g_simTickUs);
-  }
   return true;
 }
 
@@ -244,7 +236,12 @@ void xmcAppSetup(void) {
 #if DS_SPLIT == DS_SPLIT_NONE
   ds::trace("one core", 0);
 #else
+  // xmc::startCore1() returns XMC_OK whether or not the task was created, so
+  // check that it actually runs rather than trusting the status
+  ds::trace("free internal ram", ds::freeInternalRam());
   ds::trace("core1", (uint32_t)xmc::startCore1(core1Task));
+  xmc::sleepMs(50);
+  ds::trace("core1 running", g_core1Ran ? 1 : 0);
 #endif
 }
 
@@ -303,12 +300,6 @@ void xmcAppLoop(void) {
   // This is what costs a frame of latency: these buttons reach the screen one
   // frame later.
   const int want = ticksDue();
-  static int loops = 0;
-  if (loops < 3) {
-    loops++;
-    ds::trace("loop ran", (uint32_t)ran);
-    ds::trace("loop want", (uint32_t)want);
-  }
   if (want > 0) {
     g_simWanted = want;
     g_simButtons = buttons;

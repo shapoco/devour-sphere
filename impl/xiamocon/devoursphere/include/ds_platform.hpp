@@ -28,6 +28,13 @@ devoursphere::sim::Game *allocGame();
 // static.
 uint16_t *allocBandBuffer(size_t bytes);
 
+// Bytes of internal RAM still free, or 0 where the question does not apply.
+// The band buffers, the SPI driver's own buffers and every FreeRTOS task
+// stack come out of this, and xmc::startCore1() does not check whether the
+// task was actually created -- so running out shows up as a core1 that never
+// runs, with XMC_OK returned.
+uint32_t freeInternalRam();
+
 // Print a line to the serial console during bring up. Nothing on RP2350,
 // where no serial port is configured.
 void trace(const char *what, uint32_t value);

@@ -42,6 +42,10 @@ uint16_t *allocBandBuffer(size_t bytes) {
   return (uint16_t *)p;
 }
 
+uint32_t freeInternalRam() {
+  return (uint32_t)heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+}
+
 void trace(const char *what, uint32_t value) {
   static bool begun = false;
   if (!begun) {
@@ -99,6 +103,8 @@ devoursphere::sim::Game *allocGame() {
   static devoursphere::sim::Game game;
   return &game;
 }
+
+uint32_t freeInternalRam() { return 0; }  // fixed layout, nothing to report
 
 uint16_t *allocBandBuffer(size_t bytes) {
   // One static block carved in two; alignas keeps the DMA happy

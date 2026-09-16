@@ -43,9 +43,18 @@ static_assert(SCREEN_H % BAND_H == 0, "the bands must tile the screen exactly");
 // 128 KB is the knee: the scene reaches its natural size and gets 2.7x the
 // headroom for a heavier one. Nothing changes above it. The profiling
 // overlay reports the real usage.
-// Both targets use the same size. The ESP32S3 can afford it because the
-// simulation state is in PSRAM; see ds_platform.hpp for why it has to be.
+// The ESP32S3 keeps 96 KB rather than 128. Everything that is not static
+// there comes out of one pool: the band buffers (77 KB at 80-row bands), the
+// SPI driver's own buffers (32 KB) and every FreeRTOS task stack, including
+// the 8 KB core1 asks for. At 128 KB the arena leaves too little and the
+// core1 task is silently not created -- xmc::startCore1() does not check.
+// 96 KB still gives the triangle buffer about 473 entries against a measured
+// peak of 205.
+#if defined(ESP32)
+constexpr size_t ARENA_SIZE = 96 * 1024;
+#else
 constexpr size_t ARENA_SIZE = 128 * 1024;
+#endif
 
 // The simulation runs at a fixed 60 Hz whatever the frame rate is
 constexpr uint32_t TICK_US = 1000000u / devoursphere::sim::TICK_RATE;
