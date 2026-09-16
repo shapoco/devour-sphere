@@ -680,11 +680,11 @@ void Renderer::drawHealthWarning() {
   float t = 1.0f - (float)p.hp * 2.0f / (float)p.hpMax;
   if (t < 0) t = 0;
   if (t > 1) t = 1;
-  float bright = 0.25f + 0.75f * t;
+  float bright = t * 0.5f;
   g2::Color edge = g2::makeColor((int)(255 * bright), (int)(24 * bright),
                                  (int)(16 * bright));
   g2::Color inner = g2::makeColor(0, 0, 0);
-  float band = h_ * (0.14f + 0.12f * t);  // px
+  float band = h_ * 0.1f;  // px
 
   constexpr float DEPTH = 2.0f;  // view-space distance of the quads
   vec3f camUp =
@@ -705,10 +705,10 @@ void Renderer::drawHealthWarning() {
   };
   const float W = (float)w_, H = (float)h_;
   const Band bands[4] = {
-      {0, 0, W, band, true},        // top
-      {0, H - band, W, H, false},   // bottom
-      {0, 0, band, H, true},        // left
-      {W - band, 0, W, H, false},   // right
+      {0, 0, W, band, true},       // top
+      {0, H - band, W, H, false},  // bottom
+      {0, 0, band, H, true},       // left
+      {W - band, 0, W, H, false},  // right
   };
   for (int b = 0; b < 4; b++) {
     const Band &bd = bands[b];
