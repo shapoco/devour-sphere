@@ -881,8 +881,7 @@ void Renderer::drawMarkers() {
           screenToWorld(sp, mk.x + hw, yt - 1.0f, DEPTH),
           screenToWorld(sp, (float)mk.x, yb + 1.0f, DEPTH),
       };
-      putLineLoop3(loop, 3,
-                   g2::makeColor(mk.outline, mk.outline, mk.outline),
+      putLineLoop3(loop, 3, g2::makeColor(mk.outline, mk.outline, mk.outline),
                    palette_[PAL_LINE_ADD]);
     }
   }
@@ -1015,6 +1014,26 @@ void Renderer::updateScoreDisplay(float dt) {
 
 void Renderer::beginFrame(const sim::Game &game, float dt) {
   game_ = &game;
+  // Everything the HUD reads, taken here so that renderBand() never touches
+  // the simulation (see HudState)
+  const sim::Entity &p = game.player();
+  hud_.tickCount = game.tickCount();
+  hud_.score = game.score();
+  hud_.highScore = game.highScore();
+  hud_.events = game.events();
+  hud_.playerHp = p.hp;
+  hud_.playerHpMax = p.hpMax;
+  hud_.stateTimer = game.stateTimer();
+  hud_.sphereLevel = game.sphereLevel();
+  hud_.spheresCleared = game.spheresCleared();
+  hud_.playerRank = game.playerRank();
+  hud_.aliveEntities = game.aliveEntities();
+  hud_.selectedWeapon = game.selectedWeapon();
+  hud_.playerWeapon = (int)p.weapon;
+  hud_.cores = game.cores();
+  for (int k = 0; k < sim::UPGRADE_KINDS; k++)
+    hud_.upgradeLevel[k] = game.upgradeLevel((sim::UpgradeKind)(k + 1));
+  hud_.state = game.state();
   time_ += dt;
   updateScoreDisplay(dt);
   lineCount_ = 0;

@@ -142,7 +142,7 @@ static g2::Color dimmed(g2::Color c) {
 // The pips keep a readable minimum size, so on a small screen they take a
 // larger share of the width than the reference layout gives them.
 void Renderer::drawUpgradeStatus(g2::Graphics2D &g, int oy) {
-  const sim::Game &game = *game_;
+  const HudState &hud = hud_;
   const int is = ui_.iconScale8;
   const int half = 7 * is / 8;
   const int pipW = ui(4, 2), pipH = ui(7, 3), pipPitch = ui(6, 3);
@@ -152,7 +152,7 @@ void Renderer::drawUpgradeStatus(g2::Graphics2D &g, int oy) {
   if (pitch < ui(44)) pitch = ui(44);
   int x = ui(14, half + 2);
   for (int k = 1; k <= sim::UPGRADE_KINDS; k++) {
-    int level = game.upgradeLevel((sim::UpgradeKind)k);
+    int level = hud.upgradeLevel[k - 1];
     g2::Color c = upgradeColor(k);
     g2::Color dim = dimmed(c);
     drawUpgradeIcon(g, k, x, y, level > 0 ? c : dim, is);
@@ -173,21 +173,20 @@ void Renderer::drawUpgradeStatus(g2::Graphics2D &g, int oy) {
   int cx = w_ - ui(14, half + 2);
   for (int i = 0; i < sim::CORES_MAX; i++) {
     g2::Color c = upgradeColor((int)sim::UpgradeKind::EXTRA_CORE);
-    if (i >= game.cores()) c = dimmed(c);
+    if (i >= hud.cores) c = dimmed(c);
     drawUpgradeIcon(g, (int)sim::UpgradeKind::EXTRA_CORE, cx, y, c, is);
     cx -= corePitch;
   }
 }
 
 void Renderer::drawHud(g2::Graphics2D &g, int oy) {
-  const sim::Game &game = *game_;
-  const sim::Entity &p = game.player();
+  const HudState &hud = hud_;
   char buf[64], alt[64];
-  uint32_t t = game.tickCount();
+  uint32_t t = hud.tickCount;
   bool blinkOn = (t / (sim::TICK_RATE / 2)) & 1;
   const int margin = ui_.margin;
 
-  switch (game.state()) {
+  switch (hud.state) {
     case sim::GameState::TITLE: {
       setHudFont(g, HudFont::TITLE);
       drawCenteredFit(g, oy + uiY(70), "DEVOUR SPHERE", "DEVOUR",
@@ -201,10 +200,10 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
                         HUD_TEXT);
       }
       setHudFont(g, HudFont::SMALL);
-      if (game.highScore() > 0) {
+      if (hud.highScore > 0) {
         std::snprintf(buf, sizeof(buf), "HIGH SCORE %u",
-                      (unsigned)game.highScore());
-        std::snprintf(alt, sizeof(alt), "HI %u", (unsigned)game.highScore());
+                      (unsigned)hud.highScore);
+        std::snprintf(alt, sizeof(alt), "HI %u", (unsigned)hud.highScore);
         drawCenteredFit(g, oy + uiY(236), buf, alt, HUD_DIM);
       }
       int lineH = g.lineAdvance() + ui(6, 2);
@@ -217,7 +216,7 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
     case sim::GameState::WEAPON_SELECT: {
       setHudFont(g, HudFont::LARGE);
       drawCenteredFit(g, oy + uiY(50), "SELECT WEAPON", "WEAPON", HUD_TEXT);
-      int sel = game.selectedWeapon();
+      int sel = hud.selectedWeapon;
       int colW = w_ / sim::WEAPON_COUNT;
       // The names sit side by side while the columns are wide enough for the
       // longest of them; on a narrow screen they stack in the middle instead
@@ -286,7 +285,9 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
       const int gx = margin, gy = oy + margin;
       const int gw = ui_.gaugeW, gh = ui_.gaugeH, gb = ui(1, 1);
       g.drawRect(gx - gb, gy - gb, gw + 2 * gb, gh + 2 * gb, HUD_DIM, gb);
-      int fill = p.hpMax > 0 ? (int)((int64_t)p.hp * gw / p.hpMax) : 0;
+      int fill = hud.playerHpMax > 0
+                     ? (int)((int64_t)hud.playerHp * gw / hud.playerHpMax)
+                     : 0;
       if (fill < 0) fill = 0;
       g2::Color hpColor = fill > gw / 2
                               ? g2::makeColor(90, 230, 140)
@@ -307,19 +308,19 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
       }
 
       // Rank, under the gauge (same size as the score)
-      std::snprintf(buf, sizeof(buf), "RANK %d / %d", game.playerRank(),
-                    game.aliveEntities());
+      std::snprintf(buf, sizeof(buf), "RANK %d / %d", hud.playerRank,
+                    hud.aliveEntities);
       if (!textFits(g, buf)) {
-        std::snprintf(buf, sizeof(buf), "%d/%d", game.playerRank(),
-                      game.aliveEntities());
+        std::snprintf(buf, sizeof(buf), "%d/%d", hud.playerRank,
+                      hud.aliveEntities);
       }
       {
         int ry = gy + gh + ui(12, 4);
         int sh = ui_.fontMult;
         g.setTextColor(HUD_SHADOW);
         g.drawString(gx + sh, ry + sh, buf);
-        g.setTextColor(game.playerRank() == 1 ? g2::makeColor(255, 230, 120)
-                                              : HUD_TEXT);
+        g.setTextColor(hud.playerRank == 1 ? g2::makeColor(255, 230, 120)
+                                           : HUD_TEXT);
         g.drawString(gx, ry, buf);
       }
 
@@ -327,59 +328,59 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
 
       // Sphere and weapon (top right)
       setHudFont(g, HudFont::SMALL);
-      std::snprintf(buf, sizeof(buf), "SPHERE %d", game.sphereLevel());
+      std::snprintf(buf, sizeof(buf), "SPHERE %d", hud.sphereLevel);
       int tw = g.measureText(buf);
       if (tw > w_ / 3) {
-        std::snprintf(buf, sizeof(buf), "S%d", game.sphereLevel());
+        std::snprintf(buf, sizeof(buf), "S%d", hud.sphereLevel);
         tw = g.measureText(buf);
       }
       g.setTextColor(HUD_TEXT);
       g.drawString(w_ - margin - tw, gy, buf);
       if (!ui_.tiny) {
-        tw = g.measureText(WEAPON_NAMES[(int)p.weapon]);
+        tw = g.measureText(WEAPON_NAMES[hud.playerWeapon]);
         g.setTextColor(HUD_DIM);
         g.drawString(w_ - margin - tw, gy + g.lineAdvance() + ui(2, 1),
-                     WEAPON_NAMES[(int)p.weapon]);
+                     WEAPON_NAMES[hud.playerWeapon]);
       }
 
       // Hit flash
-      if (game.events() & sim::Event::PLAYER_HIT) {
+      if (hud.events & sim::Event::PLAYER_HIT) {
         g.drawRect(0, oy, w_, h_, g2::makeColor(255, 60, 60, 160), ui(3, 1));
       }
 
-      if (game.state() == sim::GameState::LAUNCH) {
+      if (hud.state == sim::GameState::LAUNCH) {
         setHudFont(g, HudFont::LARGE);
         drawCenteredFit(g, oy + uiY(100), "SPHERE DEVOURED", "DEVOURED",
                         g2::makeColor(255, 230, 120));
         setHudFont(g, ui_.compact ? HudFont::SMALL : HudFont::MEDIUM);
         drawCenteredFit(g, oy + uiY(135), "leaving for a larger world...",
                         "next sphere...", HUD_TEXT);
-      } else if (game.state() == sim::GameState::DEAD) {
+      } else if (hud.state == sim::GameState::DEAD) {
         setHudFont(g, HudFont::LARGE);
         drawCenteredFit(g, oy + uiY(100), "YOU WERE DEVOURED", "DEVOURED",
                         g2::makeColor(255, 90, 90));
         setHudFont(g, ui_.compact ? HudFont::SMALL : HudFont::MEDIUM);
-        std::snprintf(buf, sizeof(buf), "SCORE %u", (unsigned)game.score());
-        std::snprintf(alt, sizeof(alt), "%u", (unsigned)game.score());
+        std::snprintf(buf, sizeof(buf), "SCORE %u", (unsigned)hud.score);
+        std::snprintf(alt, sizeof(alt), "%u", (unsigned)hud.score);
         drawCenteredFit(g, oy + uiY(135), buf, alt, HUD_TEXT);
         std::snprintf(buf, sizeof(buf), "HIGH SCORE %u",
-                      (unsigned)game.highScore());
-        std::snprintf(alt, sizeof(alt), "HI %u", (unsigned)game.highScore());
+                      (unsigned)hud.highScore);
+        std::snprintf(alt, sizeof(alt), "HI %u", (unsigned)hud.highScore);
         drawCenteredFit(g, oy + uiY(152), buf, alt,
-                        game.score() >= game.highScore() && game.score() > 0
+                        hud.score >= hud.highScore && hud.score > 0
                             ? g2::makeColor(255, 230, 120)
                             : HUD_DIM);
         setHudFont(g, HudFont::SMALL);
         std::snprintf(buf, sizeof(buf), "spheres devoured: %d",
-                      game.spheresCleared());
-        std::snprintf(alt, sizeof(alt), "spheres: %d", game.spheresCleared());
+                      hud.spheresCleared);
+        std::snprintf(alt, sizeof(alt), "spheres: %d", hud.spheresCleared);
         drawCenteredFit(g, oy + uiY(172), buf, alt, HUD_DIM);
-        if (game.stateTimer() > 2 * sim::TICK_RATE && blinkOn) {
+        if (hud.stateTimer > 2 * sim::TICK_RATE && blinkOn) {
           setHudFont(g, ui_.compact ? HudFont::SMALL : HudFont::MEDIUM);
           drawCenteredFit(g, oy + uiY(200), "PRESS A", nullptr, HUD_TEXT);
         }
-      } else if (game.stateTimer() < 3 * sim::TICK_RATE &&
-                 game.sphereLevel() == 1 && game.spheresCleared() == 0) {
+      } else if (hud.stateTimer < 3 * sim::TICK_RATE && hud.sphereLevel == 1 &&
+                 hud.spheresCleared == 0) {
         setHudFont(g, ui_.compact ? HudFont::SMALL : HudFont::MEDIUM);
         drawCenteredFit(g, oy + uiY(240),
                         "devour the fragments, become the largest",

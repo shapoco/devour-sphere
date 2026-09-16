@@ -43,7 +43,33 @@ char *putMs(char *p, char *end, uint32_t us) {
   return p;
 }
 
+// Core1 runs beginFrame(), whose sphere traversal recurses, on a 4 KB stack
+// in SCRATCH_X -- that size is a hard ceiling, so it is worth watching.
+constexpr uint32_t STACK_PAINT = 0xC1C1C1C1u;
+
 }  // namespace
+
+// Linker symbols: core1's stack runs from __StackOneBottom up to
+// __StackOneTop (SCRATCH_X, 4 KB). Declared as arrays so that pointer
+// arithmetic over them is well defined.
+extern "C" {
+extern uint32_t __StackOneBottom[];
+extern uint32_t __StackOneTop[];
+}
+
+void Profiler::paintCore1Stack() {
+  uint32_t sp;
+  __asm volatile("mov %0, sp" : "=r"(sp));
+  // Everything below the current frame, less a little slack, is unused
+  uint32_t *end = (uint32_t *)(sp - 64);
+  for (uint32_t *q = __StackOneBottom; q < end; q++) *q = STACK_PAINT;
+}
+
+uint32_t Profiler::core1StackUsed() {
+  const uint32_t *q = __StackOneBottom;
+  while (q < __StackOneTop && *q == STACK_PAINT) q++;
+  return (uint32_t)((size_t)(__StackOneTop - q) * sizeof(uint32_t));
+}
 
 void Profiler::endFrame(uint64_t nowUs,
                         const devoursphere::render::RenderStats &stats) {
@@ -57,7 +83,8 @@ void Profiler::endFrame(uint64_t nowUs,
   }
   if (!on_) return;
 
-  const uint32_t cpuUs = tickUs + beginUs + rasterUs;
+  // core1's critical path: building the scene plus getting the bands out
+  const uint32_t cpuUs = beginUs + rasterUs + dmaWaitUs + cmdUs;
   for (int i = 0; i < LINES; i++) {
     char *p = lines_[i], *end = lines_[i] + COLS;
     switch (i) {
@@ -84,6 +111,16 @@ void Profiler::endFrame(uint64_t nowUs,
         p = putMs(p, end, dmaWaitUs);
         p = putStr(p, end, "  CPU ");
         p = putMs(p, end, cpuUs);
+        break;
+      case 5:  // per band setWindow + writePixelsStart, and core1's stack.
+               // The command cost scales with the band count, so it says
+               // whether fewer, taller bands would pay off.
+        p = putStr(p, end, "CMD ");
+        p = putMs(p, end, cmdUs);
+        p = putStr(p, end, " W");
+        p = putMs(p, end, core1WaitUs);
+        p = putStr(p, end, " S");
+        p = putUint(p, end, core1StackUsed());
         break;
       case 3:  // did the scene fit in the triangle buffer and the span pool?
         p = putStr(p, end, "TRI ");

@@ -35,8 +35,14 @@ class Profiler {
 
   // Microsecond counters of the frame being built. app.cpp fills the first
   // two, BandWriter the last two.
-  uint32_t tickUs = 0, beginUs = 0, rasterUs = 0, dmaWaitUs = 0;
+  uint32_t tickUs = 0, beginUs = 0, rasterUs = 0, dmaWaitUs = 0, cmdUs = 0;
+  uint32_t core1WaitUs = 0;  // core0 idle, waiting for core1 to finish
   int ticks = 0;
+
+  // Paint core1's stack so that stackUsed() can find the high water mark.
+  // Called from core1 itself, once, before it does any real work.
+  static void paintCore1Stack();
+  static uint32_t core1StackUsed();
 
   // Format what was just measured for the next frame to draw
   void endFrame(uint64_t nowUs, const devoursphere::render::RenderStats &stats);
@@ -46,7 +52,7 @@ class Profiler {
   void drawOverlay(const g2::Surface &band, int bandY);
 
  private:
-  static constexpr int LINES = 5;
+  static constexpr int LINES = 6;
   static constexpr int COLS = 21;
   bool on_ = false;
   char lines_[LINES][COLS + 1] = {};
@@ -56,8 +62,11 @@ class Profiler {
 #else
   void toggle() {}
   bool on() const { return false; }
-  uint32_t tickUs = 0, beginUs = 0, rasterUs = 0, dmaWaitUs = 0;
+  uint32_t tickUs = 0, beginUs = 0, rasterUs = 0, dmaWaitUs = 0, cmdUs = 0;
+  uint32_t core1WaitUs = 0;
   int ticks = 0;
+  static void paintCore1Stack() {}
+  static uint32_t core1StackUsed() { return 0; }
   void endFrame(uint64_t, const devoursphere::render::RenderStats &) {}
   void drawOverlay(const g2::Surface &, int) {}
 #endif

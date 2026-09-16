@@ -12,14 +12,18 @@
 
 #include <pico/rand.h>
 
+#include <atomic>
+
 #include "band_writer.hpp"
 #include "devoursphere/devoursphere.hpp"
 #include "ds_config.hpp"
 #include "profiler.hpp"
 #include "xmc/app.hpp"
 #include "xmc/input.hpp"
+#include "xmc/multicore.hpp"
 #include "xmc/system.hpp"
 #include "xmc/timer.hpp"
+#include "xmc/xmc_common.hpp"
 
 // Deliberately no `using namespace`: xmc and shapoco::gfx2d both have a
 // PixelFormat, a Color and a Graphics2D.
@@ -34,10 +38,60 @@ uint8_t g_arena[ds::ARENA_SIZE];
 ds::BandWriter g_bands;
 ds::Profiler g_prof;
 
-// Frame pacing: the simulation steps at a fixed 60 Hz, the frame rate is
+// Frame pacing: the simulation steps at a fixed rate, the frame rate is
 // whatever the device manages.
 uint64_t g_lastUs = 0;
 uint32_t g_accUs = 0;
+
+// --- The two cores -------------------------------------------------------
+//
+// core1 renders: beginFrame(), then the bands and their transfers. core0
+// runs the simulation and hands frames over. The point of the split is that
+// core0's ticks for the next frame overlap core1's rasterization of this
+// one; beginFrame() cannot overlap anything, because it reads the whole
+// Game.
+//
+// Which core touches what, while core1 is past SCENE_READY:
+//   core1  the arena and the scene built into it, the band buffers, the
+//          display, and the Renderer's HUD snapshot / gauges / markers
+//   core0  the Game, and the Renderer's effect state through pollEffects()
+//          (debris, pickups, the effect rng) -- none of which renderBand()
+//          reads, now that the HUD draws from the snapshot beginFrame takes.
+enum class Frame : uint32_t {
+  IDLE,         // nothing in flight
+  BUILD,        // core0 asked for a frame; core1 is inside beginFrame()
+  SCENE_READY,  // the scene is built; core1 is rasterizing and transferring
+  DONE,         // the frame is out; core0 may hand over the next one
+};
+std::atomic<Frame> g_frame{Frame::IDLE};
+static_assert(std::atomic<Frame>::is_always_lock_free,
+              "the handshake must not take a lock");
+float g_frameDt = 0;  // written before BUILD is published, read after it
+
+bool core1Task() {
+  static bool painted = false;
+  if (!painted) {
+    painted = true;
+    ds::Profiler::paintCore1Stack();
+  }
+  if (g_frame.load(std::memory_order_acquire) != Frame::BUILD) {
+    xmc::tightLoopContents();
+    return true;
+  }
+  g_renderer.beginFrame(g_game, g_frameDt);
+  // From here the Game belongs to core0 again
+  g_frame.store(Frame::SCENE_READY, std::memory_order_release);
+  g_bands.present(g_renderer, g_prof);
+  g_renderer.endFrame();
+  g_frame.store(Frame::DONE, std::memory_order_release);
+  return true;
+}
+
+void waitFrame(Frame want) {
+  while (g_frame.load(std::memory_order_acquire) != want) {
+    xmc::tightLoopContents();
+  }
+}
 
 // The buttons Xiamocon has, in the five bits the simulation takes. All four
 // face buttons fire, so the thumb does not have to find a particular one.
@@ -83,6 +137,7 @@ void xmcAppSetup(void) {
   // screen blank until the clock has moved.
   g_lastUs = xmc::getTimeUs();
   g_accUs = ds::TICK_US;
+  xmc::startCore1(core1Task);
 }
 
 void xmcAppLoop(void) {
@@ -123,23 +178,37 @@ void xmcAppLoop(void) {
   // for as long as the power is on, because Game::reset() leaves it alone.
   if (g_game.score() > g_game.highScore()) g_game.setHighScore(g_game.score());
 
+  // Collect the frame core1 has been working on while we ticked. On entry
+  // core1 is always past beginFrame(), so the ticks above could not have
+  // raced with it.
+  const uint32_t wait0 = (uint32_t)xmc::getTimeUs();
+  if (g_frame.load(std::memory_order_acquire) != Frame::IDLE) {
+    waitFrame(Frame::DONE);
+  }
+  g_prof.core1WaitUs = (uint32_t)xmc::getTimeUs() - wait0;
+  g_prof.endFrame(xmc::getTimeUs(), g_renderer.stats());
+
+  // Hand the state we just ticked to core1 and wait only until it has built
+  // the scene; it keeps rasterizing while we return and tick the next frame.
   // Simulation time, not wall time: the renderer advances the camera
   // smoothing, the debris and the score roll-up by dt, and those have to stay
   // in step with the ticks that actually ran.
-  const float dt = ticks * (1.0f / sim::TICK_RATE);
+  g_frameDt = ticks * (1.0f / sim::TICK_RATE);
   const uint32_t begin0 = (uint32_t)xmc::getTimeUs();
-  g_renderer.beginFrame(g_game, dt);
+  g_frame.store(Frame::BUILD, std::memory_order_release);
+  waitFrame(Frame::SCENE_READY);
   g_prof.beginUs = (uint32_t)xmc::getTimeUs() - begin0;
-  g_bands.present(g_renderer, g_prof);
-  g_renderer.endFrame();
-  g_prof.endFrame(xmc::getTimeUs(), g_renderer.stats());
 }
 
 XmcStatus xmcAppTerminate(xmc::system::ShutdownReason reason) {
   (void)reason;
   // requestShutdown() calls us before it deinits anything and then draws its
-  // power-off message through the same SPI bus, so the band left in flight by
-  // present() has to be collected here.
+  // power-off message through the same SPI bus, so core1 has to be off the
+  // display and the band left in flight by present() collected, both before
+  // we return.
+  if (g_frame.load(std::memory_order_acquire) != Frame::IDLE) {
+    waitFrame(Frame::DONE);
+  }
   g_bands.drain();
   return XMC_OK;
 }

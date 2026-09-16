@@ -46,7 +46,7 @@ class BandWriter {
     return {g2::PixelFormat::RGB565BE, (int16_t)SCREEN_W, (int16_t)BAND_H,
             (uint32_t)(SCREEN_W * 2), buf_[i]};
   }
-  void start(int idx, int y);
+  void start(int idx, int y, Profiler &prof);
 };
 
 }  // namespace ds

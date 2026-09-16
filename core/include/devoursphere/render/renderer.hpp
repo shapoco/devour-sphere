@@ -42,7 +42,7 @@ struct Gauge2D {
 struct Marker2D {
   int16_t x, y;
   g2::Color color;
-  uint8_t kind;  // 0 = enemy (triangle), else sim::UpgradeKind icon
+  uint8_t kind;     // 0 = enemy (triangle), else sim::UpgradeKind icon
   uint8_t outline;  // enemy: 0 = dark edge, else white edge brightness
 };
 
@@ -87,6 +87,24 @@ struct ControlHints {
   const char *moveAlt = "ARROWS: MOVE   SPACE: FIRE";
   const char *dash = "UP: DASH   DOWN: BRAKE";
   const char *dashAlt = "UP / DOWN: DASH / BRAKE";
+};
+
+// What the HUD needs from the simulation, taken once per frame by
+// beginFrame(). The HUD is drawn inside renderBand(), so without this a
+// platform that advances the simulation on another core while the bands are
+// rasterized would read the state as it changes underneath.
+struct HudState {
+  uint32_t tickCount = 0;
+  uint32_t score = 0, highScore = 0;
+  uint32_t events = 0;
+  int32_t playerHp = 0, playerHpMax = 1;
+  int stateTimer = 0;
+  int sphereLevel = 1, spheresCleared = 0;
+  int playerRank = 1, aliveEntities = 1;
+  int selectedWeapon = 0, playerWeapon = 0;
+  int cores = 0;
+  int upgradeLevel[sim::UPGRADE_KINDS] = {};
+  sim::GameState state = sim::GameState::TITLE;
 };
 
 // Font roles of the HUD (the fonts themselves live in hud.cpp)
@@ -173,6 +191,7 @@ class Renderer {
   int w_ = 0, h_ = 0;
   UiMetrics ui_;
   ControlHints hints_;  // set by the platform, kept across init()
+  HudState hud_;        // snapshot for renderBand(), taken in beginFrame()
   // A distance of the reference layout in the pixels of this screen
   int ui(int refPx) const { return refPx * ui_.scale8 / 8; }
   // A vertical position of the reference layout as a fraction of the height
