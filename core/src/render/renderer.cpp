@@ -731,6 +731,56 @@ void Renderer::drawHealthWarning() {
   }
 }
 
+// Enemies beyond the horizon get a marker on the horizon in their direction:
+// opponents of a comparable size (1/4 .. 4x), and every carrier of an
+// upgrade (`always`). The color fades with the distance along the surface;
+// enemies farther than MARKER_MAX_ANGLE around the sphere are not shown at
+// all, except the carriers and the bigger ones when the player is close to
+// the top (rank <= MARKER_ALWAYS_RANK): those are the remaining targets,
+// wherever they are. A carrier's white outline fades the same way.
+void Renderer::addEnemyMarker(const sim::Entity &c, bool always) {
+  const sim::Game &g = *game_;
+  uint32_t ps = g.player().size;
+  if (always) {
+    if (markerCount_ >= MAX_MARKERS) return;
+  } else {
+    if (markerCount_ >= MAX_ENEMY_MARKERS || c.size * 4 < ps ||
+        c.size > ps * 4) {
+      return;
+    }
+  }
+  vec3f up = q30ToF(c.frame.n);
+  bool remaining =
+      always || (g.playerRank() <= MARKER_ALWAYS_RANK && c.size > ps);
+  float cosDist = g3::dot(up, camUnit_);
+  float ang = std::acos(cosDist > 1 ? 1 : (cosDist < -1 ? -1 : cosDist));
+  if (ang > MARKER_MAX_ANGLE && !remaining) return;
+  float fade =
+      1.0f - (ang - horizonAngle_) / (MARKER_MAX_ANGLE - horizonAngle_);
+  if (fade < 0) fade = 0;
+  if (fade > 1) fade = 1;
+  vec3f d = up - camUnit_ * cosDist;
+  float len = g3::length(d);
+  if (len < 1e-5f) return;
+  d = d * (1.0f / len);
+  vec3f hp = camUnit_ * std::cos(horizonAngle_) + d * std::sin(horizonAngle_);
+  vec3f world = sphereCenter_ + hp * SPHERE_R;
+  float sx, sy;
+  if (!project(world, sx, sy)) return;
+  if (sx < 4 || sx >= w_ - 4 || sy < 4 || sy >= h_ - 4) return;
+  Marker2D &mk = markers_[markerCount_++];
+  mk.x = (int16_t)sx;
+  mk.y = (int16_t)sy;
+  mk.kind = 0;
+  g2::Color col = colorForEntity(c);
+  float k = MARKER_MIN_BRIGHTNESS + (1.0f - MARKER_MIN_BRIGHTNESS) * fade;
+  mk.color =
+      g2::makeColor((int)(g2::colorR(col) * k), (int)(g2::colorG(col) * k),
+                    (int)(g2::colorB(col) * k));
+  bool carrier = c.upgrade != (uint8_t)sim::UpgradeKind::NONE;
+  mk.outline = carrier ? (uint8_t)(255 * k) : 0;
+}
+
 void Renderer::buildScene() {
   const sim::Game &g = *game_;
   g3d_.beginScene();
@@ -742,8 +792,17 @@ void Renderer::buildScene() {
   drawStars();
   buildSphere();
   // Upgrades first: their horizon markers must never be crowded out by
-  // the enemies' markers
+  // the enemies' markers; then the enemies carrying one, shown whatever
+  // their size and distance; the other enemies take what is left
   drawFloatingUpgrades();
+  for (int i = 0; i < sim::MAX_ENTITIES; i++) {
+    const sim::Entity &c = g.entities[i];
+    if (!c.alive || c.isPlayer || c.upgrade == (uint8_t)sim::UpgradeKind::NONE)
+      continue;
+    if (g3::dot(q30ToF(c.frame.n), camUnit_) < cosHorizon_ - 0.02f) {
+      addEnemyMarker(c, true);
+    }
+  }
 
   // Visible entities sorted by distance
   struct Vis {
@@ -758,45 +817,10 @@ void Renderer::buildScene() {
     vec3f up = q30ToF(c.frame.n);
     float bodyR = c.bodyRadius / (float)FU;
     if (g3::dot(up, camUnit_) < cosHorizon_ - 0.02f) {
-      // Beyond the horizon: opponents of a comparable size (1/4 .. 4x) get
-      // a marker on the horizon in their direction
-      uint32_t ps = g.player().size;
-      if (c.isPlayer || markerCount_ >= MAX_ENEMY_MARKERS || c.size * 4 < ps ||
-          c.size > ps * 4) {
-        continue;
+      // Beyond the horizon: a marker (carriers were collected above)
+      if (!c.isPlayer && c.upgrade == (uint8_t)sim::UpgradeKind::NONE) {
+        addEnemyMarker(c, false);
       }
-      // Fade with the distance along the surface; enemies farther than
-      // MARKER_MAX_ANGLE around the sphere are not shown at all, except
-      // the bigger ones when the player is close to the top (rank <= 5):
-      // those are the remaining targets, wherever they are
-      bool remaining = g.playerRank() <= MARKER_ALWAYS_RANK && c.size > ps;
-      float cosDist = g3::dot(up, camUnit_);
-      float ang = std::acos(cosDist > 1 ? 1 : (cosDist < -1 ? -1 : cosDist));
-      if (ang > MARKER_MAX_ANGLE && !remaining) continue;
-      float fade =
-          1.0f - (ang - horizonAngle_) / (MARKER_MAX_ANGLE - horizonAngle_);
-      if (fade < 0) fade = 0;
-      if (fade > 1) fade = 1;
-      vec3f d = up - camUnit_ * cosDist;
-      float len = g3::length(d);
-      if (len < 1e-5f) continue;
-      d = d * (1.0f / len);
-      vec3f hp =
-          camUnit_ * std::cos(horizonAngle_) + d * std::sin(horizonAngle_);
-      vec3f world = sphereCenter_ + hp * SPHERE_R;
-      float sx, sy;
-      if (!project(world, sx, sy)) continue;
-      if (sx < 4 || sx >= w_ - 4 || sy < 4 || sy >= h_ - 4) continue;
-      Marker2D &mk = markers_[markerCount_++];
-      mk.x = (int16_t)sx;
-      mk.y = (int16_t)sy;
-      mk.kind = 0;
-      mk.carrier = c.upgrade != (uint8_t)sim::UpgradeKind::NONE;
-      g2::Color col = colorForEntity(c);
-      float k = MARKER_MIN_BRIGHTNESS + (1.0f - MARKER_MIN_BRIGHTNESS) * fade;
-      mk.color =
-          g2::makeColor((int)(g2::colorR(col) * k), (int)(g2::colorG(col) * k),
-                        (int)(g2::colorB(col) * k));
       continue;
     }
     vec3f pos = toLocal(sim::scaleToLength(c.frame.n, c.r));
@@ -914,13 +938,14 @@ void Renderer::renderBand(const g2::Surface &dst, int y, int h, int dstY) {
       continue;
     }
     // Enemy: downward triangle just above the horizon point; a carrier of
-    // an upgrade gets a white outline (like its body), the others a dark one
+    // an upgrade gets a white outline (like its body) that fades with the
+    // distance like the fill, the others a dark one
     int x = mk.x, yb = mk.y + oy - 3, yt = yb - 7;
     if (yb + 1 < dstY || yt - 1 >= dstY + h) continue;
     g.fillTriangle(x - 5, yt, x + 5, yt, x, yb, mk.color);
-    if (mk.carrier) {
+    if (mk.outline) {
       g.drawTriangle(x - 6, yt - 1, x + 6, yt - 1, x, yb + 1,
-                     g2::makeColor(255, 255, 255));
+                     g2::makeColor(mk.outline, mk.outline, mk.outline));
     } else {
       g.drawTriangle(x - 5, yt, x + 5, yt, x, yb, g2::makeColor(0, 0, 0, 120));
     }

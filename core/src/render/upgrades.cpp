@@ -89,7 +89,7 @@ void Renderer::drawFloatingUpgrades() {
       mk.y = (int16_t)sy;
       mk.color = col;
       mk.kind = u.kind;
-      mk.carrier = false;
+      mk.outline = 0;
       continue;
     }
     vec3f pos = toLocal(sim::scaleToLength(u.n, u.r)) + up * (s * 0.5f);

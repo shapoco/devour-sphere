@@ -43,7 +43,7 @@ struct Marker2D {
   int16_t x, y;
   g2::Color color;
   uint8_t kind;  // 0 = enemy (triangle), else sim::UpgradeKind icon
-  bool carrier;  // enemy carrying an upgrade: white outline
+  uint8_t outline;  // enemy: 0 = dark edge, else white edge brightness
 };
 
 // Icon of an upgrade kind, centered at (cx, cy), about 14 px tall
@@ -217,6 +217,9 @@ class Renderer {
   void drawBullets();
   void drawStars();
   void drawPresenceAuras();
+  // Horizon marker of an enemy beyond the horizon; `always`: shown whatever
+  // its size and distance (carriers of upgrades)
+  void addEnemyMarker(const sim::Entity &c, bool always);
   void drawHealthWarning();
   // upgrades.cpp
   void drawFloatingUpgrades();
