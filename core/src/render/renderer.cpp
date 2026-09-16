@@ -122,6 +122,7 @@ void Renderer::init(int width, int height, void *arena, size_t arenaSize) {
   }
 
   camValid_ = false;
+  sphereCountValid_ = false;
   originValid_ = false;
   debrisCount_ = 0;
   dustCount_ = 0;

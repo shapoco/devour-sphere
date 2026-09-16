@@ -208,7 +208,8 @@ class Renderer {
   int sphereShift_ = 0;        // level reduction used for the current frame
   int sphereExtra_ = 0;        // extra reduction kept between frames (budget)
   bool sphereDryRun_ = false;  // count edges instead of emitting them
-  int sphereCount_ = 0;
+  int sphereCount_ = 0;        // edges of the last pass (drives the level)
+  bool sphereCountValid_ = false;
 
   // Per-frame bookkeeping
   uint32_t edgeKeys_[2048];  // edge dedupe hash table

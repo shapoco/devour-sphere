@@ -22,6 +22,8 @@ static constexpr float FADE_NEAR = 60.0f, FADE_FAR = 900.0f;  // FU
 static constexpr int BASE_LEVEL = 4;  // edges of ~34 FU at 11 FU
 static constexpr float LEVEL5_RADIUS = 6.0f, LEVEL6_RADIUS = 2.5f;  // x nominal
 static constexpr float NOMINAL_DIST0 = 11.0f;
+// How much one more subdivision level multiplies the visible edge count by
+static constexpr int SPHERE_LEVEL_FANOUT = 3;
 // Budget of the triangle buffer for the wireframe (UiMetrics::wireLines:
 // 1100 on the reference screen, less on a smaller one). The edges are
 // counted in a dry run first; when they exceed the limit every level is
@@ -195,20 +197,34 @@ void Renderer::buildSphere() {
   float scale = camNominal_ / NOMINAL_DIST0;
   int base = 0;
   while (scale >= 2.0f && base < BASE_LEVEL) scale *= 0.5f, base++;
-  int shift = base + sphereExtra_;
-  if (shift > BASE_LEVEL) shift = BASE_LEVEL;
   const int wireLimit = ui_.wireLines - 80 * ui_.scale8 / 8;
   const int wireRelax = wireLimit * 6 / 10;  // hysteresis
-  int count = countSphereLines(shift, order);
-  while (count > wireLimit && shift < BASE_LEVEL) {
-    shift++;
-    count = countSphereLines(shift, order);
-  }
-  if (shift > base && shift - 1 >= base) {
-    int relaxed = countSphereLines(shift - 1, order);
-    if (relaxed < wireRelax) {
-      shift--;
-      count = relaxed;
+  int shift;
+  if (sphereCountValid_) {
+    // Steer the level from what the previous frame actually emitted rather
+    // than by trial traversals: counting the edges costs as much as drawing
+    // them, and the camera moves smoothly enough that reacting a frame late
+    // is invisible. emitEdge() caps the line count either way, so a level
+    // that is briefly too fine cannot overflow the buffer.
+    if (sphereCount_ > wireLimit) {
+      sphereExtra_ += (sphereCount_ > 2 * wireLimit) ? 2 : 1;
+    } else if (sphereCount_ * SPHERE_LEVEL_FANOUT < wireRelax &&
+               sphereExtra_ > 0) {
+      // Only go finer when the next level down would still fit: one level
+      // multiplies the edge count by roughly this much
+      sphereExtra_--;
+    }
+    shift = base + sphereExtra_;
+    if (shift < base) shift = base;
+    if (shift > BASE_LEVEL) shift = BASE_LEVEL;
+  } else {
+    // First frame after init(): no previous count to go on, so search
+    shift = base + sphereExtra_;
+    if (shift > BASE_LEVEL) shift = BASE_LEVEL;
+    int count = countSphereLines(shift, order);
+    while (count > wireLimit && shift < BASE_LEVEL) {
+      shift++;
+      count = countSphereLines(shift, order);
     }
   }
   sphereExtra_ = shift - base;
@@ -216,6 +232,7 @@ void Renderer::buildSphere() {
   sphereCount_ = 0;
   std::memset(edgeKeys_, 0, sizeof(edgeKeys_));
   traverseSphere(*this, &Renderer::subdivideFace, order);
+  sphereCountValid_ = true;
 }
 
 }  // namespace devoursphere::render
