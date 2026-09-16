@@ -190,9 +190,9 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
         }
       }
 
-      // Score (top center)
+      // Score (top center): the shown value rolls up towards the real one
       g.setFont(&ShapoSansP_s12c09a01w02);
-      std::snprintf(buf, sizeof(buf), "%u", game.score());
+      std::snprintf(buf, sizeof(buf), "%u", scoreShown());
       {
         int tw = g.measureText(buf);
         g.setTextColor(HUD_SHADOW);

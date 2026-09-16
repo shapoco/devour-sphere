@@ -164,6 +164,14 @@ class Renderer {
   float dustSpawnAcc_ = 0;
   uint32_t lastEffectTick_ = 0xFFFFFFFFu;
   float flash_[sim::MAX_ENTITIES] = {};  // seconds left of the white flash
+  // Score as shown on the HUD: it rolls up towards the real score (a fixed
+  // fraction of the remaining gap per second, so it keeps pace with the
+  // faster gains on later spheres) and snaps down when the score drops
+  double scoreShown_ = 0;
+  static constexpr float SCORE_ROLL_PER_SEC = 4.0f;    // fraction of the gap
+  static constexpr float SCORE_ROLL_MIN_PER_SEC = 30;  // points
+  void updateScoreDisplay(float dt);
+  uint32_t scoreShown() const { return (uint32_t)scoreShown_; }
 
   // Materials
   enum Palette : int {
@@ -209,6 +217,7 @@ class Renderer {
   void drawBullets();
   void drawStars();
   void drawPresenceAuras();
+  void drawHealthWarning();
   // upgrades.cpp
   void drawFloatingUpgrades();
   void drawLance();

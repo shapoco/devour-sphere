@@ -407,9 +407,9 @@ void Renderer::drawEntity(const sim::Entity &c, const vec3f &pos, float px,
     entitiesDrawn_++;
     return;
   }
+  bool carrier = !c.isPlayer && c.upgrade != (uint8_t)sim::UpgradeKind::NONE;
+  g2::Color outline = g2::makeColor(255, 255, 255);  // carriers: white
   if (full) {
-    bool carrier = !c.isPlayer && c.upgrade != (uint8_t)sim::UpgradeKind::NONE;
-    g2::Color outline = g2::makeColor(255, 255, 255);  // carriers: white
     // Dihedral: fragments tilt outwards (around the heading) the farther
     // they are from the body's axis, so the body looks like it has volume
     float bodyR = c.bodyRadius * k * 1.4f;
@@ -448,12 +448,14 @@ void Renderer::drawEntity(const sim::Entity &c, const vec3f &pos, float px,
             palette_[PAL_CORE]);
   } else {
     // Far away: the outline of a body-sized kite (lines stay visible even
-    // edge-on), plus the core when it is more than a few pixels
+    // edge-on), plus the core when it is more than a few pixels. A carrier
+    // of an upgrade is drawn in white so it stands out from afar
     float s = c.bodyRadius * k * 0.5f;
     vec3f center = pos + fwd * (coreY - s);
     const vec3f pts[4] = {center - fwd * (s * 2.0f), center + right * s,
                           center + fwd * s, center - right * s};
-    putLineLoop3(pts, 4, colorForEntity(c), palette_[PAL_LINE]);
+    putLineLoop3(pts, 4, carrier ? outline : colorForEntity(c),
+                 palette_[PAL_LINE]);
     if (px >= 4.0f) {
       putKite(pos + fwd * coreY, fwd, right, coreHalf, coreHalf * 2.5f,
               palette_[PAL_CORE]);
@@ -662,6 +664,73 @@ void Renderer::drawPresenceAuras() {
   }
 }
 
+// Low health warning: at half health and below, the four screen edges glow
+// red (a gradient from the edge inwards, added onto the frame), deeper and
+// wider the closer the health gets to zero. Drawn last so it lies over
+// everything in the scene; the HUD is drawn on top of it.
+void Renderer::drawHealthWarning() {
+  const sim::Game &g = *game_;
+  if (g.state() != sim::GameState::PLAYING &&
+      g.state() != sim::GameState::LAUNCH) {
+    return;
+  }
+  const sim::Entity &p = g.player();
+  if (!p.alive || p.hpMax <= 0 || p.hp * 2 > p.hpMax) return;
+  // 0 at half health .. 1 at zero
+  float t = 1.0f - (float)p.hp * 2.0f / (float)p.hpMax;
+  if (t < 0) t = 0;
+  if (t > 1) t = 1;
+  float bright = 0.25f + 0.75f * t;
+  g2::Color edge = g2::makeColor((int)(255 * bright), (int)(24 * bright),
+                                 (int)(16 * bright));
+  g2::Color inner = g2::makeColor(0, 0, 0);
+  float band = h_ * (0.14f + 0.12f * t);  // px
+
+  constexpr float DEPTH = 2.0f;  // view-space distance of the quads
+  vec3f camUp =
+      std::fabs(g3::dot(viewDir_, cam_.up)) < 0.99f ? cam_.up : vec3f{0, 0, 1};
+  vec3f right = g3::normalize(g3::cross(viewDir_, camUp));
+  vec3f up = g3::cross(right, viewDir_);
+  float tanY = std::tan(camFov_ * 0.5f);
+  float tanX = tanY * (float)w_ / (float)h_;
+  auto toView = [&](float sx, float sy) {
+    float vx = (sx / w_ * 2.0f - 1.0f) * tanX * DEPTH;
+    float vy = (1.0f - sy / h_ * 2.0f) * tanY * DEPTH;
+    return cam_.eye + viewDir_ * DEPTH + right * vx + up * vy;
+  };
+  // Each band: screen quad (x0,y0)-(x1,y1) with the edge side colored
+  struct Band {
+    float x0, y0, x1, y1;
+    bool edgeFirst;  // the edge lies on the (x0 / y0) side
+  };
+  const float W = (float)w_, H = (float)h_;
+  const Band bands[4] = {
+      {0, 0, W, band, true},        // top
+      {0, H - band, W, H, false},   // bottom
+      {0, 0, band, H, true},        // left
+      {W - band, 0, W, H, false},   // right
+  };
+  for (int b = 0; b < 4; b++) {
+    const Band &bd = bands[b];
+    bool horizontal = b < 2;
+    g3::Vertex verts[4];
+    uint16_t idx[4] = {0, 1, 2, 3};
+    const float xs[4] = {bd.x0, bd.x1, bd.x1, bd.x0};
+    const float ys[4] = {bd.y0, bd.y0, bd.y1, bd.y1};
+    for (int k = 0; k < 4; k++) {
+      bool onFirst = horizontal ? (ys[k] == bd.y0) : (xs[k] == bd.x0);
+      verts[k].position = toView(xs[k], ys[k]);
+      verts[k].normal = {0, 1, 0};
+      verts[k].uv = {0, 0};
+      verts[k].color = (onFirst == bd.edgeFirst) ? edge : inner;
+    }
+    g3::VertexBuffer vb = {4, verts};
+    g3::Primitive prim = {g3::PrimitiveType::TRIANGLE_FAN, &vb, 4, idx,
+                          &palette_[PAL_LINE_ADD]};
+    g3d_.putPrimitive(prim);
+  }
+}
+
 void Renderer::buildScene() {
   const sim::Game &g = *game_;
   g3d_.beginScene();
@@ -786,15 +855,36 @@ void Renderer::buildScene() {
   drawLance();
   drawPresenceAuras();
   drawEffects();
+  drawHealthWarning();
   g3d_.endScene();
 }
 
 // ---------------------------------------------------------------------------
 // Frame
 
+// The shown score chases the real one: a fraction SCORE_ROLL_PER_SEC of the
+// gap per second (at least SCORE_ROLL_MIN_PER_SEC points per second, never
+// past the target); a drop (new game) is shown at once
+void Renderer::updateScoreDisplay(float dt) {
+  double actual = (double)game_->score();
+  if (actual <= scoreShown_) {
+    scoreShown_ = actual;
+    return;
+  }
+  if (dt < 0) dt = 0;
+  if (dt > 0.5f) dt = 0.5f;
+  double gap = actual - scoreShown_;
+  double step = gap * (double)(SCORE_ROLL_PER_SEC * dt);
+  double minStep = (double)(SCORE_ROLL_MIN_PER_SEC * dt);
+  if (step < minStep) step = minStep;
+  if (step > gap) step = gap;
+  scoreShown_ += step;
+}
+
 void Renderer::beginFrame(const sim::Game &game, float dt) {
   game_ = &game;
   time_ += dt;
+  updateScoreDisplay(dt);
   lineCount_ = 0;
   pointCount_ = 0;
   gaugeCount_ = 0;
