@@ -29,6 +29,17 @@ void BandWriter::start(int idx, int y, Profiler &prof) {
   prof.cmdUs += (uint32_t)xmc::getTimeUs() - t2;
 }
 
+uint32_t BandWriter::measureTransfer() {
+  drain();
+  const uint32_t t0 = (uint32_t)xmc::getTimeUs();
+  for (int b = 0; b < BAND_COUNT; b++) {
+    xmc::display::setWindow(0, b * BAND_H, SCREEN_W, BAND_H);
+    xmc::display::writePixelsStart(buf_[0], SCREEN_W * BAND_H * 2);
+    xmc::display::writePixelsComplete();
+  }
+  return (uint32_t)xmc::getTimeUs() - t0;
+}
+
 void BandWriter::present(devoursphere::render::Renderer &renderer,
                          Profiler &prof) {
   prof.rasterUs = 0;

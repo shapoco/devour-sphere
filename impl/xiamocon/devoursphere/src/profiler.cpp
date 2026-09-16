@@ -152,6 +152,13 @@ void Profiler::endFrame(uint64_t nowUs,
       case 6:  // Stack high water marks. Both stacks are 4096 bytes and sit
                // next to each other in SCRATCH_X / SCRATCH_Y, so neither can
                // be grown and either reaching the limit is a bug.
+        // A whole screen of band transfers with nothing else running,
+        // measured once at start up. The SPI clock says this should be
+        // 14.75 ms; more than that is command overhead or a starved DMA.
+        p = putStr(p, end, "XFR ");
+        p = putMs(p, end, xferUs);
+        break;
+      case 7:
         p = putStr(p, end, "STK1 ");
         p = putUint(p, end, core1StackUsed());
         p = putStr(p, end, "  STK0 ");

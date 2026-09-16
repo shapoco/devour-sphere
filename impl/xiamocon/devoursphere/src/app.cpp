@@ -138,6 +138,8 @@ void xmcAppSetup(void) {
   g_lastUs = xmc::getTimeUs();
   g_accUs = ds::TICK_US;
   ds::Profiler::paintCore0Stack();
+  // Both cores are otherwise idle here, so this is the transfer on its own
+  g_prof.xferUs = g_bands.measureTransfer();
   xmc::startCore1(core1Task);
 }
 

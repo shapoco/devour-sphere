@@ -24,6 +24,12 @@ namespace g2 = shapoco::gfx2d;
 
 class BandWriter {
  public:
+  // Time a whole screen's worth of band transfers with nothing else running.
+  // The SPI is clocked at 62.5 MHz, so 240x240x2 bytes should take 14.75 ms;
+  // anything more is per-band command overhead or a starved DMA. Call once,
+  // from xmcAppSetup(), before core1 starts. Returns microseconds.
+  uint32_t measureTransfer();
+
   // Wait for any transfer still in flight and release the SPI lock.
   // Idempotent, and safe to call from xmcAppTerminate().
   void drain();

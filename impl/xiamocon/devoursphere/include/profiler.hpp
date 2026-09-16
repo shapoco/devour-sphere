@@ -37,6 +37,7 @@ class Profiler {
   // two, BandWriter the last two.
   uint32_t tickUs = 0, beginUs = 0, rasterUs = 0, dmaWaitUs = 0, cmdUs = 0;
   uint32_t core1WaitUs = 0;  // core0 idle, waiting for core1 to finish
+  uint32_t xferUs = 0;       // a whole screen, measured once at start up
   int ticks = 0;
 
   // Paint core1's stack so that stackUsed() can find the high water mark.
@@ -54,7 +55,7 @@ class Profiler {
   void drawOverlay(const g2::Surface &band, int bandY);
 
  private:
-  static constexpr int LINES = 7;
+  static constexpr int LINES = 8;
   static constexpr int COLS = 21;
   bool on_ = false;
   char lines_[LINES][COLS + 1] = {};
@@ -66,6 +67,7 @@ class Profiler {
   bool on() const { return false; }
   uint32_t tickUs = 0, beginUs = 0, rasterUs = 0, dmaWaitUs = 0, cmdUs = 0;
   uint32_t core1WaitUs = 0;
+  uint32_t xferUs = 0;
   int ticks = 0;
   static void paintCore1Stack() {}
   static void paintCore0Stack() {}
