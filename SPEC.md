@@ -28,10 +28,13 @@ WASM 版は、ブラウザ上でコアプログラムを実行するためのラ
 
 詳細は impl/wasm/SPEC.md を参照のこと。
 
-### RP2350 版 (予定)
+### Xiamocon 版
 
-impl/rp2350/ に置く予定。480x320 の RGB565BE ディスプレイを想定し、
-フレームバッファを持たずに帯単位で描画・転送する。
+impl/xiamocon/ 配下に Xiamocon (XIAO RP2350 用のゲーム機型マザーボード) 向けの
+実装が置かれる。240x240 の RGB565BE ディスプレイに、フレームバッファを持たず
+帯単位で描画・転送する。
+
+詳細は impl/xiamocon/SPEC.md を参照のこと。
 
 ## ディレクトリ構成
 
@@ -40,6 +43,7 @@ SPEC.md              この文書
 CMakeLists.txt       ネイティブビルド (コア、テスト、確認用フロントエンド)
 core/                コアプログラム (core/SPEC.md)
 impl/wasm/           WASM 版 (impl/wasm/SPEC.md)
+impl/xiamocon/       Xiamocon 版 (impl/xiamocon/SPEC.md)
 docs/                公開用の静的サイト (docs/play/ がゲーム)
 submodule/shapo-gfx/ ShapoGFX (git submodule)
 launch_web_server.sh docs/ をローカルで配信する
@@ -55,6 +59,14 @@ ctest --test-dir build --output-on-failure      # コアのテスト
 ./build/impl/wasm/devoursphere_native 1 300 out.ppm   # 1 フレームを PPM に書き出す
 make -C impl/wasm                                # WASM 版 (emcc が必要)
 ./launch_web_server.sh                           # http://localhost:52980/play/
+```
+
+Xiamocon 版は pico-sdk を使う別のトップレベルのビルドになる (Xiamocon SDK が必要):
+
+```sh
+source ~/repo/2026/xiamocon/setup.shrc
+cd impl/xiamocon/devoursphere
+xmc build -p rp2350_pico_sdk                     # .cmake/devoursphere.uf2 を生成
 ```
 
 C/C++ のコードは .clang-format (ShapoGFX と同じ設定) で整形する。
