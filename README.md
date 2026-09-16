@@ -36,7 +36,7 @@ make -C impl/wasm        # WASM 版 (Emscripten)
 実機 ([Xiamocon](https://github.com/shapoco/xiamocon) / XIAO RP2350・ESP32S3) 版:
 
 ```sh
-source ~/repo/2026/xiamocon/setup.shrc
+source ~/path/to/xiamocon/setup.shrc
 cd impl/xiamocon/devoursphere
 xmc build                      # 両方のターゲット
 ```
