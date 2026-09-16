@@ -146,59 +146,62 @@ endFrame()
 
 ## 2 つのコアの分担
 
-どちらの向きでも狙いは同じで、**片方のコアが次フレームの tick を進めている間に
-もう片方が今のフレームをラスタライズして転送する**。`beginFrame()` は `Game` 全体を
-読むので、どちらの向きでも並行に進められず直列区間として残る。
-
-向きは `DS_SPLIT` で選ぶ (`ds_config.hpp`)。
-
-### `DS_SPLIT_RENDER` — core1 が描画 (RP2350)
+**core1 が sim、core0 が描画**。両ターゲット共通。
+狙いは **core1 が次フレームの tick を進めている間に core0 がラスタライズして転送する**こと。
 
 ```
 core0                                core1
-  tick x N (次フレーム分)  <--------->  ラスタライズ + 転送 (今のフレーム)
-  DONE を待つ
-  BUILD を発行 ------------------->  beginFrame()        ← core0 は待つ
-  SCENE_READY を待つ <-------------  SCENE_READY を発行
-  戻る (次の反復へ)                    ラスタライズ + 転送...
-```
-
-描くのは「たった今 tick した状態」なので、**遅延が増えない**。こちらが本来望ましい。
-
-### `DS_SPLIT_SIM` — core1 が sim (ESP32S3)
-
-ESP32S3 は**ディスプレイを core0 からしか叩けない**ので、こちらの向きになる。
-
-```
-core0                                core1
-  DONE を待つ <--------------------  batch 完了
+  batch 完了を確認 <---------------  batch 完了
   beginFrame()                        (idle)           ← core1 は待つ
   RUN を発行 (tick 回数 + ボタン) -->  tick x N
   ラスタライズ + 転送          <--->  tick x N (続き)
 ```
 
-入力は core0 で読んで、tick 回数と一緒に core1 へ渡す。
-**1 フレーム分の入力遅延が出る**: 描くのは core1 が進め終わった状態で、
+入力は core0 で読んで (`input::service()` が core0 の `libLoop` で回るため)、
+tick 回数と一緒に core1 へ渡す。
+
+この向きである理由:
+
+- Xiamocon の core1 は演算に専念させる設計で、ペリフェラルを叩くことは想定されていない。
+- **ESP32S3 ではディスプレイが core0 からしか反応しない** (下記参照)。
+- 逆向き (core1 が描画) も一度実装したが、core0 側で tick と `beginFrame()` が
+  直列に並ぶため、RP2350 で測っても速くならなかった。
+
+**1 フレーム分の入力遅延が出る**。描くのは core1 が進め終わった状態で、
 いま読んだボタンは次のフレームに効く。重ねる以上これは避けられない。
 
-### 共通の約束
+`DS_SIM_ON_CORE1=0` で全部 core0 に寄せられる。遅いが、問題が分割由来かを
+切り分けるのに使える。
 
-状態は 32 ビット 1 語を `__atomic_load_n` / `__atomic_store_n` の acquire/release で
-受け渡す。`std::atomic` は Xtensa で lock-free 保証にならず、`xmc::Semaphore` は
-実体がバイナリミューテックスなので、どちらも使わない。
+### 待ち方
 
-片方が tick を進めている間、どちらのコアが何に触るか:
+core1 が tick 中のとき、core0 は**スピンせずに `xmcAppLoop()` から戻る**。
+core0 は `system::service()` を回す唯一のコアで、そこが止まると
+電源ボタンも IO エクスパンダのサービスも止まるため。
 
-| 描画する側 | sim する側 |
+### 共有データの分離
+
+batch が走っている間、どちらのコアが何に触るか:
+
+| core0 (描画) | core1 (sim) |
 |---|---|
 | アリーナと構築済みシーン、帯バッファ、ディスプレイ、`Renderer` の HUD スナップショット・ゲージ・マーカー | `Game`、および `pollEffects()` が書く `Renderer` のエフェクト状態 (デブリ、取得フラッシュ、エフェクト用 rng) |
 
 この分離が成り立つのは `renderBand()` が `Game` を参照しなくなったから
 (core/SPEC.md の `HudState` 参照)。エフェクト状態は `renderBand()` からは読まれない。
+`beginFrame()` は `Game` 全体を読むので、batch を回収してから次を依頼するまでの
+core1 が idle な区間で走る。
 
-**core1 のスタックは `SCRATCH_X` の 4KB 固定**で、そこで `beginFrame()` の
-スフィア再帰が走る。デバッグ表示の `S` が実測の最大使用量 (バイト) なので、
-4096 に近づいていないか確認すること。
+受け渡しは 32 ビット 1 語を `__atomic_load_n` / `__atomic_store_n` の
+acquire/release で行う。`std::atomic` は Xtensa で lock-free 保証にならず、
+`xmc::Semaphore` は実体がバイナリミューテックスなので、どちらも使わない。
+
+### core1 が起動したかは自分で確かめる
+
+**`xmc::startCore1()` は `xTaskCreatePinnedToCore()` の戻り値を見ずに `XMC_OK` を
+返す** (ESP32S3 の場合)。スタック 8KB は帯バッファと同じプールから取るので、
+アリーナを大きくしすぎると黙って起動しない。起動後に少し待って、
+core1 が実際に走ったかを確認している。
 
 ## ゲームループ
 
@@ -291,23 +294,26 @@ BGN + RAS = 19.5ms はフレームレートに依らない固定費なので、
 
 ## 2 つのターゲットの違い
 
-ソースは共通で、`#if defined(ESP32)` で分けているのは次の 4 点だけ。
+コアの分担もフレームループも共通で、`#if defined(ESP32)` で分けているのは
+次の 6 点だけ。
 
 | | RP2350 | ESP32S3 |
 |---|---|---|
-| コアの分担 | **core1 が描画** (`DS_SPLIT_RENDER`) | **core1 が sim** (`DS_SPLIT_SIM`) |
 | `TICK_RATE` | 60 | **30** |
+| 3D アリーナ | 128KB | **96KB** |
 | 帯の高さ | 40 行 (6 帯) | **80 行 (3 帯)** |
-| `sim::Game` (133KB) | `.bss` | **PSRAM** (`MALLOC_CAP_SPIRAM`) |
+| `sim::Game` (136KB) | `.bss` | **PSRAM** (`MALLOC_CAP_SPIRAM`) |
 | 帯バッファ | アラインした静的領域 | **DMA ヒープ** (`MALLOC_CAP_DMA`) |
 | 乱数シード | `get_rand_32()` (pico-sdk) | `esp_random()` |
 | スタック計測 | スタックを塗って走査 | `uxTaskGetStackHighWaterMark()` |
-| ブリングアップ用トレース | 無し (シリアル未設定) | `Serial` (USB CDC) |
+| 失敗時のトレース | 無し (シリアル未設定) | `Serial` (USB CDC) |
 
-アリーナ 128KB と帯 40 行は両者同じ。ESP32S3 はリンカがアプリに **320KB** しか
-与えないが、`Game` を PSRAM に追い出すことで内部 DRAM が 133KB 空き、
-RP2350 と同じ設定が載る。PSRAM は内部 SRAM より遅いので tick は重くなるが、
-このボードの律速はそこではない。
+ESP32S3 はリンカがアプリに **320KB** しか与えない。`Game` を PSRAM に追い出して
+内部 DRAM を 136KB 空け、残りからアリーナ (静的) と、帯バッファ・SPI ドライバの
+バッファ・各タスクスタック (実行時) を取る。アリーナを 128KB のままにすると
+core1 のスタック 8KB が取れなくなるので 96KB にしてある。
+PSRAM 上の tick は 11.8ms で、RP2350 (内部 SRAM, 250MHz) の 7.4ms に対して
+6 割増しに留まる。
 
 実測: **RAM 182,388 / 327,680 (55.7%)** (帯バッファは実行時にヒープから取るので
 この数字には入らない)、Flash 約 600KB / 3,342,336 (18%)。
@@ -330,15 +336,20 @@ XFR 27.47                   全画面転送。理論値 (60MHz で 15.4ms) の 1
   「別タスクへキュー投入」の DMA パスを通るので、帯ごとの `setWindow` が高い。
   帯を減らせば `CMD` も帯ごとの待ちも減る。RAM を 38KB 多く使う。
 
-結果 (30Hz・3 帯、22.9fps = 44ms):
+その後 sim を core1 に移して重ねた。最終的な数字 (29.9fps = 33ms):
 
 ```
-FPS 22.9   TCK 20.09x2      1 tick 10.05ms。平均 1.31 tick/フレーム
-BGN 6.38   RAS 10.21
-DMA 10.68  CPU 29.65
-CMD 2.37   W 0.00           4.41 から半減
-XFR 25.38
+FPS 29.9   TCK 11.78x1      core1 で回るので core0 の 28.52ms に隠れる
+BGN 6.18   RAS 10.14
+DMA 9.92   CPU 28.52        core0 のクリティカルパス
+TRI 140/500 d0              アリーナ 96KB での容量
+CMD 2.27   W 0.00           core0 は core1 を待っていない = 重なっている
+XFR 25.37
+STK1 2124  STK0 3552
 ```
+
+`TICK_RATE` が 30 なので tick 周期 33.3ms が上限。core0 が 28.5ms なので
+そこに張り付いている。
 
 ### `Game` を DRAM に置くのは無理 (実機で確認済み)
 
@@ -388,7 +399,7 @@ PSRAM 上の tick は 10.05ms で、RP2350 (SRAM, 250MHz) の 7.4ms に対して
 
 つまり転送経路もフレームの中身も正しく、core1 (FreeRTOS タスク) から
 ディスプレイを叩いたときだけ効かない。
-そのため ESP32S3 は `DS_SPLIT_SIM` (core0 が描画、core1 が sim) を使う。
+そのため両ターゲットとも core0 が描画し、core1 が sim を回す (上記「2 つのコアの分担」)。
 
 疑っている原因 (未検証): ESP32 側の `spi::dmaWriteStart` は
 `ESP32DMASPI::Master` の内部タスク経由で転送する。一方 `xmc::startCore1` が作る
