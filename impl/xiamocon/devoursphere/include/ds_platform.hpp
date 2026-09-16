@@ -7,7 +7,21 @@
 
 #include <cstdint>
 
+namespace devoursphere::sim {
+class Game;
+}
+
 namespace ds {
+
+// Where the simulation state lives. It is 133 KB, which the ESP32S3 cannot
+// spare from its 320 KB of internal DRAM, so there it is allocated from the
+// 8 MB of PSRAM instead -- slower to step, but the simulation is not what
+// limits that board. On RP2350 it is an ordinary static.
+devoursphere::sim::Game *allocGame();
+
+// Print a line to the serial console during bring up. Nothing on RP2350,
+// where no serial port is configured.
+void trace(const char *what, uint32_t value);
 
 // A seed that differs from boot to boot. Not xmc::randomU32(): that is an
 // unseeded newlib rand(), so it yields the same sequence every time.

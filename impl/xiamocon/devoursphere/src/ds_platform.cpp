@@ -1,7 +1,13 @@
 #include "ds_platform.hpp"
 
+#include <new>
+
+#include "devoursphere/sim/game.hpp"
+
 #if defined(ESP32)
 
+#include <Arduino.h>
+#include <esp_heap_caps.h>
 #include <esp_random.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -9,6 +15,26 @@
 namespace ds {
 
 uint32_t randomSeed() { return esp_random(); }
+
+devoursphere::sim::Game *allocGame() {
+  // MALLOC_CAP_SPIRAM, not the default heap: 133 KB would not fit in the
+  // internal DRAM the linker leaves us
+  void *p =
+      heap_caps_malloc(sizeof(devoursphere::sim::Game), MALLOC_CAP_SPIRAM);
+  trace("game in psram", (uint32_t)(uintptr_t)p);
+  if (!p) return nullptr;
+  return new (p) devoursphere::sim::Game();
+}
+
+void trace(const char *what, uint32_t value) {
+  static bool begun = false;
+  if (!begun) {
+    begun = true;
+    Serial.begin(115200);
+  }
+  Serial.printf("[ds] %s: %lu\n", what, (unsigned long)value);
+  Serial.flush();
+}
 
 namespace {
 TaskHandle_t g_core1 = nullptr;
@@ -47,6 +73,13 @@ uint32_t stackUsedCore1() {
 namespace ds {
 
 uint32_t randomSeed() { return get_rand_32(); }
+
+devoursphere::sim::Game *allocGame() {
+  static devoursphere::sim::Game game;
+  return &game;
+}
+
+void trace(const char *, uint32_t) {}  // no serial port on this target
 
 namespace {
 constexpr uint32_t PAINT = 0xC1C1C1C1u;

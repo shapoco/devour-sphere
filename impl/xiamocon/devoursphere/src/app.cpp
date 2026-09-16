@@ -29,7 +29,7 @@ namespace render = devoursphere::render;
 
 namespace {
 
-sim::Game g_game;
+sim::Game *g_game = nullptr;  // see ds::allocGame()
 render::Renderer g_renderer;
 uint8_t g_arena[ds::ARENA_SIZE];
 ds::BandWriter g_bands;
@@ -84,7 +84,7 @@ bool core1Task() {
     xmc::tightLoopContents();
     return true;
   }
-  g_renderer.beginFrame(g_game, g_frameDt);
+  g_renderer.beginFrame(*g_game, g_frameDt);
   // From here the Game belongs to core0 again
   frameStore(Frame::SCENE_READY);
   g_bands.present(g_renderer, g_prof);
@@ -128,7 +128,13 @@ xmc::AppConfig xmcAppGetConfig(void) {
 }
 
 void xmcAppSetup(void) {
-  g_game.reset(ds::randomSeed());
+  ds::trace("setup", 0);
+  g_game = ds::allocGame();
+  if (!g_game) {
+    ds::trace("no memory for the simulation", 0);
+    return;  // xmcAppLoop() bails out too
+  }
+  g_game->reset(ds::randomSeed());
   g_renderer.setControlHints(render::ControlHints{
       "MOVE: D-PAD    A/B/X/Y: FIRE",
       "D-PAD: MOVE   A: FIRE",
@@ -142,12 +148,15 @@ void xmcAppSetup(void) {
   g_lastUs = xmc::getTimeUs();
   g_accUs = ds::TICK_US;
   ds::stackWatchInitCore0();
+  ds::trace("renderer ready", (uint32_t)sizeof(g_arena));
   // Both cores are otherwise idle here, so this is the transfer on its own
   g_prof.xferUs = g_bands.measureTransfer();
-  xmc::startCore1(core1Task);
+  ds::trace("transfer us", g_prof.xferUs);
+  ds::trace("core1", (uint32_t)xmc::startCore1(core1Task));
 }
 
 void xmcAppLoop(void) {
+  if (!g_game) return;
   const uint64_t nowUs = xmc::getTimeUs();
   uint64_t deltaUs = nowUs - g_lastUs;
   g_lastUs = nowUs;
@@ -169,10 +178,10 @@ void xmcAppLoop(void) {
   int ticks = 0;
   const uint32_t tick0 = (uint32_t)xmc::getTimeUs();
   while (g_accUs >= ds::TICK_US && ticks < ds::MAX_CATCHUP) {
-    g_game.tick(buttons);
+    g_game->tick(buttons);
     // The events of a tick are cleared by the next one, so each tick has to
     // be polled or the frame would only show the last one's explosions
-    g_renderer.pollEffects(g_game);
+    g_renderer.pollEffects(*g_game);
     g_accUs -= ds::TICK_US;
     ticks++;
   }
@@ -183,7 +192,8 @@ void xmcAppLoop(void) {
 
   // Nothing is written to flash, but the high score still survives a restart
   // for as long as the power is on, because Game::reset() leaves it alone.
-  if (g_game.score() > g_game.highScore()) g_game.setHighScore(g_game.score());
+  if (g_game->score() > g_game->highScore())
+    g_game->setHighScore(g_game->score());
 
   // Collect the frame core1 has been working on while we ticked. On entry
   // core1 is always past beginFrame(), so the ticks above could not have
@@ -205,6 +215,15 @@ void xmcAppLoop(void) {
   frameStore(Frame::BUILD);
   waitFrame(Frame::SCENE_READY);
   g_prof.beginUs = (uint32_t)xmc::getTimeUs() - begin0;
+
+  // Bring up trace: the first few frames, then once a second
+  static uint32_t frames = 0, nextTraceMs = 0;
+  frames++;
+  const uint32_t nowMs = (uint32_t)(nowUs / 1000);
+  if (frames <= 3 || nowMs >= nextTraceMs) {
+    nextTraceMs = nowMs + 1000;
+    ds::trace("frames", frames);
+  }
 }
 
 XmcStatus xmcAppTerminate(xmc::system::ShutdownReason reason) {
