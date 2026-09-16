@@ -241,25 +241,6 @@ void xmcAppLoop(void) {
   g_prof.core1WaitUs = 0;
   g_prof.endFrame(xmc::getTimeUs(), g_renderer.stats());
 #endif
-
-  // Bring up trace: the first few frames, then once a second
-  static uint32_t frames = 0, nextTraceMs = 0;
-  frames++;
-  const uint32_t nowMs = (uint32_t)(nowUs / 1000);
-  if (frames <= 3 || nowMs >= nextTraceMs) {
-    nextTraceMs = nowMs + 1000;
-    const render::RenderStats st = g_renderer.stats();
-    ds::trace("frames", frames);
-    // Is the simulation sane? (state 0 is the title screen)
-    ds::trace("  state", (uint32_t)g_game->state());
-    ds::trace("  ticks", g_game->tickCount());
-    ds::trace("  player size", g_game->player().size);
-    // Did anything reach the scene, and did the arena come up?
-    ds::trace("  tri", (uint32_t)st.gfx.triCount);
-    ds::trace("  tri cap", (uint32_t)st.gfx.triCapacity);
-    ds::trace("  lines", (uint32_t)st.lines);
-    ds::trace("  raster us", g_prof.rasterUs);
-  }
 }
 
 XmcStatus xmcAppTerminate(xmc::system::ShutdownReason reason) {
