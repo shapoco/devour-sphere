@@ -15,6 +15,7 @@
 
 #include "devoursphere/render/renderer.hpp"
 #include "ds_config.hpp"
+#include "profiler.hpp"
 #include "shapoco/gfx2d/gfx2d.hpp"
 
 namespace ds {
@@ -30,7 +31,7 @@ class BandWriter {
   // Draw the whole frame and push it. The caller must have called
   // Renderer::beginFrame() and must not advance the simulation until this
   // returns: renderBand() draws the HUD, which reads the live Game.
-  void present(devoursphere::render::Renderer &renderer);
+  void present(devoursphere::render::Renderer &renderer, Profiler &prof);
 
  private:
   // RGB565 big-endian, which is exactly what the ST7789 wants on the wire

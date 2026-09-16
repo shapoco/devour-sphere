@@ -15,6 +15,7 @@
 #include "band_writer.hpp"
 #include "devoursphere/devoursphere.hpp"
 #include "ds_config.hpp"
+#include "profiler.hpp"
 #include "xmc/app.hpp"
 #include "xmc/input.hpp"
 #include "xmc/system.hpp"
@@ -31,6 +32,7 @@ sim::Game g_game;
 render::Renderer g_renderer;
 uint8_t g_arena[ds::ARENA_SIZE];
 ds::BandWriter g_bands;
+ds::Profiler g_prof;
 
 // Frame pacing: the simulation steps at a fixed 60 Hz, the frame rate is
 // whatever the device manages.
@@ -98,8 +100,12 @@ void xmcAppLoop(void) {
   // this time round libLoop(); calling it again would consume the press and
   // release edges the simulation derives from the held state.
   const uint8_t buttons = mapButtons(xmc::input::getState());
+  // FUNC only means something to the SDK while the board is booting, so it is
+  // free to use here.
+  if (xmc::input::wasPressed(xmc::input::Button::FUNC)) g_prof.toggle();
 
   int ticks = 0;
+  const uint32_t tick0 = (uint32_t)xmc::getTimeUs();
   while (g_accUs >= ds::TICK_US && ticks < ds::MAX_CATCHUP) {
     g_game.tick(buttons);
     // The events of a tick are cleared by the next one, so each tick has to
@@ -108,6 +114,8 @@ void xmcAppLoop(void) {
     g_accUs -= ds::TICK_US;
     ticks++;
   }
+  g_prof.tickUs = (uint32_t)xmc::getTimeUs() - tick0;
+  g_prof.ticks = ticks;
   if (g_accUs >= ds::TICK_US) g_accUs = ds::TICK_US - 1;  // drop the surplus
   if (ticks == 0) return;  // ahead of the simulation: nothing new to show
 
@@ -119,9 +127,12 @@ void xmcAppLoop(void) {
   // smoothing, the debris and the score roll-up by dt, and those have to stay
   // in step with the ticks that actually ran.
   const float dt = ticks * (1.0f / sim::TICK_RATE);
+  const uint32_t begin0 = (uint32_t)xmc::getTimeUs();
   g_renderer.beginFrame(g_game, dt);
-  g_bands.present(g_renderer);
+  g_prof.beginUs = (uint32_t)xmc::getTimeUs() - begin0;
+  g_bands.present(g_renderer, g_prof);
   g_renderer.endFrame();
+  g_prof.endFrame(xmc::getTimeUs(), g_renderer.stats());
 }
 
 XmcStatus xmcAppTerminate(xmc::system::ShutdownReason reason) {

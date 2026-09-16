@@ -76,10 +76,13 @@ set_target_properties(xmc_lib xmc_pfm PROPERTIES SYSTEM TRUE)
 target_sources(${APP_NAME} PRIVATE
     src/app.cpp
     src/band_writer.cpp
+    src/profiler.cpp
 )
 target_include_directories(${APP_NAME} PRIVATE include)
 target_compile_features(${APP_NAME} PRIVATE cxx_std_17)
 target_compile_options(${APP_NAME} PRIVATE -Wall -Wextra)
+# The FUNC-toggled timing overlay; set to 0 to compile it out entirely.
+target_compile_definitions(${APP_NAME} PRIVATE DS_PROFILE=1)
 # No -O2 here: the pico SDK defaults CMAKE_BUILD_TYPE to Release (-O3).
 
 target_link_libraries(${APP_NAME} PRIVATE

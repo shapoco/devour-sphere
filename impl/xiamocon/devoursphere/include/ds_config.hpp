@@ -22,10 +22,19 @@ constexpr int BAND_H = 40;
 constexpr int BAND_COUNT = SCREEN_H / BAND_H;
 static_assert(SCREEN_H % BAND_H == 0, "the bands must tile the screen exactly");
 
-// Working memory of the 3D renderer. The peak measured at 240x240 is 42.6 KB
-// (no triangle or span was dropped even with 48 KB), so this is 1.5x the
-// measured peak. The profiling overlay reports the real usage.
-constexpr size_t ARENA_SIZE = 64 * 1024;
+// Working memory of the 3D renderer. What binds here is not the bytes the
+// scene uses (42.6 KB at the measured peak) but the triangle buffer the
+// arena is divided into: below 128 KB the renderer thins the sphere
+// wireframe to stay inside it. Measured at 240x240 over levels 1-7, peak
+// triangles against the resulting capacity:
+//
+//     48 KB -> 200/224     96 KB -> 204/473    160 KB -> 240/824
+//     64 KB -> 200/307    128 KB -> 240/639    256 KB -> 240/1488
+//
+// 128 KB is the knee: the scene reaches its natural size and gets 2.7x the
+// headroom for a heavier one. Nothing changes above it. The profiling
+// overlay reports the real usage.
+constexpr size_t ARENA_SIZE = 128 * 1024;
 
 // The simulation runs at a fixed 60 Hz whatever the frame rate is
 constexpr uint32_t TICK_US = 1000000u / devoursphere::sim::TICK_RATE;
