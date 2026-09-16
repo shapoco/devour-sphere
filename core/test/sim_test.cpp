@@ -657,9 +657,65 @@ static void testRenderSizes() {
   }
 }
 
+// A device without a frame buffer draws the frame a band at a time, so a band
+// must come out exactly as the same rows of a frame drawn in one go --
+// including a last band shorter than the rest.
+static void testRenderBands() {
+  namespace g2 = shapoco::gfx2d;
+  static uint8_t arena[256 * 1024];
+  static devoursphere::render::Renderer renderer;
+  static Game game;
+  constexpr int W = 240, H = 240;
+  static std::vector<uint16_t> whole(W * H), banded(W * H), band(W * H);
+
+  renderer.init(W, H, arena, sizeof(arena));
+  const g2::Surface full = {g2::PixelFormat::RGB565BE, W, H, W * 2,
+                            whole.data()};
+
+  game.reset(4242);
+  for (int state = 0; state < 3; state++) {
+    if (state == 1) {
+      for (int i = 0; i < 40 && game.state() != GameState::WEAPON_SELECT; i++)
+        game.tick(i % 2 ? Button::A : 0);
+    } else if (state == 2) {
+      game.debugStartSphere(3, 0);
+      game.debugAutoPlayer(true);
+      for (int i = 0; i < 400; i++) {
+        game.tick(0);
+        renderer.pollEffects(game);
+      }
+    } else {
+      for (int i = 0; i < 60; i++) game.tick(0);
+    }
+    // 40 is what the Xiamocon front end uses; 7 leaves a short last band
+    for (int bandH : {40, 20, 7}) {
+      std::fill(whole.begin(), whole.end(), 0);
+      std::fill(banded.begin(), banded.end(), 0);
+      // Both drawings belong to the same frame: renderBand() may be called
+      // any number of times between beginFrame() and endFrame()
+      renderer.beginFrame(game, 1.0f / TICK_RATE);
+      renderer.renderBand(full, 0, H, 0);
+      for (int y = 0; y < H; y += bandH) {
+        const int h = (y + bandH <= H) ? bandH : (H - y);
+        const g2::Surface b = {g2::PixelFormat::RGB565BE, W, (int16_t)h, W * 2,
+                               band.data()};
+        renderer.renderBand(b, y, h, 0);
+        std::memcpy(banded.data() + (size_t)y * W, band.data(),
+                    (size_t)W * h * 2);
+      }
+      renderer.endFrame();
+      // Guard against both drawings being empty, which would match trivially
+      CHECK(std::count(whole.begin(), whole.end(), 0) <
+            (ptrdiff_t)whole.size() * 99 / 100);
+      CHECK(whole == banded);
+    }
+  }
+}
+
 int main() {
   testFixed();
   testRenderSizes();
+  testRenderBands();
   testCombatAndLayout();
   testDifficultyAndEvade();
   testDeterminism();
