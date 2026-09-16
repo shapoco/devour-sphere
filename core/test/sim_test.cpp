@@ -368,6 +368,54 @@ static void testCombatAndLayout() {
     CHECK(!b.player().alive);  // eventually absorbed
   }
 
+  // Absorption drains health too: every ABSORB_HP_INTERVAL ticks the smaller
+  // one loses ABSORB_HP_PCT % of its gauge (on top of the size flowing out,
+  // which keeps its ratio) and the bigger one heals by the same amount
+  {
+    Game b;
+    b.reset(77);
+    b.debugStartSphere(1, 0);
+    Entity &p = b.entities[b.playerIndex()];
+    int other = -1;
+    for (int i = 1; i < MAX_ENTITIES && other < 0; i++)
+      if (b.entities[i].alive) other = i;
+    Entity &o = b.entities[other];
+    o.fragmentCount = p.fragmentCount;
+    for (int k = 0; k < p.fragmentCount; k++) o.fragments[k] = p.fragments[k];
+    o.fragments[0].sizeLog2 += 3;  // clearly bigger
+    o.size = 0;
+    for (int k = 0; k < o.fragmentCount; k++)
+      o.size += 1u << o.fragments[k].sizeLog2;
+    o.hpMax = HP_PER_SIZE * (int32_t)o.size;
+    o.hp = o.hpMax / 2;  // room to heal
+    o.frame = p.frame;
+    o.r = p.r;
+    o.invincible = 0;
+    p.invincible = 0;
+    p.absorbGuard = 0;
+    p.hp = p.hpMax;
+    int64_t drained = 0, gained = 0, sizeHeal = 0;
+    for (int t = 0; t < 20 && b.player().alive; t++) {
+      b.entities[other].frame = b.player().frame;
+      b.entities[other].r = b.player().r;
+      int32_t sHp = p.hp, sMax = p.hpMax, bHp = o.hp, bMax = o.hpMax;
+      uint32_t bSize = o.size;
+      b.tick(Button::DOWN);
+      if (!p.alive) break;
+      // health kept its ratio through the size change; anything beyond is
+      // the drain / the heal (size growth also heals HP_PER_SIZE per unit)
+      drained += (int64_t)sHp * p.hpMax / sMax - p.hp;
+      gained += p.alive ? o.hp - (int64_t)bHp * o.hpMax / bMax : 0;
+      sizeHeal += (int64_t)HP_PER_SIZE * HEAL_PER_FRAGMENT_MUL *
+                  (o.size - bSize);
+    }
+    CHECK(drained > 0);
+    CHECK(b.player().hp < b.player().hpMax);  // the ratio dropped
+    int64_t diff = gained - sizeHeal - drained;
+    if (diff < 0) diff = -diff;
+    CHECK(diff <= 40);  // rounding of the per-tick rescaling
+  }
+
   // A fragment left far behind the core is pulled back into the body
   {
     Game b;

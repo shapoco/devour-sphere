@@ -324,6 +324,24 @@ void Game::transferSize(int from, int to) {
   Entity &S = entities[from];
   Entity &B = entities[to];
   if (!S.alive || !B.alive) return;
+  // Health flows too: a share of the smaller one's gauge, healing the
+  // bigger one by the same amount
+  if ((tickCount_ % ABSORB_HP_INTERVAL) == 0) {
+    int32_t drain = S.hpMax * ABSORB_HP_PCT / 100;
+    if (drain < 1) drain = 1;
+    if (drain > S.hp) drain = S.hp;
+    S.hp -= drain;
+    B.hp += drain;
+    if (B.hp > B.hpMax) B.hp = B.hpMax;
+    if (S.isPlayer) events_ |= Event::PLAYER_HIT;
+    if (S.hp <= 0) {
+      // Drained dry: devoured (the body bursts into fragments)
+      if (B.isPlayer) addScore((int64_t)SCORE_DEVOUR_BASE * 256);
+      killEntity(from);
+      stats_.absorbs++;
+      return;
+    }
+  }
   uint32_t t = S.size >> ABSORB_RATE_SHIFT;
   if (t == 0) {
     if ((tickCount_ % ABSORB_MIN_INTERVAL) != 0) return;

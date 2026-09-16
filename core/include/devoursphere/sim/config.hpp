@@ -126,6 +126,12 @@ constexpr WeaponSpec WEAPON_SPECS[WEAPON_COUNT] = {
 // size >> ABSORB_RATE_SHIFT (at least 1 every ABSORB_MIN_INTERVAL ticks).
 constexpr int ABSORB_RATE_SHIFT = 7 + RATE_SHIFT;
 constexpr int ABSORB_MIN_INTERVAL = ticks30(4);
+// Health is drained as well: every ABSORB_HP_INTERVAL ticks the smaller one
+// loses ABSORB_HP_PCT percent of its gauge and the bigger one heals by the
+// same amount (a small share of a big gauge, a large share of a small one).
+// At zero health the drained one is devoured outright.
+constexpr int ABSORB_HP_INTERVAL = ticks30(5);
+constexpr int32_t ABSORB_HP_PCT = 5;
 
 // --- Fragments inside an entity
 // ------------------------------------------------
