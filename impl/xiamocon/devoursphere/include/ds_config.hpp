@@ -50,22 +50,37 @@ constexpr size_t ARENA_SIZE = 128 * 1024;
 // The simulation runs at a fixed 60 Hz whatever the frame rate is
 constexpr uint32_t TICK_US = 1000000u / devoursphere::sim::TICK_RATE;
 
-// Render on the second core, so that core0's ticks for the next frame
-// overlap this frame's rasterization. That is what takes the RP2350 from 30
-// to 41 fps.
+// How the work is divided between the two cores. Either way the point is the
+// same: one core runs the simulation for the next frame while the other
+// rasterizes and pushes this one. beginFrame() can never overlap anything,
+// because it reads the whole Game.
 //
-// Off on ESP32S3: the display only works when the transfers are issued from
-// core0. The scene is built correctly there (triangles, lines and
-// rasterization time all sane) and a transfer issued from core0 during setup
-// reaches the panel, but the same call from the render task does not. Giving
-// way while waiting -- vTaskDelay in the long wait, taskYIELD in the short
-// one -- made no difference, and the SPI transfer task turns out to run on
-// the other core anyway, so starvation was never the mechanism.
-#ifndef DS_RENDER_ON_CORE1
+//   DS_SPLIT_NONE    one core does everything
+//   DS_SPLIT_RENDER  core1 renders, core0 simulates
+//   DS_SPLIT_SIM     core1 simulates, core0 renders
+//
+// RP2350 renders on core1, which is the better arrangement: the frame drawn
+// is the state just ticked, so there is no added latency.
+//
+// ESP32S3 has to be the other way round, because **the display only works
+// when the transfers are issued from core0**. The scene is built correctly
+// from the render task -- triangles, lines and rasterization time all sane --
+// and a transfer issued from core0 during setup reaches the panel, but the
+// same call from that task does not. Giving way while waiting (vTaskDelay in
+// the long wait, taskYIELD in the short one) made no difference, and the SPI
+// transfer task turns out to run on the other core anyway, so starvation was
+// never the mechanism. Simulating on core1 instead gets the overlap back, at
+// the cost of one frame of input latency: what is drawn is the state core1
+// finished, and the input just read affects the frame after.
+#define DS_SPLIT_NONE 0
+#define DS_SPLIT_RENDER 1
+#define DS_SPLIT_SIM 2
+
+#ifndef DS_SPLIT
 #if defined(ESP32)
-#define DS_RENDER_ON_CORE1 0
+#define DS_SPLIT DS_SPLIT_SIM
 #else
-#define DS_RENDER_ON_CORE1 1
+#define DS_SPLIT DS_SPLIT_RENDER
 #endif
 #endif
 

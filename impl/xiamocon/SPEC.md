@@ -146,9 +146,13 @@ endFrame()
 
 ## 2 つのコアの分担
 
-`core1` が描画、`core0` がシミュレーションを持つ。狙いは
-**core0 が次フレームの tick を進めている間に core1 が今のフレームをラスタライズする**こと。
-`beginFrame()` だけは `Game` 全体を読むので並行に進められず、直列区間として残る。
+どちらの向きでも狙いは同じで、**片方のコアが次フレームの tick を進めている間に
+もう片方が今のフレームをラスタライズして転送する**。`beginFrame()` は `Game` 全体を
+読むので、どちらの向きでも並行に進められず直列区間として残る。
+
+向きは `DS_SPLIT` で選ぶ (`ds_config.hpp`)。
+
+### `DS_SPLIT_RENDER` — core1 が描画 (RP2350)
 
 ```
 core0                                core1
@@ -159,21 +163,38 @@ core0                                core1
   戻る (次の反復へ)                    ラスタライズ + 転送...
 ```
 
-状態は `std::atomic<Frame>` の acquire/release で受け渡す
-(`IDLE` → `BUILD` → `SCENE_READY` → `DONE`)。
-`xmc::Semaphore` は実体がバイナリミューテックスなので使わない。
+描くのは「たった今 tick した状態」なので、**遅延が増えない**。こちらが本来望ましい。
 
-`SCENE_READY` 以降、どちらのコアが何に触るか:
+### `DS_SPLIT_SIM` — core1 が sim (ESP32S3)
 
-| core1 | core0 |
+ESP32S3 は**ディスプレイを core0 からしか叩けない**ので、こちらの向きになる。
+
+```
+core0                                core1
+  DONE を待つ <--------------------  batch 完了
+  beginFrame()                        (idle)           ← core1 は待つ
+  RUN を発行 (tick 回数 + ボタン) -->  tick x N
+  ラスタライズ + 転送          <--->  tick x N (続き)
+```
+
+入力は core0 で読んで、tick 回数と一緒に core1 へ渡す。
+**1 フレーム分の入力遅延が出る**: 描くのは core1 が進め終わった状態で、
+いま読んだボタンは次のフレームに効く。重ねる以上これは避けられない。
+
+### 共通の約束
+
+状態は 32 ビット 1 語を `__atomic_load_n` / `__atomic_store_n` の acquire/release で
+受け渡す。`std::atomic` は Xtensa で lock-free 保証にならず、`xmc::Semaphore` は
+実体がバイナリミューテックスなので、どちらも使わない。
+
+片方が tick を進めている間、どちらのコアが何に触るか:
+
+| 描画する側 | sim する側 |
 |---|---|
 | アリーナと構築済みシーン、帯バッファ、ディスプレイ、`Renderer` の HUD スナップショット・ゲージ・マーカー | `Game`、および `pollEffects()` が書く `Renderer` のエフェクト状態 (デブリ、取得フラッシュ、エフェクト用 rng) |
 
 この分離が成り立つのは `renderBand()` が `Game` を参照しなくなったから
 (core/SPEC.md の `HudState` 参照)。エフェクト状態は `renderBand()` からは読まれない。
-
-`xmcAppLoop()` に入る時点で core1 は必ず `beginFrame()` を終えているので、
-先頭の tick が `beginFrame()` と競合することはない。
 
 **core1 のスタックは `SCRATCH_X` の 4KB 固定**で、そこで `beginFrame()` の
 スフィア再帰が走る。デバッグ表示の `S` が実測の最大使用量 (バイト) なので、
@@ -274,7 +295,7 @@ BGN + RAS = 19.5ms はフレームレートに依らない固定費なので、
 
 | | RP2350 | ESP32S3 |
 |---|---|---|
-| 描画するコア | **core1** (`DS_RENDER_ON_CORE1=1`) | **core0** (同 `=0`) |
+| コアの分担 | **core1 が描画** (`DS_SPLIT_RENDER`) | **core1 が sim** (`DS_SPLIT_SIM`) |
 | `TICK_RATE` | 60 | **30** |
 | 帯の高さ | 40 行 (6 帯) | **80 行 (3 帯)** |
 | `sim::Game` (133KB) | `.bss` | **PSRAM** (`MALLOC_CAP_SPIRAM`) |

@@ -1,4 +1,4 @@
-// Devour Sphere on Xiamocon (XIAO RP2350).
+// Devour Sphere on Xiamocon (XIAO RP2350 and XIAO ESP32S3).
 //
 // The game core (core/) is shared with the WASM front end; everything here is
 // the platform layer: the SDK entry points, the frame loop, the input mapping
@@ -6,9 +6,8 @@
 // the frame is drawn by core/render into band buffers and pushed by
 // BandWriter (see band_writer.hpp).
 //
-// Nothing is allocated dynamically: Game, Renderer, the 3D arena and the band
-// buffers are all statics. Game alone is 133 KB, so it must never go on a
-// stack (both cores get 4 KB, in SCRATCH_X / SCRATCH_Y).
+// Nothing here is allocated on a stack. Game alone is 136 KB, and RP2350
+// gives each core 4 KB in SCRATCH_X / SCRATCH_Y.
 
 #include "xmc/app.hpp"
 #include "band_writer.hpp"
@@ -40,14 +39,26 @@ ds::Profiler g_prof;
 uint64_t g_lastUs = 0;
 uint32_t g_accUs = 0;
 
-// --- The two cores -------------------------------------------------------
-#if DS_RENDER_ON_CORE1
-//
+// The handover word between the cores, read and written with explicit
+// acquire/release. Not std::atomic: on the Xtensa toolchain
+// std::atomic<uint32_t> is not guaranteed lock free, and a lock would be
+// wrong here -- the two sides are different cores, not threads. A 32-bit
+// aligned load or store is atomic on both targets anyway; the builtins add
+// the barrier and stop the compiler moving the payload past the handover.
+template <typename T>
+T stateLoad(const uint32_t &w) {
+  return (T)__atomic_load_n(&w, __ATOMIC_ACQUIRE);
+}
+template <typename T>
+void stateStore(uint32_t &w, T v) {
+  __atomic_store_n(&w, (uint32_t)v, __ATOMIC_RELEASE);
+}
+
+#if DS_SPLIT == DS_SPLIT_RENDER
+
 // core1 renders: beginFrame(), then the bands and their transfers. core0
-// runs the simulation and hands frames over. The point of the split is that
-// core0's ticks for the next frame overlap core1's rasterization of this
-// one; beginFrame() cannot overlap anything, because it reads the whole
-// Game.
+// simulates and hands frames over, so its ticks for the next frame overlap
+// core1's rasterization of this one.
 //
 // Which core touches what, while core1 is past SCENE_READY:
 //   core1  the arena and the scene built into it, the band buffers, the
@@ -61,24 +72,19 @@ enum class Frame : uint32_t {
   SCENE_READY,  // the scene is built; core1 is rasterizing and transferring
   DONE,         // the frame is out; core0 may hand over the next one
 };
-// A plain word with explicit acquire/release rather than std::atomic: on the
-// Xtensa toolchain std::atomic<uint32_t> is not guaranteed lock free, and a
-// lock would be wrong here -- the two sides are different cores, not
-// threads. A 32-bit aligned load or store is atomic on both targets anyway;
-// the builtins add the barrier and stop the compiler reordering the renderer
-// writes past the handover.
 uint32_t g_frame = (uint32_t)Frame::IDLE;
 float g_frameDt = 0;  // written before BUILD is published, read after it
 
-Frame frameLoad() { return (Frame)__atomic_load_n(&g_frame, __ATOMIC_ACQUIRE); }
-void frameStore(Frame f) {
-  __atomic_store_n(&g_frame, (uint32_t)f, __ATOMIC_RELEASE);
+Frame frameLoad() { return stateLoad<Frame>(g_frame); }
+void frameStore(Frame f) { stateStore(g_frame, f); }
+void waitFrame(Frame want) {
+  while (frameLoad() != want) xmc::tightLoopContents();
 }
 
 bool core1Task() {
-  static bool painted = false;
-  if (!painted) {
-    painted = true;
+  static bool started = false;
+  if (!started) {
+    started = true;
     ds::stackWatchInitCore1();
   }
   if (frameLoad() != Frame::BUILD) {
@@ -86,21 +92,68 @@ bool core1Task() {
     return true;
   }
   g_renderer.beginFrame(*g_game, g_frameDt);
-  // From here the Game belongs to core0 again
-  frameStore(Frame::SCENE_READY);
+  frameStore(Frame::SCENE_READY);  // the Game belongs to core0 again
   g_bands.present(g_renderer, g_prof);
   g_renderer.endFrame();
   frameStore(Frame::DONE);
   return true;
 }
 
-void waitFrame(Frame want) {
-  while (frameLoad() != want) {
-    xmc::tightLoopContents();
-  }
+#elif DS_SPLIT == DS_SPLIT_SIM
+
+// core1 simulates: core0 asks for a batch of ticks and rasterizes the frame
+// it already has while that batch runs. The display stays core0's throughout,
+// which on ESP32S3 is the whole reason for this arrangement.
+//
+// Which core touches what, while a batch is running:
+//   core0  the arena and the scene, the band buffers, the display, and the
+//          Renderer's HUD snapshot / gauges / markers
+//   core1  the Game, and the Renderer's effect state through pollEffects()
+//
+// The same field split as the other arrangement with the cores swapped.
+// beginFrame() reads the whole Game, so it runs while core1 is idle, between
+// collecting one batch and asking for the next.
+enum class Sim : uint32_t {
+  IDLE,  // no batch outstanding; the Game is core0's
+  RUN,   // core1 is ticking
+  DONE,  // the batch finished and core0 has not collected it yet
+};
+uint32_t g_sim = (uint32_t)Sim::IDLE;
+int g_simWanted = 0;       // written before RUN is published
+uint8_t g_simButtons = 0;  // ... same
+int g_simRan = 0;          // written before DONE is published
+uint32_t g_simTickUs = 0;  // ... same
+
+Sim simLoad() { return stateLoad<Sim>(g_sim); }
+void simStore(Sim s) { stateStore(g_sim, s); }
+void waitSim(Sim want) {
+  while (simLoad() != want) xmc::tightLoopContents();
 }
 
-#endif  // DS_RENDER_ON_CORE1
+bool core1Task() {
+  static bool started = false;
+  if (!started) {
+    started = true;
+    ds::stackWatchInitCore1();
+  }
+  if (simLoad() != Sim::RUN) {
+    ds::frameIdle();
+    return true;
+  }
+  const uint32_t t0 = (uint32_t)xmc::getTimeUs();
+  for (int i = 0; i < g_simWanted; i++) {
+    g_game->tick(g_simButtons);
+    // The events of a tick are cleared by the next one, so each tick has to
+    // be polled or the frame would only show the last one's explosions
+    g_renderer.pollEffects(*g_game);
+  }
+  g_simTickUs = (uint32_t)xmc::getTimeUs() - t0;
+  g_simRan = g_simWanted;
+  simStore(Sim::DONE);
+  return true;
+}
+
+#endif
 
 // The buttons Xiamocon has, in the five bits the simulation takes. All four
 // face buttons fire, so the thumb does not have to find a particular one.
@@ -116,6 +169,26 @@ uint8_t mapButtons(xmc::input::Button b) {
     out |= sim::Button::A;
   }
   return out;
+}
+
+// How many ticks the clock owes us, taken out of the accumulator
+int ticksDue() {
+  int n = 0;
+  while (g_accUs >= ds::TICK_US && n < ds::MAX_CATCHUP) {
+    g_accUs -= ds::TICK_US;
+    n++;
+  }
+  if (g_accUs >= ds::TICK_US) g_accUs = ds::TICK_US - 1;  // drop the surplus
+  return n;
+}
+
+// Nothing is written to flash, but the high score still survives a restart
+// for as long as the power is on, because Game::reset() leaves it alone.
+// Only safe while the Game belongs to this core.
+void keepHighScore() {
+  if (g_game->score() > g_game->highScore()) {
+    g_game->setHighScore(g_game->score());
+  }
 }
 
 }  // namespace
@@ -151,8 +224,8 @@ void xmcAppSetup(void) {
     g_game = nullptr;  // xmcAppLoop() bails out
     return;
   }
-  // Start owing one tick, so the very first loop draws instead of leaving the
-  // screen blank until the clock has moved.
+  // Start owing one tick, so the first loop has something to do instead of
+  // waiting for the clock to move.
   g_lastUs = xmc::getTimeUs();
   g_accUs = ds::TICK_US;
   ds::stackWatchInitCore0();
@@ -160,10 +233,10 @@ void xmcAppSetup(void) {
   // Both cores are otherwise idle here, so this is the transfer on its own
   g_prof.xferUs = g_bands.measureTransfer();
   ds::trace("transfer us", g_prof.xferUs);
-#if DS_RENDER_ON_CORE1
-  ds::trace("core1", (uint32_t)xmc::startCore1(core1Task));
+#if DS_SPLIT == DS_SPLIT_NONE
+  ds::trace("one core", 0);
 #else
-  ds::trace("rendering on core0", 0);
+  ds::trace("core1", (uint32_t)xmc::startCore1(core1Task));
 #endif
 }
 
@@ -187,39 +260,68 @@ void xmcAppLoop(void) {
   // free to use here.
   if (xmc::input::wasPressed(xmc::input::Button::FUNC)) g_prof.toggle();
 
-  int ticks = 0;
+#if DS_SPLIT == DS_SPLIT_SIM
+  // Collect the batch core1 ran while we rasterized the previous frame
+  const uint32_t wait0 = (uint32_t)xmc::getTimeUs();
+  if (simLoad() == Sim::RUN) waitSim(Sim::DONE);
+  g_prof.core1WaitUs = (uint32_t)xmc::getTimeUs() - wait0;
+
+  int ran = 0;
+  if (simLoad() == Sim::DONE) {
+    ran = g_simRan;
+    g_prof.tickUs = g_simTickUs;
+    g_prof.ticks = ran;
+    simStore(Sim::IDLE);  // the Game is ours until we ask for the next batch
+  }
+
+  // Build the scene from the state that batch left behind. Nothing else may
+  // touch the Game here.
+  if (ran > 0) {
+    keepHighScore();
+    const uint32_t begin0 = (uint32_t)xmc::getTimeUs();
+    // Simulation time, not wall time: the renderer advances the camera
+    // smoothing, the debris and the score roll-up by dt, and those have to
+    // stay in step with the ticks that actually ran.
+    g_renderer.beginFrame(*g_game, ran * (1.0f / sim::TICK_RATE));
+    g_prof.beginUs = (uint32_t)xmc::getTimeUs() - begin0;
+  }
+
+  // Ask for the next batch before rasterizing, so core1 ticks while we do.
+  // This is what costs a frame of latency: these buttons reach the screen one
+  // frame later.
+  const int want = ticksDue();
+  if (want > 0) {
+    g_simWanted = want;
+    g_simButtons = buttons;
+    simStore(Sim::RUN);
+  }
+
+  if (ran > 0) {
+    g_bands.present(g_renderer, g_prof);
+    g_renderer.endFrame();
+    g_prof.endFrame(xmc::getTimeUs(), g_renderer.stats());
+  }
+#else
   const uint32_t tick0 = (uint32_t)xmc::getTimeUs();
-  while (g_accUs >= ds::TICK_US && ticks < ds::MAX_CATCHUP) {
+  const int ticks = ticksDue();
+  for (int i = 0; i < ticks; i++) {
     g_game->tick(buttons);
     // The events of a tick are cleared by the next one, so each tick has to
     // be polled or the frame would only show the last one's explosions
     g_renderer.pollEffects(*g_game);
-    g_accUs -= ds::TICK_US;
-    ticks++;
   }
   g_prof.tickUs = (uint32_t)xmc::getTimeUs() - tick0;
   g_prof.ticks = ticks;
-  if (g_accUs >= ds::TICK_US) g_accUs = ds::TICK_US - 1;  // drop the surplus
   if (ticks == 0) return;  // ahead of the simulation: nothing new to show
-
-  // Nothing is written to flash, but the high score still survives a restart
-  // for as long as the power is on, because Game::reset() leaves it alone.
-  if (g_game->score() > g_game->highScore())
-    g_game->setHighScore(g_game->score());
-
-  // Simulation time, not wall time: the renderer advances the camera
-  // smoothing, the debris and the score roll-up by dt, and those have to stay
-  // in step with the ticks that actually ran.
+  keepHighScore();
   const float dt = ticks * (1.0f / sim::TICK_RATE);
 
-#if DS_RENDER_ON_CORE1
+#if DS_SPLIT == DS_SPLIT_RENDER
   // Collect the frame core1 has been working on while we ticked. On entry
   // core1 is always past beginFrame(), so the ticks above could not have
   // raced with it.
   const uint32_t wait0 = (uint32_t)xmc::getTimeUs();
-  if (frameLoad() != Frame::IDLE) {
-    waitFrame(Frame::DONE);
-  }
+  if (frameLoad() != Frame::IDLE) waitFrame(Frame::DONE);
   g_prof.core1WaitUs = (uint32_t)xmc::getTimeUs() - wait0;
   g_prof.endFrame(xmc::getTimeUs(), g_renderer.stats());
 
@@ -231,8 +333,7 @@ void xmcAppLoop(void) {
   waitFrame(Frame::SCENE_READY);
   g_prof.beginUs = (uint32_t)xmc::getTimeUs() - begin0;
 #else
-  // Everything on this core: build the scene, then rasterize and push each
-  // band. Nothing overlaps the ticks, so this is slower.
+  // Everything on this core. Nothing overlaps the ticks, so this is slower.
   const uint32_t begin0 = (uint32_t)xmc::getTimeUs();
   g_renderer.beginFrame(*g_game, dt);
   g_prof.beginUs = (uint32_t)xmc::getTimeUs() - begin0;
@@ -241,18 +342,19 @@ void xmcAppLoop(void) {
   g_prof.core1WaitUs = 0;
   g_prof.endFrame(xmc::getTimeUs(), g_renderer.stats());
 #endif
+#endif
 }
 
 XmcStatus xmcAppTerminate(xmc::system::ShutdownReason reason) {
   (void)reason;
   // requestShutdown() calls us before it deinits anything and then draws its
-  // power-off message through the same SPI bus, so core1 has to be off the
-  // display and the band left in flight by present() collected, both before
-  // we return.
-#if DS_RENDER_ON_CORE1
-  if (frameLoad() != Frame::IDLE) {
-    waitFrame(Frame::DONE);
-  }
+  // power-off message through the same SPI bus. Core1 has to be off whatever
+  // it shares with us, and the band left in flight by present() collected,
+  // both before we return.
+#if DS_SPLIT == DS_SPLIT_RENDER
+  if (frameLoad() != Frame::IDLE) waitFrame(Frame::DONE);
+#elif DS_SPLIT == DS_SPLIT_SIM
+  if (simLoad() == Sim::RUN) waitSim(Sim::DONE);
 #endif
   g_bands.drain();
   return XMC_OK;
