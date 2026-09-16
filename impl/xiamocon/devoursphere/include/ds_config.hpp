@@ -18,7 +18,16 @@ namespace ds {
 // +36% at 8), and an even band count keeps the ping-pong parity simple.
 constexpr int SCREEN_W = xmc::display::WIDTH;
 constexpr int SCREEN_H = xmc::display::HEIGHT;
+#if defined(ESP32)
+// Taller bands, so fewer of them. Every band costs a setWindow, and on this
+// board a command goes through the same queue-to-another-task path a bulk
+// transfer does: CMD measured 4.41 ms across six bands, against 0.26 ms on
+// RP2350. Three bands cut that and the per-band waiting with it, for 38 KB
+// more RAM.
+constexpr int BAND_H = 80;
+#else
 constexpr int BAND_H = 40;
+#endif
 constexpr int BAND_COUNT = SCREEN_H / BAND_H;
 static_assert(SCREEN_H % BAND_H == 0, "the bands must tile the screen exactly");
 
