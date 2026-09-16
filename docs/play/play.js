@@ -6,11 +6,10 @@
 // the button bits of the simulation.
 //
 // startDevourSphere({ wasm: 'devoursphere.wasm' })
-//   URL parameters: ?level=N&weapon=W  skips the menus (debug)
+//   URL parameters: ?screen=WxH        frame buffer size (default 480x320)
+//                   ?level=N&weapon=W  skips the menus (debug)
 //                   ?seed=N            fixed random seed
 //                   ?auto=1            the AI drives the player (demo)
-//                   #screen=WxH        frame buffer size (default 480x320);
-//                                      also accepted as ?screen=WxH
 
 'use strict';
 
@@ -32,10 +31,9 @@ const RGBA_LUT = new Uint32Array(65536);
   }
 }
 
-// "320x240" from the URL fragment (or the query), or null
-function parseScreenSize() {
-  const hash = new URLSearchParams(location.hash.replace(/^#/, ''));
-  const value = hash.get('screen') || new URLSearchParams(location.search).get('screen');
+// "320x240" from ?screen=, or null
+function parseScreenSize(params) {
+  const value = params.get('screen');
   const m = value && /^\s*(\d+)\s*[xX*]\s*(\d+)\s*$/.exec(value);
   return m ? { w: parseInt(m[1], 10), h: parseInt(m[2], 10) } : null;
 }
@@ -62,7 +60,7 @@ async function startDevourSphere(opts) {
     const seed = params.has('seed') ? (parseInt(params.get('seed'), 10) >>> 0) : (Date.now() >>> 0);
     // The frame buffer size must be set before the game starts: the HUD
     // layout is derived from it once
-    const wanted = parseScreenSize();
+    const wanted = parseScreenSize(params);
     let sizeError = '';
     if (wanted && !ex.ds_set_screen(wanted.w, wanted.h)) {
       sizeError = `screen ${wanted.w}x${wanted.h} is not supported`;
