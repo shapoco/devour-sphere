@@ -211,13 +211,13 @@ constexpr int32_t THRUSTER_DASH_PCT[UPGRADE_MAX_LEVEL + 1] = {100, 150, 200,
 constexpr int CHARGE_TICKS = 3 * TICK_RATE;
 constexpr int COOLDOWN_TICKS = 5 * TICK_RATE;
 constexpr int LANCE_TICKS = 2 * TICK_RATE;     // Lance beam duration
-constexpr int RAM_TICKS = 2 * TICK_RATE;       // Ram duration
+constexpr int RAM_TICKS = 1 * TICK_RATE;       // Ram duration
 constexpr int RAM_TRIGGER_TICKS = ticks30(9);  // window after releasing DOWN
 // Lance: a beam of LANCE_LENGTH_MUL x kite half-size (+ LANCE_LENGTH_FU) in
 // front of the player, width = bodyRadius; damage per tick = power * size / 8
 constexpr int32_t LANCE_LENGTH_MUL = 40;
 constexpr int32_t LANCE_LENGTH_FU = 10;
-constexpr int32_t LANCE_POWER = 9;  // an equal enemy dies after ~0.6 s
+constexpr int32_t LANCE_POWER = 5;
 // Ram: speed = dash speed x RAM_SPEED_MUL; damage = RAM_POWER * size / 8 once
 // per enemy touched; the player is invulnerable meanwhile
 constexpr int32_t RAM_SPEED_MUL = 3;
