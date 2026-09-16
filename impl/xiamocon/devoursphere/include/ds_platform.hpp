@@ -32,6 +32,18 @@ uint16_t *allocBandBuffer(size_t bytes);
 // where no serial port is configured.
 void trace(const char *what, uint32_t value);
 
+// What the render side does while it waits. RP2350 spins for both: nothing
+// else runs on that core.
+//
+// frameIdle() is the long wait, for core0 to hand over the next frame -- on
+// ESP32S3 it blocks for a tick, so the core it is pinned to can run
+// everything else the framework has to do there.
+//
+// transferIdle() is the short wait, for a band to finish going out. It only
+// gives way; blocking here would round a 4 ms transfer up to the tick.
+void frameIdle();
+void transferIdle();
+
 // A seed that differs from boot to boot. Not xmc::randomU32(): that is an
 // unseeded newlib rand(), so it yields the same sequence every time.
 uint32_t randomSeed();

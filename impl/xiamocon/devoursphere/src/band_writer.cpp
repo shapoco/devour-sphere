@@ -1,6 +1,7 @@
 #include "band_writer.hpp"
 
 #include "xmc/display.hpp"
+#include "xmc/spi.hpp"
 #include "xmc/timer.hpp"
 
 namespace ds {
@@ -16,7 +17,11 @@ bool BandWriter::init() {
 void BandWriter::drain() {
   if (!pending_) return;
   pending_ = false;
-  // Waits for the DMA, then releases CS and the SPI lock
+  // Poll rather than going straight into writePixelsComplete(), which spins:
+  // on ESP32S3 the transfer is performed by another task, so the renderer has
+  // to give way for it to make progress. writePixelsComplete() then returns
+  // at once and releases CS and the SPI lock.
+  while (xmc::spi::dmaIsBusy()) ds::transferIdle();
   xmc::display::writePixelsComplete();
 }
 

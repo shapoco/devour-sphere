@@ -53,11 +53,7 @@ constexpr uint32_t TICK_US = 1000000u / devoursphere::sim::TICK_RATE;
 // transfer is issued from the render task. Until that is understood, that
 // board draws and transfers from core0.
 #ifndef DS_RENDER_ON_CORE1
-#if defined(ESP32)
-#define DS_RENDER_ON_CORE1 0
-#else
 #define DS_RENDER_ON_CORE1 1
-#endif
 #endif
 
 // Ticks a single frame may catch up on. 4 ticks = 66.7 ms covers any

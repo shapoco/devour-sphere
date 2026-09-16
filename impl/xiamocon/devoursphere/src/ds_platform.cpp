@@ -17,6 +17,12 @@ namespace ds {
 
 uint32_t randomSeed() { return esp_random(); }
 
+// One tick, 1 ms at the 1000 Hz Arduino-ESP32 configures. Blocking rather
+// than spinning is the point: our task is pinned at priority 10 and would
+// otherwise never let its core do anything else.
+void frameIdle() { vTaskDelay(1); }
+void transferIdle() { taskYIELD(); }
+
 devoursphere::sim::Game *allocGame() {
   // MALLOC_CAP_SPIRAM, not the default heap: 133 KB would not fit in the
   // internal DRAM the linker leaves us
@@ -77,9 +83,14 @@ uint32_t stackUsedCore1() {
 
 #include <pico/rand.h>
 
+#include "xmc/xmc_common.hpp"
+
 namespace ds {
 
 uint32_t randomSeed() { return get_rand_32(); }
+
+void frameIdle() { xmc::tightLoopContents(); }
+void transferIdle() { xmc::tightLoopContents(); }
 
 devoursphere::sim::Game *allocGame() {
   static devoursphere::sim::Game game;

@@ -82,7 +82,7 @@ bool core1Task() {
     ds::stackWatchInitCore1();
   }
   if (frameLoad() != Frame::BUILD) {
-    xmc::tightLoopContents();
+    ds::frameIdle();
     return true;
   }
   g_renderer.beginFrame(*g_game, g_frameDt);
