@@ -18,27 +18,13 @@ namespace ds {
 // +36% at 8), and an even band count keeps the ping-pong parity simple.
 constexpr int SCREEN_W = xmc::display::WIDTH;
 constexpr int SCREEN_H = xmc::display::HEIGHT;
-// Where the simulation state lives on ESP32S3. It is 136 KB and the linker
-// gives the application 327,680 bytes of internal DRAM, so keeping it there
-// means taking the room from the arena and the bands -- which is what the
-// two settings below do. Kept as a switch so the cost of PSRAM on a tick can
-// be measured: everything else about the frame stays the same.
-#ifndef DS_GAME_IN_PSRAM
-#define DS_GAME_IN_PSRAM 1
-#endif
-
 #if defined(ESP32)
-#if DS_GAME_IN_PSRAM
 // Taller bands, so fewer of them. Every band costs a setWindow, and on this
 // board a command goes through the same queue-to-another-task path a bulk
 // transfer does: CMD measured 4.41 ms across six bands, against 0.26 ms on
 // RP2350. Three bands cut that to 2.37 and the per-band waiting with it, for
 // 38 KB more heap.
 constexpr int BAND_H = 80;
-#else
-// Game is in DRAM: the bands have to give their 38 KB back
-constexpr int BAND_H = 40;
-#endif
 #else
 constexpr int BAND_H = 40;
 #endif
@@ -57,16 +43,9 @@ static_assert(SCREEN_H % BAND_H == 0, "the bands must tile the screen exactly");
 // 128 KB is the knee: the scene reaches its natural size and gets 2.7x the
 // headroom for a heavier one. Nothing changes above it. The profiling
 // overlay reports the real usage.
-// Both targets use the same size, as long as the simulation state is out of
-// the way. With Game in DRAM the ESP32S3 has to drop to 48 KB, which is the
-// smallest measured with nothing dropped -- and that was at six bands, so
-// expect the overlay to report dropped triangles in that configuration. It
-// is there to measure a tick, not to play.
-#if defined(ESP32) && !DS_GAME_IN_PSRAM
-constexpr size_t ARENA_SIZE = 48 * 1024;
-#else
+// Both targets use the same size. The ESP32S3 can afford it because the
+// simulation state is in PSRAM; see ds_platform.hpp for why it has to be.
 constexpr size_t ARENA_SIZE = 128 * 1024;
-#endif
 
 // The simulation runs at a fixed 60 Hz whatever the frame rate is
 constexpr uint32_t TICK_US = 1000000u / devoursphere::sim::TICK_RATE;

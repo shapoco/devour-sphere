@@ -24,19 +24,16 @@ void frameIdle() { vTaskDelay(1); }
 void transferIdle() { taskYIELD(); }
 
 devoursphere::sim::Game *allocGame() {
-#if DS_GAME_IN_PSRAM
-  // MALLOC_CAP_SPIRAM, not the default heap: 136 KB would not fit in the
-  // internal DRAM the linker leaves us without taking it from the arena
+  // MALLOC_CAP_SPIRAM, not the default heap. 136 KB does not fit in internal
+  // DRAM: putting it there links, but only by taking the arena down to 48 KB
+  // and the bands back to 40 rows, and the board then fails to boot because
+  // the heap no longer has room for the band buffers and the SPI DMA
+  // buffers. Tried on hardware; do not go round again.
   void *p =
       heap_caps_malloc(sizeof(devoursphere::sim::Game), MALLOC_CAP_SPIRAM);
   trace("game in psram", (uint32_t)(uintptr_t)p);
   if (!p) return nullptr;
   return new (p) devoursphere::sim::Game();
-#else
-  static devoursphere::sim::Game game;
-  trace("game in dram", (uint32_t)(uintptr_t)&game);
-  return &game;
-#endif
 }
 
 uint16_t *allocBandBuffer(size_t bytes) {
