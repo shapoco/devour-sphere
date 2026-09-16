@@ -15,6 +15,7 @@
 
 #include "devoursphere/render/renderer.hpp"
 #include "ds_config.hpp"
+#include "ds_platform.hpp"
 #include "profiler.hpp"
 #include "shapoco/gfx2d/gfx2d.hpp"
 
@@ -39,9 +40,16 @@ class BandWriter {
   // returns: renderBand() draws the HUD, which reads the live Game.
   void present(devoursphere::render::Renderer &renderer, Profiler &prof);
 
+  // Take the two band buffers. Call once, from xmcAppSetup(); returns false
+  // if there was no memory for them.
+  bool init();
+
  private:
-  // RGB565 big-endian, which is exactly what the ST7789 wants on the wire
-  uint16_t buf_[2][SCREEN_W * BAND_H];
+  // RGB565 big-endian, which is exactly what the ST7789 wants on the wire.
+  // Allocated rather than static: the display DMA has to be able to read
+  // them (see ds::allocBandBuffer).
+  static constexpr uint32_t BAND_BYTES = SCREEN_W * BAND_H * 2;
+  uint16_t *buf_[2] = {nullptr, nullptr};
   // Free running across frames, never reset per frame: the last band of a
   // frame is still in flight when the next frame starts, so restarting at 0
   // would let an odd band count draw into the buffer being transferred.

@@ -143,6 +143,11 @@ void xmcAppSetup(void) {
       render::ControlHints{}.dashAlt,
   });
   g_renderer.init(ds::SCREEN_W, ds::SCREEN_H, g_arena, sizeof(g_arena));
+  if (!g_bands.init()) {
+    ds::trace("no memory for the band buffers", 0);
+    g_game = nullptr;  // xmcAppLoop() bails out
+    return;
+  }
   // Start owing one tick, so the very first loop draws instead of leaving the
   // screen blank until the clock has moved.
   g_lastUs = xmc::getTimeUs();

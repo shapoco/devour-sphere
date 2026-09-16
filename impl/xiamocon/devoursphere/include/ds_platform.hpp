@@ -5,6 +5,7 @@
 // Xiamocon SDK covers the display, DMA, input and multicore; what is left is
 // the entropy source and the stack watch, neither of which it abstracts.
 
+#include <cstddef>
 #include <cstdint>
 
 namespace devoursphere::sim {
@@ -18,6 +19,14 @@ namespace ds {
 // 8 MB of PSRAM instead -- slower to step, but the simulation is not what
 // limits that board. On RP2350 it is an ordinary static.
 devoursphere::sim::Game *allocGame();
+
+// A band buffer the display DMA can read. On ESP32S3 that means the DMA
+// capable heap, which is what the SDK's own transfers use -- a plain static
+// is not guaranteed to satisfy the SPI driver, and a buffer it rejects is
+// dropped silently, leaving the screen black with everything else running.
+// On RP2350 every byte of SRAM is DMA capable, so this is just an aligned
+// static.
+uint16_t *allocBandBuffer(size_t bytes);
 
 // Print a line to the serial console during bring up. Nothing on RP2350,
 // where no serial port is configured.

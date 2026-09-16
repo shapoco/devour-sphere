@@ -5,6 +5,14 @@
 
 namespace ds {
 
+bool BandWriter::init() {
+  for (int i = 0; i < 2; i++) {
+    buf_[i] = ds::allocBandBuffer(BAND_BYTES);
+    if (!buf_[i]) return false;
+  }
+  return true;
+}
+
 void BandWriter::drain() {
   if (!pending_) return;
   pending_ = false;
@@ -24,7 +32,7 @@ void BandWriter::start(int idx, int y, Profiler &prof) {
   // Each command takes and releases the SPI lock, so this is not free and
   // its cost scales with the number of bands.
   xmc::display::setWindow(0, y, SCREEN_W, BAND_H);
-  xmc::display::writePixelsStart(buf_[idx], SCREEN_W * BAND_H * 2);
+  xmc::display::writePixelsStart(buf_[idx], BAND_BYTES);
   pending_ = true;
   prof.cmdUs += (uint32_t)xmc::getTimeUs() - t2;
 }
@@ -34,7 +42,7 @@ uint32_t BandWriter::measureTransfer() {
   const uint32_t t0 = (uint32_t)xmc::getTimeUs();
   for (int b = 0; b < BAND_COUNT; b++) {
     xmc::display::setWindow(0, b * BAND_H, SCREEN_W, BAND_H);
-    xmc::display::writePixelsStart(buf_[0], SCREEN_W * BAND_H * 2);
+    xmc::display::writePixelsStart(buf_[0], BAND_BYTES);
     xmc::display::writePixelsComplete();
   }
   return (uint32_t)xmc::getTimeUs() - t0;

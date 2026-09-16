@@ -3,6 +3,7 @@
 #include <new>
 
 #include "devoursphere/sim/game.hpp"
+#include "ds_config.hpp"
 
 #if defined(ESP32)
 
@@ -24,6 +25,12 @@ devoursphere::sim::Game *allocGame() {
   trace("game in psram", (uint32_t)(uintptr_t)p);
   if (!p) return nullptr;
   return new (p) devoursphere::sim::Game();
+}
+
+uint16_t *allocBandBuffer(size_t bytes) {
+  void *p = heap_caps_malloc(bytes, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
+  trace("band buffer", (uint32_t)(uintptr_t)p);
+  return (uint16_t *)p;
 }
 
 void trace(const char *what, uint32_t value) {
@@ -77,6 +84,16 @@ uint32_t randomSeed() { return get_rand_32(); }
 devoursphere::sim::Game *allocGame() {
   static devoursphere::sim::Game game;
   return &game;
+}
+
+uint16_t *allocBandBuffer(size_t bytes) {
+  // One static block carved in two; alignas keeps the DMA happy
+  alignas(32) static uint8_t storage[2 * SCREEN_W * BAND_H * 2];
+  static size_t used = 0;
+  if (used + bytes > sizeof(storage)) return nullptr;
+  uint16_t *p = (uint16_t *)(storage + used);
+  used += bytes;
+  return p;
 }
 
 void trace(const char *, uint32_t) {}  // no serial port on this target
