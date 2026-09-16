@@ -274,7 +274,9 @@ BGN + RAS = 19.5ms はフレームレートに依らない固定費なので、
 
 | | RP2350 | ESP32S3 |
 |---|---|---|
+| 描画するコア | **core1** (`DS_RENDER_ON_CORE1=1`) | **core0** (同 `=0`) |
 | `sim::Game` (133KB) | `.bss` | **PSRAM** (`MALLOC_CAP_SPIRAM`) |
+| 帯バッファ | アラインした静的領域 | **DMA ヒープ** (`MALLOC_CAP_DMA`) |
 | 乱数シード | `get_rand_32()` (pico-sdk) | `esp_random()` |
 | スタック計測 | スタックを塗って走査 | `uxTaskGetStackHighWaterMark()` |
 | ブリングアップ用トレース | 無し (シリアル未設定) | `Serial` (USB CDC) |
@@ -303,6 +305,27 @@ RP2350 と同じ設定が載る。PSRAM は内部 SRAM より遅いので tick �
   (`core/library.json` と `submodule/shapo-gfx/library.json`)。
 - ブリングアップ中は `ds::trace()` がシリアルに進行状況を出す。
   `pio device monitor -b 115200` で読める。RP2350 では何もしない。
+
+### ESP32S3 で core1 描画を切っている理由 (未解決)
+
+ESP32S3 では画面が黒いままになる。切り分けの結果:
+
+- シーンは正しく作られている (`tri` 187、`lines` 336、`raster us` 3267、`state` と
+  tick も正常に進む)
+- **setup 中に core0 から出した転送はパネルに届く** (未初期化の帯バッファが
+  砂嵐として一瞬映る)
+- **core1 から出した転送は届かない**
+- 通常起動時は電源ボタンも効かなくなる (FUNC 起動の診断アプリでは効く)
+
+つまり転送経路もフレームの中身も正しく、**core1 (FreeRTOS タスク) から
+ディスプレイを叩いたときだけ効かない**。原因が分かるまで ESP32S3 は
+core0 で描画する (`DS_RENDER_ON_CORE1=0`)。その分 tick と描画が重ならないので遅い。
+
+疑っている先: ESP32 側の `spi::dmaWriteStart` は `ESP32DMASPI::Master` の
+内部タスク経由で転送する。`startCore1` が作るタスクは優先度 10 で PRO_CPU に
+固定され、暇なときも `tightLoopContents()` で回り続けるので、同じコアに載った
+SPI の内部タスクを飢えさせている可能性がある。RP2350 には該当しない
+(あちらは DMA を直接叩く)。
 
 ## 入力
 

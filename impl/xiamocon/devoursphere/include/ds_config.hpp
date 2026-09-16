@@ -42,6 +42,24 @@ constexpr size_t ARENA_SIZE = 128 * 1024;
 // The simulation runs at a fixed 60 Hz whatever the frame rate is
 constexpr uint32_t TICK_US = 1000000u / devoursphere::sim::TICK_RATE;
 
+// Render on the second core, so that core0's ticks for the next frame
+// overlap this frame's rasterization. That is what takes the RP2350 from 30
+// to 41 fps.
+//
+// Off on ESP32S3 for now: the display comes up black there, and the trace
+// shows the scene is built correctly (triangles, lines and rasterization
+// time all sane) while a transfer issued from core0 during setup does reach
+// the panel. So the transfer works and the frame is right, but not when the
+// transfer is issued from the render task. Until that is understood, that
+// board draws and transfers from core0.
+#ifndef DS_RENDER_ON_CORE1
+#if defined(ESP32)
+#define DS_RENDER_ON_CORE1 0
+#else
+#define DS_RENDER_ON_CORE1 1
+#endif
+#endif
+
 // Ticks a single frame may catch up on. 4 ticks = 66.7 ms covers any
 // realistic hitch; beyond that the surplus is dropped so a long stall cannot
 // turn into a burst of simulation.

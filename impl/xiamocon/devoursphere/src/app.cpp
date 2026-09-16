@@ -41,6 +41,7 @@ uint64_t g_lastUs = 0;
 uint32_t g_accUs = 0;
 
 // --- The two cores -------------------------------------------------------
+#if DS_RENDER_ON_CORE1
 //
 // core1 renders: beginFrame(), then the bands and their transfers. core0
 // runs the simulation and hands frames over. The point of the split is that
@@ -98,6 +99,8 @@ void waitFrame(Frame want) {
     xmc::tightLoopContents();
   }
 }
+
+#endif  // DS_RENDER_ON_CORE1
 
 // The buttons Xiamocon has, in the five bits the simulation takes. All four
 // face buttons fire, so the thumb does not have to find a particular one.
@@ -157,7 +160,11 @@ void xmcAppSetup(void) {
   // Both cores are otherwise idle here, so this is the transfer on its own
   g_prof.xferUs = g_bands.measureTransfer();
   ds::trace("transfer us", g_prof.xferUs);
+#if DS_RENDER_ON_CORE1
   ds::trace("core1", (uint32_t)xmc::startCore1(core1Task));
+#else
+  ds::trace("rendering on core0", 0);
+#endif
 }
 
 void xmcAppLoop(void) {
@@ -200,6 +207,12 @@ void xmcAppLoop(void) {
   if (g_game->score() > g_game->highScore())
     g_game->setHighScore(g_game->score());
 
+  // Simulation time, not wall time: the renderer advances the camera
+  // smoothing, the debris and the score roll-up by dt, and those have to stay
+  // in step with the ticks that actually ran.
+  const float dt = ticks * (1.0f / sim::TICK_RATE);
+
+#if DS_RENDER_ON_CORE1
   // Collect the frame core1 has been working on while we ticked. On entry
   // core1 is always past beginFrame(), so the ticks above could not have
   // raced with it.
@@ -212,14 +225,22 @@ void xmcAppLoop(void) {
 
   // Hand the state we just ticked to core1 and wait only until it has built
   // the scene; it keeps rasterizing while we return and tick the next frame.
-  // Simulation time, not wall time: the renderer advances the camera
-  // smoothing, the debris and the score roll-up by dt, and those have to stay
-  // in step with the ticks that actually ran.
-  g_frameDt = ticks * (1.0f / sim::TICK_RATE);
+  g_frameDt = dt;
   const uint32_t begin0 = (uint32_t)xmc::getTimeUs();
   frameStore(Frame::BUILD);
   waitFrame(Frame::SCENE_READY);
   g_prof.beginUs = (uint32_t)xmc::getTimeUs() - begin0;
+#else
+  // Everything on this core: build the scene, then rasterize and push each
+  // band. Nothing overlaps the ticks, so this is slower.
+  const uint32_t begin0 = (uint32_t)xmc::getTimeUs();
+  g_renderer.beginFrame(*g_game, dt);
+  g_prof.beginUs = (uint32_t)xmc::getTimeUs() - begin0;
+  g_bands.present(g_renderer, g_prof);
+  g_renderer.endFrame();
+  g_prof.core1WaitUs = 0;
+  g_prof.endFrame(xmc::getTimeUs(), g_renderer.stats());
+#endif
 
   // Bring up trace: the first few frames, then once a second
   static uint32_t frames = 0, nextTraceMs = 0;
@@ -247,9 +268,11 @@ XmcStatus xmcAppTerminate(xmc::system::ShutdownReason reason) {
   // power-off message through the same SPI bus, so core1 has to be off the
   // display and the band left in flight by present() collected, both before
   // we return.
+#if DS_RENDER_ON_CORE1
   if (frameLoad() != Frame::IDLE) {
     waitFrame(Frame::DONE);
   }
+#endif
   g_bands.drain();
   return XMC_OK;
 }
