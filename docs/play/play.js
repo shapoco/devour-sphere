@@ -9,16 +9,36 @@
 //   URL parameters: ?level=N&weapon=W  skips the menus (debug)
 //                   ?seed=N            fixed random seed
 //                   ?auto=1            the AI drives the player (demo)
+//                   #screen=WxH        frame buffer size (default 480x320);
+//                                      also accepted as ?screen=WxH
 
 'use strict';
 
 const BTN_LEFT = 1, BTN_RIGHT = 2, BTN_UP = 4, BTN_DOWN = 8, BTN_A = 16;
 
-// RGB565 -> 8-bit expansion tables
-const LUT5 = new Uint8Array(32);
-const LUT6 = new Uint8Array(64);
-for (let i = 0; i < 32; i++) LUT5[i] = Math.round(i * 255 / 31);
-for (let i = 0; i < 64; i++) LUT6[i] = Math.round(i * 255 / 63);
+// RGB565BE -> RGBA8888 lookup. The frame buffer is read as native (little
+// endian) 16-bit words, so the table is indexed by the byte-swapped value and
+// the blit is one lookup and one 32-bit store per pixel. That matters at the
+// larger frame buffer sizes, where a per-channel loop would not keep up.
+const RGBA_LUT = new Uint32Array(65536);
+{
+  const lut5 = new Uint8Array(32), lut6 = new Uint8Array(64);
+  for (let i = 0; i < 32; i++) lut5[i] = Math.round(i * 255 / 31);
+  for (let i = 0; i < 64; i++) lut6[i] = Math.round(i * 255 / 63);
+  for (let v = 0; v < 65536; v++) {
+    const p = ((v & 0xff) << 8) | (v >>> 8);  // the value as stored (BE)
+    RGBA_LUT[v] = (0xff000000 | (lut5[p & 31] << 16) |
+                   (lut6[(p >>> 5) & 63] << 8) | lut5[p >>> 11]) >>> 0;
+  }
+}
+
+// "320x240" from the URL fragment (or the query), or null
+function parseScreenSize() {
+  const hash = new URLSearchParams(location.hash.replace(/^#/, ''));
+  const value = hash.get('screen') || new URLSearchParams(location.search).get('screen');
+  const m = value && /^\s*(\d+)\s*[xX*]\s*(\d+)\s*$/.exec(value);
+  return m ? { w: parseInt(m[1], 10), h: parseInt(m[2], 10) } : null;
+}
 
 async function startDevourSphere(opts) {
   const statusEl = document.getElementById('status');
@@ -40,6 +60,13 @@ async function startDevourSphere(opts) {
 
     const params = new URLSearchParams(location.search);
     const seed = params.has('seed') ? (parseInt(params.get('seed'), 10) >>> 0) : (Date.now() >>> 0);
+    // The frame buffer size must be set before the game starts: the HUD
+    // layout is derived from it once
+    const wanted = parseScreenSize();
+    let sizeError = '';
+    if (wanted && !ex.ds_set_screen(wanted.w, wanted.h)) {
+      sizeError = `screen ${wanted.w}x${wanted.h} is not supported`;
+    }
     ex.ds_init(seed);
     if (params.has('level')) {
       ex.ds_debug_start(parseInt(params.get('level'), 10) || 1,
@@ -69,9 +96,17 @@ async function startDevourSphere(opts) {
 
     canvas.width = W;
     canvas.height = H;
+    // The page scales the canvas by CSS, so it has to follow the size too
+    const gameEl = document.getElementById('game');
+    if (gameEl) {
+      gameEl.style.setProperty('--aspect', `${W} / ${H}`);
+      gameEl.style.setProperty('--aspect-num', String(W / H));
+      gameEl.style.setProperty('--game-max', `${Math.max(960, W * 2)}px`);
+    }
     const ctx = canvas.getContext('2d', { alpha: false });
     const imgData = ctx.createImageData(W, H);
-    const rgba = imgData.data;
+    const rgba32 = new Uint32Array(imgData.data.buffer);
+    const pixels = W * H;
 
     setupKeyboard(input);
     setupTouchPad(input);
@@ -84,14 +119,10 @@ async function startDevourSphere(opts) {
     let frames = 0, fpsTime = last;
 
     function blit() {
-      const fb = new Uint8Array(ex.memory.buffer, fbPtr, W * H * 2);
-      for (let i = 0, j = 0; i < W * H * 2; i += 2, j += 4) {
-        const b0 = fb[i], b1 = fb[i + 1];
-        rgba[j] = LUT5[b0 >> 3];
-        rgba[j + 1] = LUT6[((b0 & 7) << 3) | (b1 >> 5)];
-        rgba[j + 2] = LUT5[b1 & 31];
-        rgba[j + 3] = 255;
-      }
+      // The view is rebuilt every frame: the WASM memory can grow and
+      // invalidate it
+      const fb = new Uint16Array(ex.memory.buffer, fbPtr, pixels);
+      for (let i = 0; i < pixels; i++) rgba32[i] = RGBA_LUT[fb[i]];
       ctx.putImageData(imgData, 0, 0);
     }
 
@@ -125,7 +156,7 @@ async function startDevourSphere(opts) {
     ex.ds_render(0);
     blit();
     requestAnimationFrame(frame);
-    if (statusEl) statusEl.textContent = '';
+    if (statusEl) statusEl.textContent = sizeError ? `${sizeError}, using ${W}x${H}` : '';
   } catch (e) {
     if (statusEl) {
       statusEl.textContent = `Error: ${e.message} - this page does not work from file://.` +

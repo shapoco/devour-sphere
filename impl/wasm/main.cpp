@@ -19,25 +19,53 @@
 namespace g2 = shapoco::gfx2d;
 using namespace devoursphere;
 
-static constexpr int SCREEN_W = 480;
-static constexpr int SCREEN_H = 320;
+// The frame buffer size is chosen at run time (ds_set_screen); the buffer
+// itself is a static array big enough for the largest size allowed, so that
+// nothing is ever allocated dynamically. The renderer derives the whole HUD
+// layout from the size it is given, so any of these works.
+static constexpr int DEFAULT_W = 480;
+static constexpr int DEFAULT_H = 320;
+static constexpr int MIN_DIM = 64;
+static constexpr int MAX_DIM = 1280;
+static constexpr int MAX_PIXELS = 1280 * 720;
 
-static uint16_t fb[SCREEN_W * SCREEN_H];  // RGB565BE
-static const g2::Surface fbSurface = {g2::PixelFormat::RGB565BE, SCREEN_W,
-                                      SCREEN_H, SCREEN_W * 2, fb};
+static uint16_t fb[MAX_PIXELS];  // RGB565BE
+static int screenW = DEFAULT_W;
+static int screenH = DEFAULT_H;
+static g2::Surface fbSurface = {g2::PixelFormat::RGB565BE, DEFAULT_W, DEFAULT_H,
+                                DEFAULT_W * 2, fb};
 static uint8_t arena[256 * 1024];
 static sim::Game game;
 static render::Renderer renderer;
 
+static void applyScreen() {
+  fbSurface = {g2::PixelFormat::RGB565BE, (int16_t)screenW, (int16_t)screenH,
+               (uint32_t)(screenW * 2), fb};
+  renderer.init(screenW, screenH, arena, sizeof(arena));
+}
+
 extern "C" {
 
 DS_EXPORT uint16_t *ds_get_fb() { return fb; }
-DS_EXPORT int ds_get_width() { return SCREEN_W; }
-DS_EXPORT int ds_get_height() { return SCREEN_H; }
+DS_EXPORT int ds_get_width() { return screenW; }
+DS_EXPORT int ds_get_height() { return screenH; }
+DS_EXPORT int ds_get_max_pixels() { return MAX_PIXELS; }
+
+// Choose the frame buffer size. Returns 1 when the size was taken, 0 when it
+// was rejected (too small, too large, or more pixels than the buffer holds);
+// the previous size stays in effect either way. Call it before ds_init().
+DS_EXPORT int ds_set_screen(int w, int h) {
+  if (w < MIN_DIM || h < MIN_DIM || w > MAX_DIM || h > MAX_DIM) return 0;
+  if ((long)w * h > MAX_PIXELS) return 0;
+  screenW = w;
+  screenH = h;
+  applyScreen();
+  return 1;
+}
 
 DS_EXPORT void ds_init(uint32_t seed) {
   game.reset(seed);
-  renderer.init(SCREEN_W, SCREEN_H, arena, sizeof(arena));
+  applyScreen();
 }
 
 // Debug: skip the menus (level >= 1)
@@ -55,7 +83,7 @@ DS_EXPORT void ds_tick(uint32_t buttons) { game.tick((uint8_t)buttons); }
 // previous render (camera smoothing)
 DS_EXPORT void ds_render(float dt) {
   renderer.beginFrame(game, dt);
-  renderer.renderBand(fbSurface, 0, SCREEN_H, 0);
+  renderer.renderBand(fbSurface, 0, screenH, 0);
   renderer.endFrame();
 }
 
@@ -82,8 +110,8 @@ static void writePpm(const char *path) {
     std::perror(path);
     return;
   }
-  std::fprintf(fp, "P6\n%d %d\n255\n", SCREEN_W, SCREEN_H);
-  for (int i = 0; i < SCREEN_W * SCREEN_H; i++) {
+  std::fprintf(fp, "P6\n%d %d\n255\n", screenW, screenH);
+  for (int i = 0; i < screenW * screenH; i++) {
     uint16_t p = g2::bswap16(fb[i]);
     uint8_t rgb[3] = {
         (uint8_t)(((p >> 11) & 31) * 255 / 31),
@@ -96,18 +124,29 @@ static void writePpm(const char *path) {
   std::printf("wrote %s\n", path);
 }
 
-// Usage: devoursphere_native [level] [script] [out.ppm] [auto] [seed]
+// Usage: devoursphere_native [level] [script] [out.ppm] [auto] [seed] [WxH]
 //   level:  0 = title screen, >= 1 = play on that sphere level
 //   script: comma separated "COUNTxBUTTONS" items, e.g. "5x0,1x16,300x2"
 //           (BUTTONS = sim::Button bits held for COUNT ticks); a plain number
 //           means that many ticks without input
 //   auto:   1 = the AI drives the player
+//   WxH:    frame buffer size (default 480x320)
 int main(int argc, char **argv) {
   int level = argc > 1 ? std::atoi(argv[1]) : 0;
   const char *script = argc > 2 ? argv[2] : "60";
   const char *path = argc > 3 ? argv[3] : "devoursphere.ppm";
   int autoPlay = argc > 4 ? std::atoi(argv[4]) : 0;
   uint32_t seed = argc > 5 ? (uint32_t)std::atoi(argv[5]) : 12345u;
+  if (argc > 6) {
+    int w = std::atoi(argv[6]);
+    const char *x = std::strchr(argv[6], 'x');
+    int h = x ? std::atoi(x + 1) : 0;
+    if (!ds_set_screen(w, h)) {
+      std::printf("bad size \"%s\" (%d..%d per axis, %d pixels at most)\n",
+                  argv[6], MIN_DIM, MAX_DIM, MAX_PIXELS);
+      return 1;
+    }
+  }
 
   ds_init(seed);
   if (level > 0) ds_debug_start(level, 0);
@@ -137,8 +176,8 @@ int main(int argc, char **argv) {
   double renderMs =
       std::chrono::duration<double, std::milli>(t2 - t1).count() / RENDERS;
   render::RenderStats st = renderer.stats();
-  std::printf("state=%d tick %.3f ms, render %.3f ms\n", ds_get_state(), tickMs,
-              renderMs);
+  std::printf("%dx%d state=%d tick %.3f ms, render %.3f ms\n", screenW, screenH,
+              ds_get_state(), tickMs, renderMs);
   std::printf("lines=%d points=%d entities=%d kites=%d\n", st.lines, st.points,
               st.entitiesDrawn, st.kites);
   std::printf(

@@ -5,7 +5,10 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <algorithm>
+#include <vector>
 
+#include "devoursphere/render/renderer.hpp"
 #include "devoursphere/sim/game.hpp"
 
 using namespace devoursphere::sim;
@@ -598,8 +601,65 @@ static void testDifficultyAndEvade() {
   }
 }
 
+// The renderer must work at every frame buffer size the front ends allow:
+// the HUD metrics stay inside the screen, something is actually drawn, and
+// nothing is written outside the frame buffer.
+static void testRenderSizes() {
+  namespace g2 = shapoco::gfx2d;
+  static uint8_t arena[256 * 1024];
+  static devoursphere::render::Renderer renderer;
+  static Game game;
+  struct Size {
+    int w, h;
+  };
+  const Size sizes[] = {{128, 128}, {160, 160},  {240, 240}, {320, 240},
+                        {480, 320}, {640, 360},  {640, 480}, {1280, 720},
+                        {64, 480},  {720, 1280}, {300, 200}};
+  constexpr uint16_t GUARD = 0xA5C3;
+  for (const Size &sz : sizes) {
+    const size_t pixels = (size_t)sz.w * sz.h;
+    std::vector<uint16_t> fb(pixels + 16, GUARD);
+    const g2::Surface surf = {g2::PixelFormat::RGB565BE, (int16_t)sz.w,
+                              (int16_t)sz.h, (uint32_t)(sz.w * 2), fb.data()};
+    renderer.init(sz.w, sz.h, arena, sizeof(arena));
+    const devoursphere::render::UiMetrics &m = renderer.uiMetrics();
+    CHECK(m.scale8 >= 2 && m.scale8 <= 32);
+    CHECK(m.fontMult >= 1);
+    CHECK(m.margin >= 1);
+    CHECK(m.gaugeH >= 1);
+    CHECK(m.margin * 2 + m.gaugeW <= sz.w);  // the gauge stays on screen
+    CHECK(m.wireLines >= 220 && m.wireLines <= 1100);
+
+    // Title, weapon select and playing, each rendered once
+    game.reset(4242);
+    for (int state = 0; state < 3; state++) {
+      if (state == 1) {
+        for (int i = 0; i < 40 && game.state() != GameState::WEAPON_SELECT; i++)
+          game.tick(i % 2 ? Button::A : 0);
+      } else if (state == 2) {
+        game.debugStartSphere(3, 0);
+        game.debugAutoPlayer(true);
+        for (int i = 0; i < 400; i++) game.tick(0);
+      } else {
+        for (int i = 0; i < 60; i++) game.tick(0);
+      }
+      std::fill(fb.begin(), fb.end(), GUARD);
+      renderer.beginFrame(game, 1.0f / 60);
+      renderer.renderBand(surf, 0, sz.h, 0);
+      renderer.endFrame();
+      size_t lit = 0;
+      for (size_t i = 0; i < pixels; i++)
+        if (fb[i] != 0 && fb[i] != GUARD) lit++;
+      CHECK(lit > pixels / 200);  // the scene reaches the frame buffer
+      for (size_t i = pixels; i < fb.size(); i++)
+        CHECK(fb[i] == GUARD);  // nothing drawn past the end
+    }
+  }
+}
+
 int main() {
   testFixed();
+  testRenderSizes();
   testCombatAndLayout();
   testDifficultyAndEvade();
   testDeterminism();

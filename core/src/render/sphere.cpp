@@ -22,12 +22,10 @@ static constexpr float FADE_NEAR = 60.0f, FADE_FAR = 900.0f;  // FU
 static constexpr int BASE_LEVEL = 4;  // edges of ~34 FU at 11 FU
 static constexpr float LEVEL5_RADIUS = 6.0f, LEVEL6_RADIUS = 2.5f;  // x nominal
 static constexpr float NOMINAL_DIST0 = 11.0f;
-// Budget of the triangle buffer for the wireframe. The edges are counted in
-// a dry run first; when they exceed WIRE_LIMIT every level is lowered by one
-// for the whole sphere (uniform, no holes) until they fit.
-static constexpr int MAX_WIRE_LINES = 1100;
-static constexpr int WIRE_LIMIT = MAX_WIRE_LINES - 80;
-static constexpr int WIRE_RELAX = WIRE_LIMIT * 6 / 10;  // hysteresis
+// Budget of the triangle buffer for the wireframe (UiMetrics::wireLines:
+// 1100 on the reference screen, less on a smaller one). The edges are
+// counted in a dry run first; when they exceed the limit every level is
+// lowered by one for the whole sphere (uniform, no holes) until they fit.
 
 static const vec3f ICO_VERTS[12] = {
     {-0.525731f, 0.850651f, 0},  {0.525731f, 0.850651f, 0},
@@ -66,7 +64,7 @@ static g2::Color wireColor(float d, int level) {
 }
 
 void Renderer::emitEdge(const vec3f &a, const vec3f &b, int level) {
-  if (!sphereDryRun_ && lineCount_ >= MAX_WIRE_LINES) return;
+  if (!sphereDryRun_ && lineCount_ >= ui_.wireLines) return;
   // Clip against the horizon: the far side of the sphere is never drawn
   float da = g3::dot(a, camUnit_) - cosHorizon_;
   float db = g3::dot(b, camUnit_) - cosHorizon_;
@@ -104,7 +102,7 @@ void Renderer::emitEdge(const vec3f &a, const vec3f &b, int level) {
 
 void Renderer::subdivideFace(const vec3f &a, const vec3f &b, const vec3f &c,
                              int level) {
-  if (!sphereDryRun_ && lineCount_ >= MAX_WIRE_LINES) return;
+  if (!sphereDryRun_ && lineCount_ >= ui_.wireLines) return;
   vec3f center = g3::normalize(a + b + c);
   // Horizon: skip faces entirely on the far side of the sphere
   if (g3::dot(center, camUnit_) < cullCos_[level]) return;
@@ -199,14 +197,16 @@ void Renderer::buildSphere() {
   while (scale >= 2.0f && base < BASE_LEVEL) scale *= 0.5f, base++;
   int shift = base + sphereExtra_;
   if (shift > BASE_LEVEL) shift = BASE_LEVEL;
+  const int wireLimit = ui_.wireLines - 80 * ui_.scale8 / 8;
+  const int wireRelax = wireLimit * 6 / 10;  // hysteresis
   int count = countSphereLines(shift, order);
-  while (count > WIRE_LIMIT && shift < BASE_LEVEL) {
+  while (count > wireLimit && shift < BASE_LEVEL) {
     shift++;
     count = countSphereLines(shift, order);
   }
   if (shift > base && shift - 1 >= base) {
     int relaxed = countSphereLines(shift - 1, order);
-    if (relaxed < WIRE_RELAX) {
+    if (relaxed < wireRelax) {
       shift--;
       count = relaxed;
     }

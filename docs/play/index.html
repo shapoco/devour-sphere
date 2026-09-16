@@ -23,11 +23,16 @@
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="stylesheet" href="../style.css">
 <style>
-  /* Game screen: 480x320 pixels, scaled up but never wider than the viewport;
-     the aspect ratio is fixed so narrow screens shrink it uniformly. */
+  /* Game screen: 480x320 pixels by default (#screen=WxH in the URL picks
+     another size, and play.js then overwrites the three variables below);
+     scaled up but never wider than the viewport, and the aspect ratio is
+     fixed so narrow screens shrink it uniformly. */
   #game {
-    width: min(960px, 100%);
-    aspect-ratio: 480 / 320;
+    --aspect: 480 / 320;
+    --aspect-num: 1.5;
+    --game-max: 960px;
+    width: min(var(--game-max), 100%);
+    aspect-ratio: var(--aspect);
     position: relative;
     background: #000;
     border: 1px solid var(--line);
@@ -55,8 +60,8 @@
     justify-content: center;
   }
   /* In fullscreen keep the whole stage (screen + pad) visible (desktop) */
-  body.touch:not(.mobile) #stage:fullscreen #game { width: min(100%, calc((100vh - 190px) * 1.5)); }
-  body:not(.touch) #stage:fullscreen #game { width: min(100%, calc(100vh * 1.5)); }
+  body.touch:not(.mobile) #stage:fullscreen #game { width: min(100%, calc((100vh - 190px) * var(--aspect-num))); }
+  body:not(.touch) #stage:fullscreen #game { width: min(100%, calc(100vh * var(--aspect-num))); }
   #toolbar {
     display: flex;
     gap: 8px;
@@ -170,7 +175,7 @@
   }
   @media (orientation: landscape) {
     body.mobile #game {
-      width: min(100vw, calc(100dvh * 1.5));
+      width: min(100vw, calc(100dvh * var(--aspect-num)));
       height: auto;
     }
     body.mobile #pad {

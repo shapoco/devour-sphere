@@ -46,11 +46,38 @@ struct Marker2D {
   uint8_t outline;  // enemy: 0 = dark edge, else white edge brightness
 };
 
-// Icon of an upgrade kind, centered at (cx, cy), about 14 px tall: its
-// outline as a polygon (star-shaped around the center, up to 8 points;
+// Icon of an upgrade kind, centered at (cx, cy), 14 px tall at scale8 = 8:
+// its outline as a polygon (star-shaped around the center, up to 8 points;
 // returns the point count, 0 for an unknown kind) and a filled drawing
-int upgradeIconPolygon(int kind, int cx, int cy, g2::vec2i *pts);
-void drawUpgradeIcon(g2::Graphics2D &g, int kind, int cx, int cy, g2::Color c);
+int upgradeIconPolygon(int kind, int cx, int cy, g2::vec2i *pts,
+                       int scale8 = 8);
+void drawUpgradeIcon(g2::Graphics2D &g, int kind, int cx, int cy, g2::Color c,
+                     int scale8 = 8);
+
+// The screen size the HUD layout is written against; every distance below is
+// that layout's pixel value scaled by UiMetrics::scale8
+constexpr int UI_REF_W = 480, UI_REF_H = 320;
+
+// How the HUD adapts to the frame buffer size (computed by init()). The
+// layout is expressed in the reference screen's pixels and multiplied by
+// `scale8` (in 1/8 units); text that still does not fit is shortened or
+// dropped. Full-width overlays are placed at fractions of the height
+// instead, so they follow the aspect ratio.
+struct UiMetrics {
+  int scale8 = 8;        // UI scale in 1/8 of the reference screen
+  int fontMult = 1;      // integer magnification of the fonts
+  bool compact = false;  // below 3/4 of the reference: smaller fonts
+  bool tiny = false;     // below 1/2: minimal HUD
+  int margin = 8;        // distance from the screen edge
+  int gaugeW = 120;      // player health gauge
+  int gaugeH = 8;
+  int iconScale8 = 8;    // upgrade icons (they stop shrinking at 1/2)
+  int markerScale8 = 8;  // horizon markers
+  int wireLines = 1100;  // budget for the sphere wireframe
+};
+
+// Font roles of the HUD (the fonts themselves live in hud.cpp)
+enum class HudFont : uint8_t { SMALL, MEDIUM, LARGE, TITLE };
 
 // A piece of debris: a small spinning wireframe triangle that shrinks away
 struct Debris {
@@ -109,6 +136,7 @@ class Renderer {
   void endFrame();
 
   RenderStats stats() const;
+  const UiMetrics &uiMetrics() const { return ui_; }
   const Camera &camera() const { return cam_; }
   int width() const { return w_; }
   int height() const { return h_; }
@@ -119,6 +147,16 @@ class Renderer {
 
  private:
   int w_ = 0, h_ = 0;
+  UiMetrics ui_;
+  // A distance of the reference layout in the pixels of this screen
+  int ui(int refPx) const { return refPx * ui_.scale8 / 8; }
+  // A vertical position of the reference layout as a fraction of the height
+  // (full-width overlays follow the aspect ratio instead of the UI scale)
+  int uiY(int refY) const { return refY * h_ / UI_REF_H; }
+  int ui(int refPx, int minPx) const {
+    int v = ui(refPx);
+    return v < minPx ? minPx : v;
+  }
   g3::Graphics3D g3d_;
   const sim::Game *game_ = nullptr;
   float time_ = 0;
@@ -255,8 +293,15 @@ class Renderer {
   // hud.cpp
   void drawHud(g2::Graphics2D &g, int offsetY);
   void drawUpgradeStatus(g2::Graphics2D &g, int offsetY);
+  void setHudFont(g2::Graphics2D &g, HudFont role) const;
   void drawCenteredText(g2::Graphics2D &g, int y, const char *text,
                         g2::Color color);
+  // Centered text that is replaced by `alt` when it does not fit, and
+  // dropped when `alt` does not fit either (or is null). Returns what was
+  // drawn, 0 for nothing.
+  const char *drawCenteredFit(g2::Graphics2D &g, int y, const char *text,
+                              const char *alt, g2::Color color);
+  int textFits(g2::Graphics2D &g, const char *text) const;
 };
 
 }  // namespace devoursphere::render

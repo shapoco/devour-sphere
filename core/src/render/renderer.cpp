@@ -57,9 +57,43 @@ static g2::Color hueColor(int hue, int s, int v) {
   return g2::makeColorHsv(hue * 360 / 256, s, v);
 }
 
+// How the HUD and the screen-space effects scale on this frame buffer. The
+// UI scale is the smaller of the two axes against the reference screen, so
+// nothing sticks out sideways on a narrow screen or vertically on a short
+// one. The font magnification rounds it to an integer; icons and markers
+// stop shrinking at half size (below that they turn into blobs).
+static UiMetrics computeUi(int w, int h) {
+  UiMetrics m;
+  int sw = w * 8 / UI_REF_W, sh = h * 8 / UI_REF_H;
+  m.scale8 = sw < sh ? sw : sh;
+  if (m.scale8 < 2) m.scale8 = 2;
+  if (m.scale8 > 32) m.scale8 = 32;
+  m.tiny = m.scale8 < 4;
+  m.compact = m.scale8 < 6;
+  m.fontMult = (m.scale8 + 4) / 8;
+  if (m.fontMult < 1) m.fontMult = 1;
+  auto at = [&](int refPx, int minPx) {
+    int v = refPx * m.scale8 / 8;
+    return v < minPx ? minPx : v;
+  };
+  m.margin = at(8, 2);
+  m.gaugeW = at(120, 24);
+  m.gaugeH = at(8, 3);
+  m.iconScale8 = m.scale8 < 4 ? 4 : m.scale8;
+  m.markerScale8 = m.iconScale8;
+  // The wireframe shares the triangle buffer, so its budget only ever goes
+  // down: a small screen does not need 1100 lines, a big one cannot hold
+  // more than the buffer has room for
+  m.wireLines = 1100 * m.scale8 / 8;
+  if (m.wireLines > 1100) m.wireLines = 1100;
+  if (m.wireLines < 220) m.wireLines = 220;
+  return m;
+}
+
 void Renderer::init(int width, int height, void *arena, size_t arenaSize) {
   w_ = width;
   h_ = height;
+  ui_ = computeUi(width, height);
   g3d_.init((int16_t)width, (int16_t)height, arena, arenaSize);
   g3d_.disableClear();
 
@@ -622,7 +656,7 @@ void Renderer::drawPresenceAuras() {
     float ty = dy != 0 ? hy / std::fabs(dy) : 1e9f;
     float tEdge = tx < ty ? tx : ty;
     float near = 1.0f - d / RANGE;  // 0 far .. 1 close
-    float radiusPx = 20.0f + 50.0f * near;
+    float radiusPx = (20.0f + 50.0f * near) * ui_.scale8 / 8.0f;
     float cx = hx + dx * tEdge;
     float cy = hy + dy * tEdge;
     // Screen -> view space at DEPTH
@@ -756,7 +790,8 @@ void Renderer::addEnemyMarker(const sim::Entity &c, bool always) {
   vec3f world = sphereCenter_ + hp * SPHERE_R;
   float sx, sy;
   if (!project(world, sx, sy)) return;
-  if (sx < 4 || sx >= w_ - 4 || sy < 4 || sy >= h_ - 4) return;
+  int edge = ui(4, 2);
+  if (sx < edge || sx >= w_ - edge || sy < edge || sy >= h_ - edge) return;
   Marker2D &mk = markers_[markerCount_++];
   mk.x = (int16_t)sx;
   mk.y = (int16_t)sy;
@@ -798,14 +833,17 @@ void Renderer::drawMarkers() {
   ScreenPlane sp = screenPlane();
   for (int i = 0; i < markerCount_; i++) {
     const Marker2D &mk = markers_[i];
+    const int ms = ui_.markerScale8;
     g2::vec2i pts[8];
     int n = 0;
     if (mk.kind != 0) {
-      n = upgradeIconPolygon(mk.kind, mk.x, mk.y - 10, pts);
+      n = upgradeIconPolygon(mk.kind, mk.x, mk.y - 10 * ms / 8, pts, ms);
     } else {
-      int yb = mk.y - 3, yt = yb - 7;
-      pts[0] = {mk.x - 5, yt};
-      pts[1] = {mk.x + 5, yt};
+      int yb = mk.y - 3 * ms / 8, yt = yb - 7 * ms / 8;
+      int hw = 5 * ms / 8;
+      if (hw < 2) hw = 2;
+      pts[0] = {mk.x - hw, yt};
+      pts[1] = {mk.x + hw, yt};
       pts[2] = {mk.x, yb};
       n = 3;
     }
@@ -835,10 +873,11 @@ void Renderer::drawMarkers() {
                           (uint16_t)(n + 2), idx, &palette_[PAL_LINE_ADD]};
     g3d_.putPrimitive(prim);
     if (mk.kind == 0 && mk.outline) {
-      int yb = mk.y - 3, yt = yb - 7;
+      int yb = mk.y - 3 * ms / 8, yt = yb - 7 * ms / 8;
+      float hw = 5.0f * ms / 8 + 1.0f;
       const vec3f loop[3] = {
-          screenToWorld(sp, mk.x - 6.0f, yt - 1.0f, DEPTH),
-          screenToWorld(sp, mk.x + 6.0f, yt - 1.0f, DEPTH),
+          screenToWorld(sp, mk.x - hw, yt - 1.0f, DEPTH),
+          screenToWorld(sp, mk.x + hw, yt - 1.0f, DEPTH),
           screenToWorld(sp, (float)mk.x, yb + 1.0f, DEPTH),
       };
       putLineLoop3(loop, 3,
@@ -928,11 +967,12 @@ void Renderer::buildScene() {
       float sx, sy;
       if (project(pos + up * (bodyR * 0.3f + 0.5f), sx, sy)) {
         int w = (int)(vis[k].px * 1.6f);
-        w = w < 14 ? 14 : (w > 48 ? 48 : w);
+        int wMin = ui(14, 6), wMax = ui(48, 12);
+        w = w < wMin ? wMin : (w > wMax ? wMax : w);
         if (sx > -w && sx < w_ + w && sy > -8 && sy < h_ + 8) {
           Gauge2D &gg = gauges_[gaugeCount_++];
           gg.x = (int16_t)(sx - w / 2);
-          gg.y = (int16_t)(sy - 6);
+          gg.y = (int16_t)(sy - ui(6, 2));
           gg.w = (int16_t)w;
           int ratio = c.hpMax > 0 ? (int)((int64_t)c.hp * 255 / c.hpMax) : 0;
           gg.ratio = (uint8_t)(ratio < 0 ? 0 : (ratio > 255 ? 255 : ratio));
@@ -995,16 +1035,17 @@ void Renderer::renderBand(const g2::Surface &dst, int y, int h, int dstY) {
   g.clear(g2::makeColor(0, 0, 4));
   g3d_.render(0, (int16_t)y, (int16_t)w_, (int16_t)h, dst, 0, (int16_t)dstY);
   int oy = dstY - y;
+  const int gaugeH = ui(3, 2), gaugeB = ui(1, 1);
   for (int i = 0; i < gaugeCount_; i++) {
     const Gauge2D &gg = gauges_[i];
-    if (gg.y + 3 <= y || gg.y >= y + h) continue;
-    g.fillRect(gg.x - 1, gg.y + oy - 1, gg.w + 2, 5,
-               g2::makeColor(0, 0, 0, 170));
+    if (gg.y + gaugeH <= y || gg.y >= y + h) continue;
+    g.fillRect(gg.x - gaugeB, gg.y + oy - gaugeB, gg.w + 2 * gaugeB,
+               gaugeH + 2 * gaugeB, g2::makeColor(0, 0, 0, 170));
     int fill = gg.w * gg.ratio / 255;
     g2::Color c = gg.ratio > 128 ? g2::makeColor(90, 230, 140)
                                  : (gg.ratio > 50 ? g2::makeColor(240, 200, 60)
                                                   : g2::makeColor(240, 70, 60));
-    if (fill > 0) g.fillRect(gg.x, gg.y + oy, fill, 3, c);
+    if (fill > 0) g.fillRect(gg.x, gg.y + oy, fill, gaugeH, c);
   }
   drawHud(g, oy);
 }
