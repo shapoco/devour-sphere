@@ -191,8 +191,6 @@ class Renderer {
     PAL_UP_OVERDRIVE,
     PAL_UP_THRUSTER,
     PAL_UP_CORE,
-    PAL_LANCE,  // the Lance beam
-    PAL_LANCE_CORE,
   };
   g3::Material palette_[PALETTE_SIZE];
 
@@ -223,7 +221,6 @@ class Renderer {
   void drawHealthWarning();
   // upgrades.cpp
   void drawFloatingUpgrades();
-  void drawLance();
   void putSolid(const g3::vec3f *verts, int nv, const uint16_t *idx, int ni,
                 const g3::Material &m);
   const g3::Material &materialForEntity(const sim::Entity &c) const;

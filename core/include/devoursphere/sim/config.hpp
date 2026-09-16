@@ -183,7 +183,7 @@ constexpr int SCORE_CLEAR_SLOW_TICKS = 8 * 60 * TICK_RATE;
 constexpr int32_t SCORE_CLEAR_SLOW_Q8 = 128;  // 0.5
 constexpr int32_t SCORE_RATIO_MIN_PCT = 25, SCORE_RATIO_MAX_PCT = 300;
 
-// --- Upgrades, cores, Charge / Lance / Ram ---------------------------------
+// --- Upgrades and cores ------------------------------------------------------
 enum class UpgradeKind : uint8_t {
   NONE = 0,
   SHIELD,
@@ -201,27 +201,12 @@ constexpr uint32_t EXTRA_CORE_CHANCE_DEN = 3;  // 1 in 3 spheres carry one
 // Shield: damage taken in percent per level, level 3 regenerates
 constexpr int32_t SHIELD_DAMAGE_PCT[UPGRADE_MAX_LEVEL + 1] = {100, 75, 50, 50};
 constexpr int32_t SHIELD_REGEN_PCT_PER_SEC = 3;
-// Overdrive: fire cooldown in percent per level
-constexpr int32_t OVERDRIVE_COOLDOWN_PCT[UPGRADE_MAX_LEVEL + 1] = {100, 67, 50,
+// Overdrive: fire rate x1.25 / x1.5 / x2 per level (cooldown in percent)
+constexpr int32_t OVERDRIVE_COOLDOWN_PCT[UPGRADE_MAX_LEVEL + 1] = {100, 80, 67,
                                                                    50};
-// Thruster: dash speed bonus in percent per level
-constexpr int32_t THRUSTER_DASH_PCT[UPGRADE_MAX_LEVEL + 1] = {100, 150, 200,
+// Thruster: dash speed bonus x1.25 / x1.5 / x2 per level (in percent)
+constexpr int32_t THRUSTER_DASH_PCT[UPGRADE_MAX_LEVEL + 1] = {100, 125, 150,
                                                               200};
-// Charge gauge (0..256): filled in CHARGE_TICKS, drained in COOLDOWN_TICKS
-constexpr int CHARGE_TICKS = 3 * TICK_RATE;
-constexpr int COOLDOWN_TICKS = 5 * TICK_RATE;
-constexpr int LANCE_TICKS = 2 * TICK_RATE;     // Lance beam duration
-constexpr int RAM_TICKS = 1 * TICK_RATE;       // Ram duration
-constexpr int RAM_TRIGGER_TICKS = ticks30(9);  // window after releasing DOWN
-// Lance: a beam of LANCE_LENGTH_MUL x kite half-size (+ LANCE_LENGTH_FU) in
-// front of the player, width = bodyRadius; damage per tick = power * size / 8
-constexpr int32_t LANCE_LENGTH_MUL = 40;
-constexpr int32_t LANCE_LENGTH_FU = 10;
-constexpr int32_t LANCE_POWER = 5;
-// Ram: speed = dash speed x RAM_SPEED_MUL; damage = RAM_POWER * size / 8 once
-// per enemy touched; the player is invulnerable meanwhile
-constexpr int32_t RAM_SPEED_MUL = 3;
-constexpr int32_t RAM_POWER = 200;  // 78% of an equal enemy's health
 // Score for an upgrade taken at max level
 constexpr int32_t SCORE_UPGRADE_BONUS_BASE = 500;
 // Respawn after losing a core: size divided, all upgrade levels -1

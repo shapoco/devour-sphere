@@ -1,4 +1,4 @@
-// Floating upgrades (spinning additive solids) and the Lance beam.
+// Floating upgrades (spinning additive solids).
 
 #include <cmath>
 
@@ -169,27 +169,6 @@ void Renderer::drawFloatingUpgrades() {
       default: break;
     }
   }
-}
-
-// The Lance: a thick additive beam ahead of the player with a bright core
-void Renderer::drawLance() {
-  const sim::Game &g = *game_;
-  if (!g.lanceActive()) return;
-  const sim::Entity &p = g.player();
-  vec3f up = {p.frame.n.x / 1073741824.0f, p.frame.n.y / 1073741824.0f,
-              p.frame.n.z / 1073741824.0f};
-  vec3f fwd = {p.frame.t.x / 1073741824.0f, p.frame.t.y / 1073741824.0f,
-               p.frame.t.z / 1073741824.0f};
-  vec3f right = g3::cross(fwd, up);
-  float len = g.lanceLength() / (float)FU;
-  float width = p.bodyRadius / (float)FU;
-  float flicker = 0.85f + 0.15f * std::sin(time_ * 60.0f);
-  vec3f start = fwd * (p.coreY / (float)FU);
-  vec3f center = start + fwd * (len * 0.5f);
-  putQuad(center + up * 0.1f, fwd, right, len * 0.5f, width * flicker,
-          palette_[PAL_LANCE]);
-  putQuad(center + up * 0.15f, fwd, right, len * 0.5f, width * 0.3f * flicker,
-          palette_[PAL_LANCE_CORE]);
 }
 
 }  // namespace devoursphere::render

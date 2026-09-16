@@ -31,7 +31,6 @@ constexpr uint32_t PLAYER_MERGED = 1 << 6;
 constexpr uint32_t PLAYER_HEALED = 1 << 7;     // a heal-only (white) fragment
 constexpr uint32_t PLAYER_UPGRADED = 1 << 8;   // took an upgrade
 constexpr uint32_t PLAYER_RESPAWNED = 1 << 9;  // lost a core and came back
-constexpr uint32_t PLAYER_RAM_HIT = 1 << 10;   // the Ram struck an enemy
 }  // namespace Event
 
 // Positions of things worth an effect during the last tick (cleared every
@@ -51,19 +50,6 @@ struct EffectEvent {
   Vec3 n;          // unit normal of the position
   int32_t r;       // distance from the center
   int32_t size;    // magnitude hint (damage or size transferred)
-};
-
-// The player's Charge / Lance / Ram state machine
-enum class ChargeState : uint8_t {
-  IDLE,
-  CHARGING_LANCE,  // A + DOWN held: the gauge fills
-  READY_LANCE,     // gauge full; release DOWN (keeping A) to fire
-  LANCE,           // beam active
-  CHARGING_RAM,    // DOWN alone while stopped: the gauge fills
-  READY_RAM,       // gauge full; release DOWN then press UP to ram
-  RAM_WINDOW,      // DOWN released, waiting for UP
-  RAM,             // ramming (no control, invulnerable)
-  COOLDOWN,        // gauge drains; no dash, no charge, weakest fire rate
 };
 
 // Counters for tuning and tests (never reset except by reset())
@@ -139,16 +125,9 @@ class Game {
     return m;
   }
   int cores() const { return cores_; }
-  ChargeState chargeState() const { return chargeState_; }
-  int chargeGauge() const { return chargeGauge_; }  // 0..256
-  int chargeTimer() const { return chargeTimer_; }
-  bool lanceActive() const { return chargeState_ == ChargeState::LANCE; }
   UpgradeKind lastUpgradeKind() const { return lastUpgradeKind_; }
   // Ticks until the player respawns (0 when alive or game over)
   int respawnDelay() const { return respawnDelay_; }
-  bool ramActive() const { return chargeState_ == ChargeState::RAM; }
-  // Geometry of the Lance beam (world units)
-  int32_t lanceLength() const;
 
  private:
   GameState state_ = GameState::TITLE;
@@ -171,11 +150,7 @@ class Game {
   uint64_t scoreQ8_ = 0;
   int upgradeLevels_[UPGRADE_KINDS] = {0, 0, 0};
   int cores_ = CORES_START;
-  ChargeState chargeState_ = ChargeState::IDLE;
-  int chargeGauge_ = 0;
-  int chargeTimer_ = 0;
   int32_t regenAccQ8_ = 0;
-  uint8_t ramHit_[MAX_ENTITIES / 8] = {};
   UpgradeKind lastUpgradeKind_ = UpgradeKind::NONE;
   int respawnDelay_ = 0;
   void resetUpgrades();
@@ -184,9 +159,6 @@ class Game {
   void spawnFloatingUpgrade(UpgradeKind k, const Vec3 &n, int32_t r);
   void updateFloatingUpgrades();
   void takeUpgrade(UpgradeKind k);
-  void updateCharge(uint8_t buttons);
-  void updateLance();
-  void updateRam();
   void updateShieldRegen();
   bool respawnPlayer();
   // After clearing a sphere the player is frozen: no hits, no eating, no

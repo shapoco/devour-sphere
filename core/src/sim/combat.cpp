@@ -51,7 +51,7 @@ void Game::fireWeapon(int idx) {
   if (slot < 0) return;
 
   int32_t cooldown = ws.cooldown;
-  if (c.isPlayer && chargeState_ != ChargeState::COOLDOWN) {
+  if (c.isPlayer) {
     cooldown = cooldown *
                OVERDRIVE_COOLDOWN_PCT[upgradeLevel(UpgradeKind::OVERDRIVE)] /
                100;
@@ -200,7 +200,6 @@ void Game::damageEntity(int idx, int32_t dmg, int attacker, bool allowCrit) {
   bool enemyAttacker = attacker >= 0 && attacker < MAX_ENTITIES &&
                        !entities[attacker].isPlayer;
   if (c.isPlayer) {
-    if (chargeState_ == ChargeState::RAM) return;  // ramming: invulnerable
     // Enemy fire scales with the sphere level and the player's upgrades
     // (difficulty), then the shield reduces it; the per-hit cap comes last
     if (enemyAttacker) dmg = (int32_t)((int64_t)dmg * enemyDamagePct() / 100);
@@ -578,7 +577,6 @@ void Game::handleEntityCollisions() {
       const Entity &B = entities[big];
       const Entity &S = entities[small];
       if (S.invincible > 0 || S.absorbGuard > 0) continue;
-      if (S.isPlayer && chargeState_ == ChargeState::RAM) continue;
       // Bodies overlapping (in 3D, so a much higher entity is out of reach)
       int32_t reach = (B.bodyRadius + S.bodyRadius) >> 1;
       int64_t d2;

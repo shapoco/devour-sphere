@@ -158,38 +158,6 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
                                                : g2::makeColor(240, 70, 60));
       if (fill > 0) g.fillRect(gx, gy, fill, gh, hpColor);
 
-      // Charge gauge (Lance / Ram) under the health gauge
-      {
-        const int cy = gy + gh + 4, ch = 4;
-        bool hasCharge = game.upgradeLevel(sim::UpgradeKind::OVERDRIVE) >=
-                             sim::UPGRADE_MAX_LEVEL ||
-                         game.upgradeLevel(sim::UpgradeKind::THRUSTER) >=
-                             sim::UPGRADE_MAX_LEVEL;
-        sim::ChargeState cs = game.chargeState();
-        if (hasCharge || cs != sim::ChargeState::IDLE) {
-          g.drawRect(gx - 1, cy - 1, gw + 2, ch + 2, HUD_DIM);
-          int cf = gw * game.chargeGauge() / 256;
-          g2::Color cc = g2::makeColor(110, 200, 255);
-          switch (cs) {
-            case sim::ChargeState::READY_LANCE:
-            case sim::ChargeState::READY_RAM:
-            case sim::ChargeState::RAM_WINDOW:
-              cc = blinkOn ? g2::makeColor(255, 255, 255)
-                           : g2::makeColor(170, 220, 255);
-              break;
-            case sim::ChargeState::LANCE:
-            case sim::ChargeState::RAM:
-              cc = g2::makeColor(255, 240, 120);
-              break;
-            case sim::ChargeState::COOLDOWN:
-              cc = g2::makeColor(255, 140, 60);
-              break;
-            default: break;
-          }
-          if (cf > 0) g.fillRect(gx, cy, cf, ch, cc);
-        }
-      }
-
       // Score (top center): the shown value rolls up towards the real one
       g.setFont(&ShapoSansP_s12c09a01w02);
       std::snprintf(buf, sizeof(buf), "%u", scoreShown());

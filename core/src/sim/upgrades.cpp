@@ -1,5 +1,5 @@
-// Upgrades (Shield, Overdrive, Thruster, Extra Core), spare cores, the
-// Charge / Lance / Ram state machine and the respawn after losing a core.
+// Upgrades (Shield, Overdrive, Thruster, Extra Core), spare cores and the
+// respawn after losing a core.
 
 #include "devoursphere/sim/game.hpp"
 
@@ -8,9 +8,6 @@ namespace devoursphere::sim {
 void Game::resetUpgrades() {
   for (int i = 0; i < UPGRADE_KINDS; i++) upgradeLevels_[i] = 0;
   cores_ = CORES_START;
-  chargeState_ = ChargeState::IDLE;
-  chargeGauge_ = 0;
-  chargeTimer_ = 0;
   regenAccQ8_ = 0;
 }
 
@@ -120,12 +117,6 @@ void Game::updateFloatingUpgrades() {
   }
 }
 
-int32_t Game::lanceLength() const {
-  const Entity &p = entities[playerIndex_];
-  return fragmentHalfSize(log2Floor(p.size)) * LANCE_LENGTH_MUL +
-         LANCE_LENGTH_FU * FU;
-}
-
 // Shield level 3: slow regeneration
 void Game::updateShieldRegen() {
   Entity &p = entities[playerIndex_];
@@ -150,172 +141,6 @@ int32_t Game::enemyDamagePct() const {
   return (int32_t)(spherePct * upgradePct / 100);
 }
 
-// The Charge / Lance / Ram state machine. Called with the player's buttons
-// before the controls are applied; it may override them.
-void Game::updateCharge(uint8_t buttons) {
-  Entity &p = entities[playerIndex_];
-  bool a = (buttons & Button::A) != 0;
-  bool down = (buttons & Button::DOWN) != 0;
-  bool up = (buttons & Button::UP) != 0;
-  bool lanceOk = upgradeLevel(UpgradeKind::OVERDRIVE) >= UPGRADE_MAX_LEVEL;
-  bool ramOk = upgradeLevel(UpgradeKind::THRUSTER) >= UPGRADE_MAX_LEVEL;
-  int fill = 256 / CHARGE_TICKS + 1;
-  int32_t cruise = cruiseSpeedForSize(p.size);
-
-  switch (chargeState_) {
-    case ChargeState::IDLE:
-      chargeGauge_ = 0;
-      if (lanceOk && a && down) {
-        chargeState_ = ChargeState::CHARGING_LANCE;
-      } else if (ramOk && down && !a && !up && p.speed < cruise / 8) {
-        chargeState_ = ChargeState::CHARGING_RAM;
-      }
-      break;
-    case ChargeState::CHARGING_LANCE:
-      if (!(a && down)) {
-        chargeState_ = ChargeState::IDLE;
-        chargeGauge_ = 0;
-        break;
-      }
-      chargeGauge_ += fill;
-      if (chargeGauge_ >= 256) {
-        chargeGauge_ = 256;
-        chargeState_ = ChargeState::READY_LANCE;
-      }
-      break;
-    case ChargeState::READY_LANCE:
-      if (!a) {
-        chargeState_ = ChargeState::IDLE;
-        chargeGauge_ = 0;
-      } else if (!down) {
-        chargeState_ = ChargeState::LANCE;
-        chargeTimer_ = LANCE_TICKS;
-      }
-      break;
-    case ChargeState::LANCE:
-      if (--chargeTimer_ <= 0) chargeState_ = ChargeState::COOLDOWN;
-      break;
-    case ChargeState::CHARGING_RAM:
-      if (!down || a || up) {
-        chargeState_ = ChargeState::IDLE;
-        chargeGauge_ = 0;
-        break;
-      }
-      chargeGauge_ += fill;
-      if (chargeGauge_ >= 256) {
-        chargeGauge_ = 256;
-        chargeState_ = ChargeState::READY_RAM;
-      }
-      break;
-    case ChargeState::READY_RAM:
-      if (a || up) {
-        chargeState_ = ChargeState::IDLE;
-        chargeGauge_ = 0;
-      } else if (!down) {
-        chargeState_ = ChargeState::RAM_WINDOW;
-        chargeTimer_ = RAM_TRIGGER_TICKS;
-      }
-      break;
-    case ChargeState::RAM_WINDOW:
-      if (up) {
-        chargeState_ = ChargeState::RAM;
-        chargeTimer_ = RAM_TICKS;
-        for (int i = 0; i < MAX_ENTITIES / 8; i++) ramHit_[i] = 0;
-      } else if (a || down || --chargeTimer_ <= 0) {
-        chargeState_ = ChargeState::IDLE;
-        chargeGauge_ = 0;
-      }
-      break;
-    case ChargeState::RAM:
-      if (--chargeTimer_ <= 0) chargeState_ = ChargeState::COOLDOWN;
-      break;
-    case ChargeState::COOLDOWN:
-      chargeGauge_ -= 256 / COOLDOWN_TICKS + 1;
-      if (chargeGauge_ <= 0) {
-        chargeGauge_ = 0;
-        chargeState_ = ChargeState::IDLE;
-      }
-      break;
-  }
-
-  // Controls implied by the state
-  switch (chargeState_) {
-    case ChargeState::CHARGING_LANCE:
-    case ChargeState::READY_LANCE:
-      p.firing = false;  // no normal shots while charging the Lance
-      p.dashing = false;
-      break;
-    case ChargeState::LANCE:
-      p.firing = false;
-      p.dashing = false;
-      break;
-    case ChargeState::CHARGING_RAM:
-    case ChargeState::READY_RAM: p.dashing = false; break;
-    case ChargeState::RAM:
-      p.turn = 0;
-      p.firing = false;
-      p.braking = false;
-      p.dashing = true;
-      break;
-    case ChargeState::COOLDOWN: p.dashing = false; break;
-    default: break;
-  }
-}
-
-// Lance: damage everything in the beam in front of the player
-void Game::updateLance() {
-  Entity &p = entities[playerIndex_];
-  if (!p.alive) return;
-  int32_t len = lanceLength();
-  int32_t width = p.bodyRadius;
-  Vec3 start = worldPos(p.frame.n, p.r) + scaleToLength(p.frame.t, p.coreY);
-  Vec3 seg = scaleToLength(p.frame.t, len);
-  int64_t segLen2 = length2_64(seg);
-  int32_t dmg = (int32_t)(((int64_t)LANCE_POWER * p.size) / 8);
-  if (dmg < 1) dmg = 1;
-  for (int j = 0; j < MAX_ENTITIES; j++) {
-    Entity &o = entities[j];
-    if (!o.alive || j == playerIndex_) continue;
-    int32_t reach = o.bodyRadius + width;
-    int64_t d2;
-    if (!tangentialDist2(p.frame.n, o.frame.n, len + reach, d2)) continue;
-    Vec3 rel = worldPos(o.frame.n, o.r) - start;
-    int64_t t = segLen2 > 0 ? clampI64(0, segLen2, dot64(rel, seg)) : 0;
-    Vec3 closest = start;
-    if (segLen2 > 0) {
-      closest = start + Vec3{(int32_t)((int64_t)seg.x * t / segLen2),
-                             (int32_t)((int64_t)seg.y * t / segLen2),
-                             (int32_t)((int64_t)seg.z * t / segLen2)};
-    }
-    Vec3 gap = worldPos(o.frame.n, o.r) - closest;
-    int32_t along = dotQ30(gap, o.frame.n);
-    gap = gap - scaleToLength(o.frame.n, along);
-    if (length2_64(gap) >= (int64_t)reach * reach) continue;
-    damageEntity(j, dmg, playerIndex_, false);
-  }
-}
-
-// Ram: strike every enemy touched once; the player is invulnerable
-void Game::updateRam() {
-  Entity &p = entities[playerIndex_];
-  if (!p.alive) return;
-  p.speed = cruiseSpeedForSize(p.size) * DASH_SPEED_NUM / DASH_SPEED_DEN *
-            RAM_SPEED_MUL;
-  int32_t dmg = (int32_t)(((int64_t)RAM_POWER * p.size) / 8);
-  for (int j = 0; j < MAX_ENTITIES; j++) {
-    Entity &o = entities[j];
-    if (!o.alive || j == playerIndex_) continue;
-    if (ramHit_[j >> 3] & (1u << (j & 7))) continue;
-    int32_t reach = (o.bodyRadius + p.bodyRadius) * 3 / 4;
-    int64_t d2;
-    if (!tangentialDist2(p.frame.n, o.frame.n, reach, d2)) continue;
-    if (d2 >= (int64_t)reach * reach) continue;
-    ramHit_[j >> 3] |= (uint8_t)(1u << (j & 7));
-    damageEntity(j, dmg, playerIndex_, false);
-    events_ |= Event::PLAYER_RAM_HIT;
-  }
-}
-
 // Lost a core: come back smaller and weaker, where the enemies are sparse
 bool Game::respawnPlayer() {
   if (cores_ <= 0) return false;
@@ -336,8 +161,6 @@ bool Game::respawnPlayer() {
   syncFragments(p, 0, 0);
   p.hp = p.hpMax;
   p.invincible = RESPAWN_INVINCIBLE_TICKS;
-  chargeState_ = ChargeState::IDLE;
-  chargeGauge_ = 0;
   // Best of several random spots: the one farthest from the nearest enemy
   Frame best = p.frame;
   int32_t bestR = p.r;

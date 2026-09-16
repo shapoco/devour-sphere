@@ -86,9 +86,6 @@ void Renderer::init(int width, int height, void *arena, size_t arenaSize) {
   for (int i = PAL_UP_SHIELD; i <= PAL_UP_CORE; i++) {
     palette_[i].flags &= ~g3::MaterialFlags::DOUBLE_SIDED;
   }
-  palette_[PAL_LANCE] =
-      addMaterial(hueColor(sim::FRAGMENT_HUE, 160, 255), 0.7f);
-  palette_[PAL_LANCE_CORE] = addMaterial(g2::makeColor(255, 255, 255), 1.0f);
 
   camValid_ = false;
   originValid_ = false;
@@ -397,8 +394,7 @@ void Renderer::drawEntity(const sim::Entity &c, const vec3f &pos, float px,
   }
   // Hit flash: the whole body turns white for a moment
   int idx = (int)(&c - game_->entities);
-  bool flashing = (idx >= 0 && idx < sim::MAX_ENTITIES && flash_[idx] > 0) ||
-                  (c.isPlayer && game_->ramActive());
+  bool flashing = idx >= 0 && idx < sim::MAX_ENTITIES && flash_[idx] > 0;
   // (the player flashes red, everyone else white)
   const g3::Material &bodyMat =
       flashing ? palette_[c.isPlayer ? PAL_FLASH_RED : PAL_CORE] : m;
@@ -876,7 +872,6 @@ void Renderer::buildScene() {
 
   drawFloatingFragments();
   drawBullets();
-  drawLance();
   drawPresenceAuras();
   drawEffects();
   drawHealthWarning();
