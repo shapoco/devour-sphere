@@ -1,6 +1,7 @@
 # Build outputs
 build/
 .cmake/
+.pio/
 *.ppm
 *.png
 

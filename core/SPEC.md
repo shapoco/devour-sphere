@@ -167,6 +167,7 @@ src/sim/                  fixed.cpp entities.cpp game.cpp entity.cpp combat.cpp
 src/render/               renderer.cpp sphere.cpp hud.cpp
 test/                     sim_test.cpp (ctest), sim_bench.cpp (バランス・負荷計測)
 tools/gen_tables.py       sin テーブル (src/sim/sin_table.inc) の生成
+library.json              PlatformIO から `core/` をライブラリとして参照するための宣言
 ```
 
 ### 数値表現

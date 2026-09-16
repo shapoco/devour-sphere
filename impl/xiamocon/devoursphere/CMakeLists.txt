@@ -89,6 +89,7 @@ set_target_properties(xmc_lib xmc_pfm PROPERTIES SYSTEM TRUE)
 target_sources(${APP_NAME} PRIVATE
     src/app.cpp
     src/band_writer.cpp
+    src/ds_platform.cpp
     src/profiler.cpp
 )
 target_include_directories(${APP_NAME} PRIVATE include)

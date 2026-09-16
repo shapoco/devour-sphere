@@ -18,7 +18,15 @@ namespace ds {
 // +36% at 8), and an even band count keeps the ping-pong parity simple.
 constexpr int SCREEN_W = xmc::display::WIDTH;
 constexpr int SCREEN_H = xmc::display::HEIGHT;
+#if defined(ESP32)
+// Half the height, and so half the memory: the ESP32S3 build is 5 KB over
+// its DRAM budget with 40. Rasterizing costs about 14% more at 20 rows than
+// at 40 (measured on the host), which is the cheaper price to pay -- taking
+// the arena below 48 KB starts dropping triangles instead.
+constexpr int BAND_H = 20;
+#else
 constexpr int BAND_H = 40;
+#endif
 constexpr int BAND_COUNT = SCREEN_H / BAND_H;
 static_assert(SCREEN_H % BAND_H == 0, "the bands must tile the screen exactly");
 
@@ -34,7 +42,17 @@ static_assert(SCREEN_H % BAND_H == 0, "the bands must tile the screen exactly");
 // 128 KB is the knee: the scene reaches its natural size and gets 2.7x the
 // headroom for a heavier one. Nothing changes above it. The profiling
 // overlay reports the real usage.
+//
+// The ESP32S3 cannot afford that: its linker gives the application 320 KB of
+// internal DRAM, and Game, the band buffers and the Renderer already take
+// 190 KB of it. 48 KB is the smallest size measured with no dropped triangle
+// or span (capacity 224 against a peak of 200) -- the wireframe comes out a
+// little coarser, nothing else changes.
+#if defined(ESP32)
+constexpr size_t ARENA_SIZE = 48 * 1024;
+#else
 constexpr size_t ARENA_SIZE = 128 * 1024;
+#endif
 
 // The simulation runs at a fixed 60 Hz whatever the frame rate is
 constexpr uint32_t TICK_US = 1000000u / devoursphere::sim::TICK_RATE;

@@ -30,9 +30,9 @@ WASM 版は、ブラウザ上でコアプログラムを実行するためのラ
 
 ### Xiamocon 版
 
-impl/xiamocon/ 配下に Xiamocon (XIAO RP2350 用のゲーム機型マザーボード) 向けの
-実装が置かれる。240x240 の RGB565BE ディスプレイに、フレームバッファを持たず
-帯単位で描画・転送する。
+impl/xiamocon/ 配下に Xiamocon (XIAO RP2350 / ESP32S3 用のゲーム機型マザーボード)
+向けの実装が置かれる。240x240 の RGB565BE ディスプレイに、フレームバッファを持たず
+帯単位で描画・転送する。RP2350 と ESP32S3 の両方をビルドでき、ソースは共通。
 
 詳細は impl/xiamocon/SPEC.md を参照のこと。
 
@@ -66,7 +66,8 @@ Xiamocon 版は pico-sdk を使う別のトップレベルのビルドになる 
 ```sh
 source ~/repo/2026/xiamocon/setup.shrc
 cd impl/xiamocon/devoursphere
-xmc build -p rp2350_pico_sdk                     # .cmake/devoursphere.uf2 を生成
+xmc build                                        # RP2350 と ESP32S3 の両方
+xmc build -p rp2350_pico_sdk                     # .cmake/devoursphere.uf2 だけ
 ```
 
 C/C++ のコードは .clang-format (ShapoGFX と同じ設定) で整形する。

@@ -1,0 +1,38 @@
+{
+  "name": "DevourSphere",
+  "version": "0.1.0",
+  "description": "Devour Sphere game core: the simulation (fixed point, deterministic, no floating point) and the renderer that draws it with ShapoGFX. Platform independent -- the front end supplies the frame buffer or band buffer, the input and the timing.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/shapoco/devour-sphere.git"
+  },
+  "license": "MIT",
+  "frameworks": "*",
+  "platforms": "*",
+  "headers": [
+    "devoursphere/devoursphere.hpp"
+  ],
+  "dependencies": {
+    "ShapoGFX": "*"
+  },
+  "build": {
+    "includeDir": "include",
+    "srcDir": "src",
+    "srcFilter": [
+      "+<*>",
+      "+<sim/*>",
+      "+<render/*>"
+    ],
+    "unflags": [
+      "-std=gnu++11",
+      "-std=gnu++14",
+      "-std=c++11",
+      "-std=c++14",
+      "-Os"
+    ],
+    "flags": [
+      "-std=gnu++17",
+      "-O2"
+    ]
+  }
+}

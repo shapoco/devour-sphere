@@ -10,15 +10,12 @@
 // buffers are all statics. Game alone is 133 KB, so it must never go on a
 // stack (both cores get 4 KB, in SCRATCH_X / SCRATCH_Y).
 
-#include <pico/rand.h>
-
-#include <atomic>
-
+#include "xmc/app.hpp"
 #include "band_writer.hpp"
 #include "devoursphere/devoursphere.hpp"
 #include "ds_config.hpp"
+#include "ds_platform.hpp"
 #include "profiler.hpp"
-#include "xmc/app.hpp"
 #include "xmc/input.hpp"
 #include "xmc/multicore.hpp"
 #include "xmc/system.hpp"
@@ -63,32 +60,41 @@ enum class Frame : uint32_t {
   SCENE_READY,  // the scene is built; core1 is rasterizing and transferring
   DONE,         // the frame is out; core0 may hand over the next one
 };
-std::atomic<Frame> g_frame{Frame::IDLE};
-static_assert(std::atomic<Frame>::is_always_lock_free,
-              "the handshake must not take a lock");
+// A plain word with explicit acquire/release rather than std::atomic: on the
+// Xtensa toolchain std::atomic<uint32_t> is not guaranteed lock free, and a
+// lock would be wrong here -- the two sides are different cores, not
+// threads. A 32-bit aligned load or store is atomic on both targets anyway;
+// the builtins add the barrier and stop the compiler reordering the renderer
+// writes past the handover.
+uint32_t g_frame = (uint32_t)Frame::IDLE;
 float g_frameDt = 0;  // written before BUILD is published, read after it
+
+Frame frameLoad() { return (Frame)__atomic_load_n(&g_frame, __ATOMIC_ACQUIRE); }
+void frameStore(Frame f) {
+  __atomic_store_n(&g_frame, (uint32_t)f, __ATOMIC_RELEASE);
+}
 
 bool core1Task() {
   static bool painted = false;
   if (!painted) {
     painted = true;
-    ds::Profiler::paintCore1Stack();
+    ds::stackWatchInitCore1();
   }
-  if (g_frame.load(std::memory_order_acquire) != Frame::BUILD) {
+  if (frameLoad() != Frame::BUILD) {
     xmc::tightLoopContents();
     return true;
   }
   g_renderer.beginFrame(g_game, g_frameDt);
   // From here the Game belongs to core0 again
-  g_frame.store(Frame::SCENE_READY, std::memory_order_release);
+  frameStore(Frame::SCENE_READY);
   g_bands.present(g_renderer, g_prof);
   g_renderer.endFrame();
-  g_frame.store(Frame::DONE, std::memory_order_release);
+  frameStore(Frame::DONE);
   return true;
 }
 
 void waitFrame(Frame want) {
-  while (g_frame.load(std::memory_order_acquire) != want) {
+  while (frameLoad() != want) {
     xmc::tightLoopContents();
   }
 }
@@ -122,9 +128,7 @@ xmc::AppConfig xmcAppGetConfig(void) {
 }
 
 void xmcAppSetup(void) {
-  // xmc::randomU32() is an unseeded newlib rand(), identical on every boot;
-  // get_rand_32() is the SDK's ring-oscillator entropy.
-  g_game.reset(get_rand_32());
+  g_game.reset(ds::randomSeed());
   g_renderer.setControlHints(render::ControlHints{
       "MOVE: D-PAD    A/B/X/Y: FIRE",
       "D-PAD: MOVE   A: FIRE",
@@ -137,7 +141,7 @@ void xmcAppSetup(void) {
   // screen blank until the clock has moved.
   g_lastUs = xmc::getTimeUs();
   g_accUs = ds::TICK_US;
-  ds::Profiler::paintCore0Stack();
+  ds::stackWatchInitCore0();
   // Both cores are otherwise idle here, so this is the transfer on its own
   g_prof.xferUs = g_bands.measureTransfer();
   xmc::startCore1(core1Task);
@@ -185,7 +189,7 @@ void xmcAppLoop(void) {
   // core1 is always past beginFrame(), so the ticks above could not have
   // raced with it.
   const uint32_t wait0 = (uint32_t)xmc::getTimeUs();
-  if (g_frame.load(std::memory_order_acquire) != Frame::IDLE) {
+  if (frameLoad() != Frame::IDLE) {
     waitFrame(Frame::DONE);
   }
   g_prof.core1WaitUs = (uint32_t)xmc::getTimeUs() - wait0;
@@ -198,7 +202,7 @@ void xmcAppLoop(void) {
   // in step with the ticks that actually ran.
   g_frameDt = ticks * (1.0f / sim::TICK_RATE);
   const uint32_t begin0 = (uint32_t)xmc::getTimeUs();
-  g_frame.store(Frame::BUILD, std::memory_order_release);
+  frameStore(Frame::BUILD);
   waitFrame(Frame::SCENE_READY);
   g_prof.beginUs = (uint32_t)xmc::getTimeUs() - begin0;
 }
@@ -209,7 +213,7 @@ XmcStatus xmcAppTerminate(xmc::system::ShutdownReason reason) {
   // power-off message through the same SPI bus, so core1 has to be off the
   // display and the band left in flight by present() collected, both before
   // we return.
-  if (g_frame.load(std::memory_order_acquire) != Frame::IDLE) {
+  if (frameLoad() != Frame::IDLE) {
     waitFrame(Frame::DONE);
   }
   g_bands.drain();

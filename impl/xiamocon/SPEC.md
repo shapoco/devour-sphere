@@ -16,7 +16,7 @@ SDK からは表示転送・DMA・入力・電源管理といった足回りだ�
 - フレームバッファを 1 枚も持たず、40 行の帯を 2 枚交互に使って描画・転送する。
 - シミュレーションは 60Hz 固定、描画は追いつける範囲で行う (可変フレームレート)。
 - 音は無し。ハイスコアのフラッシュ保存も無し (電源を切るまでは保持する)。
-- ターゲットは RP2350 のみ (`rp2350_pico_sdk`)。
+- ターゲットは XIAO RP2350 と XIAO ESP32S3 の両方。ソースは共通で、違いは下記の数点のみ。
 
 ## ファイル構成
 
@@ -24,13 +24,18 @@ SDK からは表示転送・DMA・入力・電源管理といった足回りだ�
 impl/xiamocon/
   SPEC.md              この文書
   devoursphere/        ファームウェアのプロジェクト (ディレクトリ名 = 生成物の名前)
-    CMakeLists.txt     pico-sdk のトップレベル (リポジトリのホストビルドとは別)
+    CMakeLists.txt     RP2350 用 (pico-sdk。リポジトリのホストビルドとは別のトップレベル)
+    platformio.ini     ESP32S3 用 (PlatformIO + Arduino)
     include/
       ds_config.hpp    帯の高さ、アリーナサイズ、tick 周期などの定数
+      ds_platform.hpp  2 つのターゲットで異なる部分の宣言
       band_writer.hpp
+      profiler.hpp
     src/
       app.cpp          xmcApp* エントリ、静的領域、フレームループ、入力変換
       band_writer.cpp  帯の ping-pong と DMA 転送
+      ds_platform.cpp  乱数シードとスタック計測 (ターゲットごとの実装)
+      profiler.cpp     計測とオーバーレイ
 ```
 
 ディレクトリ名が `devoursphere` でなければならないのは、`xmc run` が
@@ -41,12 +46,17 @@ impl/xiamocon/
 ```sh
 source ~/repo/2026/xiamocon/setup.shrc   # XMC_REPO_PATH をリポジトリ側に向ける
 cd impl/xiamocon/devoursphere
+
+# XIAO RP2350
 xmc build -p rp2350_pico_sdk             # .cmake/devoursphere.uf2 を生成
 xmc run   -p rp2350_pico_sdk -d E        # ビルドして書き込み (WSL2、E: はドライブレター)
+
+# XIAO ESP32S3
+xmc build -p esp32s3_pio_arduino         # .pio/build/esp32s3_arduino/firmware.bin
+xmc run   -p esp32s3_pio_arduino -s /dev/ttyACM0
 ```
 
-- `-p` は省略できない。省くと `xmc` は ESP32S3 版も試して非ゼロ終了する。
-  `XMC_DEFAULT_PLATFORM=rp2350_pico_sdk` を設定しておいてもよい。
+`-p` を省くと両方ビルドする (どちらも通る)。
 - 書き込みは Xiamocon をマスストレージモードにしてから行う
   (Down ボタンを押しながら電源ボタンを 3 秒長押し、その後 Down を離す)。
 - 反復ビルドは `.cmake/` で `make -j` を直接叩く方が速い。
@@ -257,6 +267,41 @@ BGN + RAS = 19.5ms はフレームレートに依らない固定費なので、
   実行されており、gfx3d のスパンループはその最悪ケース。`copy_to_ram` (全体) は
   `.text` + `.bss` が 512KB を超えるため使えないが、gfx3d + gfx2d + render だけなら
   約 65KB で空き RAM に収まる。
+
+## 2 つのターゲットの違い
+
+ソースは共通で、`#if defined(ESP32)` で分けているのは次の 4 点だけ。
+
+| | RP2350 | ESP32S3 |
+|---|---|---|
+| 3D アリーナ | 128KB | **48KB** |
+| 帯の高さ | 40 行 (6 帯) | **20 行 (12 帯)** |
+| 乱数シード | `get_rand_32()` (pico-sdk) | `esp_random()` |
+| スタック計測 | スタックを塗って走査 | `uxTaskGetStackHighWaterMark()` |
+
+アリーナと帯を削っているのは DRAM の都合。ESP32S3 はリンカがアプリに
+**320KB** しか与えず、`Game` だけで 133KB あるため。48KB は取りこぼしが出ない最小で
+(容量 224 に対しピーク 200)、それ以上削るとワイヤーフレームが粗くなる前に
+三角形が落ち始める。帯を半分にする方は、ラスタライズが約 14% 増えるだけで
+見た目は変わらないので、そちらを先に削っている。
+
+実測: **RAM 256,180 / 327,680 (78.2%)**、Flash 598,977 / 3,342,336 (17.9%)。
+
+その他の注意:
+
+- コア間の受け渡しは `std::atomic` ではなく `__atomic_load_n` /
+  `__atomic_store_n` の acquire/release を使う。**Xtensa のツールチェーンでは
+  `std::atomic<uint32_t>` が lock-free 保証にならず**、ロックを取る実装になると
+  別コア間では正しく動かない。32 ビットのアラインされた load/store はどちらの
+  ターゲットでも不可分なので、ビルトインが足すのはバリアだけ。
+- ESP32S3 の `getTimeUs()` は `micros()` で、約 71 分で 32 ビットが一周する。
+  フレームループは経過時間をクランプしているので、一周しても 1 フレーム分の
+  遅れが出るだけで破綻はしない。
+- `startCore1()` は `xTaskCreatePinnedToCore(..., 8192, ..., PRO_CPU_NUM)` で、
+  Arduino の `loop()` は APP_CPU なので物理的に別コアになる。スタックは 8KB。
+- 表示 SPI は 60MHz (RP2350 は 62.5MHz)。
+- core と ShapoGFX は PlatformIO のライブラリとして参照する
+  (`core/library.json` と `submodule/shapo-gfx/library.json`)。
 
 ## 入力
 

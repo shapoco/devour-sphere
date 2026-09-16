@@ -33,12 +33,12 @@ make -C impl/wasm        # WASM 版 (Emscripten)
 ./launch_web_server.sh   # http://localhost:52980/play/
 ```
 
-実機 ([Xiamocon](https://github.com/shapoco/xiamocon) / XIAO RP2350) 版:
+実機 ([Xiamocon](https://github.com/shapoco/xiamocon) / XIAO RP2350・ESP32S3) 版:
 
 ```sh
 source ~/repo/2026/xiamocon/setup.shrc
 cd impl/xiamocon/devoursphere
-xmc build -p rp2350_pico_sdk   # .cmake/devoursphere.uf2
+xmc build                      # 両方のターゲット
 ```
 
 ## License
