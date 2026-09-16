@@ -43,6 +43,7 @@ struct Marker2D {
   int16_t x, y;
   g2::Color color;
   uint8_t kind;  // 0 = enemy (triangle), else sim::UpgradeKind icon
+  bool carrier;  // enemy carrying an upgrade: white outline
 };
 
 // Icon of an upgrade kind, centered at (cx, cy), about 14 px tall

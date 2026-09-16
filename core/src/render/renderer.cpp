@@ -722,6 +722,7 @@ void Renderer::buildScene() {
       mk.x = (int16_t)sx;
       mk.y = (int16_t)sy;
       mk.kind = 0;
+      mk.carrier = c.upgrade != (uint8_t)sim::UpgradeKind::NONE;
       g2::Color col = colorForEntity(c);
       float k = MARKER_MIN_BRIGHTNESS + (1.0f - MARKER_MIN_BRIGHTNESS) * fade;
       mk.color =
@@ -822,11 +823,17 @@ void Renderer::renderBand(const g2::Surface &dst, int y, int h, int dstY) {
       drawUpgradeIcon(g, mk.kind, mk.x, cy, mk.color);
       continue;
     }
-    // Enemy: downward triangle just above the horizon point
+    // Enemy: downward triangle just above the horizon point; a carrier of
+    // an upgrade gets a white outline (like its body), the others a dark one
     int x = mk.x, yb = mk.y + oy - 3, yt = yb - 7;
-    if (yb < dstY || yt >= dstY + h) continue;
+    if (yb + 1 < dstY || yt - 1 >= dstY + h) continue;
     g.fillTriangle(x - 5, yt, x + 5, yt, x, yb, mk.color);
-    g.drawTriangle(x - 5, yt, x + 5, yt, x, yb, g2::makeColor(0, 0, 0, 120));
+    if (mk.carrier) {
+      g.drawTriangle(x - 6, yt - 1, x + 6, yt - 1, x, yb + 1,
+                     g2::makeColor(255, 255, 255));
+    } else {
+      g.drawTriangle(x - 5, yt, x + 5, yt, x, yb, g2::makeColor(0, 0, 0, 120));
+    }
   }
   for (int i = 0; i < gaugeCount_; i++) {
     const Gauge2D &gg = gauges_[i];
