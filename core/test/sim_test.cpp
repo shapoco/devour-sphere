@@ -398,7 +398,9 @@ static void testCombatAndLayout() {
     p.absorbGuard = 0;
     p.hp = p.hpMax;
     int64_t drained = 0, gained = 0, sizeHeal = 0;
-    for (int t = 0; t < 20 && b.player().alive; t++) {
+    // A third of a second, not a fixed tick count: at 30 Hz twice as much
+    // game time would pass and the player would be absorbed outright
+    for (int t = 0; t < ticks30(10) && b.player().alive; t++) {
       b.entities[other].frame = b.player().frame;
       b.entities[other].r = b.player().r;
       int32_t sHp = p.hp, sMax = p.hpMax, bHp = o.hp, bMax = o.hpMax;

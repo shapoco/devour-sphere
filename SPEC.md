@@ -55,7 +55,7 @@ launch_web_server.sh docs/ をローカルで配信する
 git submodule update --init
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
-ctest --test-dir build --output-on-failure      # コアのテスト
+ctest --test-dir build --output-on-failure      # コアのテスト (60Hz と 30Hz)
 ./build/impl/wasm/devoursphere_native 1 300 out.ppm   # 1 フレームを PPM に書き出す
 make -C impl/wasm                                # WASM 版 (emcc が必要)
 ./launch_web_server.sh                           # http://localhost:52980/play/

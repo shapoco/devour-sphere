@@ -116,10 +116,10 @@ int upgradeIconPolygon(int kind, int cx, int cy, g2::vec2i *pts, int scale8) {
     }
     case sim::UpgradeKind::EXTRA_CORE: {  // four-pointed star
       const g2::vec2i p[8] = {
-          {cx, cy - sc(7, s)},           {cx + sc(2, s), cy - sc(2, s)},
-          {cx + sc(7, s), cy},           {cx + sc(2, s), cy + sc(2, s)},
-          {cx, cy + sc(7, s)},           {cx - sc(2, s), cy + sc(2, s)},
-          {cx - sc(7, s), cy},           {cx - sc(2, s), cy - sc(2, s)}};
+          {cx, cy - sc(7, s)}, {cx + sc(2, s), cy - sc(2, s)},
+          {cx + sc(7, s), cy}, {cx + sc(2, s), cy + sc(2, s)},
+          {cx, cy + sc(7, s)}, {cx - sc(2, s), cy + sc(2, s)},
+          {cx - sc(7, s), cy}, {cx - sc(2, s), cy - sc(2, s)}};
       for (int i = 0; i < 8; i++) pts[i] = p[i];
       return 8;
     }
@@ -135,8 +135,7 @@ void drawUpgradeIcon(g2::Graphics2D &g, int kind, int cx, int cy, g2::Color c,
 }
 
 static g2::Color dimmed(g2::Color c) {
-  return g2::makeColor(g2::colorR(c) / 3, g2::colorG(c) / 3,
-                       g2::colorB(c) / 3);
+  return g2::makeColor(g2::colorR(c) / 3, g2::colorG(c) / 3, g2::colorB(c) / 3);
 }
 
 // Upgrades (bottom left): icon + level pips; spare cores (bottom right).
@@ -203,8 +202,9 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
       }
       setHudFont(g, HudFont::SMALL);
       if (game.highScore() > 0) {
-        std::snprintf(buf, sizeof(buf), "HIGH SCORE %u", game.highScore());
-        std::snprintf(alt, sizeof(alt), "HI %u", game.highScore());
+        std::snprintf(buf, sizeof(buf), "HIGH SCORE %u",
+                      (unsigned)game.highScore());
+        std::snprintf(alt, sizeof(alt), "HI %u", (unsigned)game.highScore());
         drawCenteredFit(g, oy + uiY(236), buf, alt, HUD_DIM);
       }
       int lineH = g.lineAdvance() + ui(6, 2);
@@ -296,7 +296,7 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
 
       // Score (top center): the shown value rolls up towards the real one
       setHudFont(g, HudFont::MEDIUM);
-      std::snprintf(buf, sizeof(buf), "%u", scoreShown());
+      std::snprintf(buf, sizeof(buf), "%u", (unsigned)scoreShown());
       {
         int tw = g.measureText(buf);
         int sh = ui_.fontMult;
@@ -359,11 +359,12 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
         drawCenteredFit(g, oy + uiY(100), "YOU WERE DEVOURED", "DEVOURED",
                         g2::makeColor(255, 90, 90));
         setHudFont(g, ui_.compact ? HudFont::SMALL : HudFont::MEDIUM);
-        std::snprintf(buf, sizeof(buf), "SCORE %u", game.score());
-        std::snprintf(alt, sizeof(alt), "%u", game.score());
+        std::snprintf(buf, sizeof(buf), "SCORE %u", (unsigned)game.score());
+        std::snprintf(alt, sizeof(alt), "%u", (unsigned)game.score());
         drawCenteredFit(g, oy + uiY(135), buf, alt, HUD_TEXT);
-        std::snprintf(buf, sizeof(buf), "HIGH SCORE %u", game.highScore());
-        std::snprintf(alt, sizeof(alt), "HI %u", game.highScore());
+        std::snprintf(buf, sizeof(buf), "HIGH SCORE %u",
+                      (unsigned)game.highScore());
+        std::snprintf(alt, sizeof(alt), "HI %u", (unsigned)game.highScore());
         drawCenteredFit(g, oy + uiY(152), buf, alt,
                         game.score() >= game.highScore() && game.score() > 0
                             ? g2::makeColor(255, 230, 120)

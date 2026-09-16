@@ -11,7 +11,18 @@
 namespace devoursphere::sim {
 
 constexpr int32_t FU_UNITS = 256;  // units per fragment unit (see FU below)
-constexpr int TICK_RATE = 60;      // simulation ticks per second
+
+// Simulation ticks per second. Everything below is derived from per-second
+// values (ticks30(), fuPerSec(), turnPerTick(), RATE_SHIFT), so a platform
+// that cannot afford 60 Hz may build the core at a lower rate -- the game
+// then plays the same but is no longer bit-identical to a build at another
+// rate. 30 Hz is what the constants were originally tuned at.
+#ifndef DEVOURSPHERE_TICK_RATE
+#define DEVOURSPHERE_TICK_RATE 60
+#endif
+constexpr int TICK_RATE = DEVOURSPHERE_TICK_RATE;
+static_assert(TICK_RATE == 30 || TICK_RATE == 60,
+              "only 30 and 60 Hz are tuned and tested");
 
 // Per-tick values are derived from per-second definitions so that TICK_RATE
 // can change (both platforms must use the same value: the simulation is

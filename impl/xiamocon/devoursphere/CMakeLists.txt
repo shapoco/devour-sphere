@@ -46,6 +46,18 @@ pico_sdk_init()
 add_compile_definitions(
     PICO_STACK_SIZE=4096
     PICO_CORE1_STACK_SIZE=4096
+
+    # Run the simulation at 30 Hz rather than 60. Measured on the device, a
+    # tick costs 6.6 ms and the frame was spending 19.9 ms of its 46.5 ms on
+    # three of them; halving the rate takes the frame to about 34 ms. The
+    # constants in sim/config.hpp are derived from per-second values and were
+    # originally tuned at 30 Hz, and a 9-seed by 3-weapon run shows the hit
+    # rate, the feeding rate and the death rate unchanged (see ../SPEC.md).
+    #
+    # Directory scope, not target scope: sim::TICK_RATE is a constexpr in a
+    # header, so every translation unit -- ours and the two core libraries --
+    # has to agree on it.
+    DEVOURSPHERE_TICK_RATE=30
 )
 
 # --- The shared game core -----------------------------------------------
