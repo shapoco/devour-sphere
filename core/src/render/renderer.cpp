@@ -910,12 +910,7 @@ void Renderer::buildScene() {
     }
   }
 
-  // Visible entities sorted by distance
-  struct Vis {
-    float d, px;
-    int16_t idx;
-  };
-  Vis vis[sim::MAX_ENTITIES];
+  // Visible entities sorted by distance (vis_ is a member: see renderer.hpp)
   int n = 0;
   for (int i = 0; i < sim::MAX_ENTITIES; i++) {
     const sim::Entity &c = g.entities[i];
@@ -940,11 +935,11 @@ void Renderer::buildScene() {
     }
     // insertion sort by distance
     int k = n++;
-    while (k > 0 && vis[k - 1].d > d) {
-      vis[k] = vis[k - 1];
+    while (k > 0 && vis_[k - 1].d > d) {
+      vis_[k] = vis_[k - 1];
       k--;
     }
-    vis[k] = {d, px, (int16_t)i};
+    vis_[k] = {d, px, (int16_t)i};
   }
 
   // Triangle budget: what is left after the wireframe, minus a reserve for
@@ -952,21 +947,21 @@ void Renderer::buildScene() {
   g3::Stats st = g3d_.getStats();
   int triBudget = st.triCapacity - st.triCount - 380;
   for (int k = 0; k < n; k++) {
-    const sim::Entity &c = g.entities[vis[k].idx];
+    const sim::Entity &c = g.entities[vis_[k].idx];
     int fullTris = (1 + 2 * c.fragmentCount) * 2;
-    bool full = vis[k].px >= 6.0f && triBudget >= fullTris;
+    bool full = vis_[k].px >= 6.0f && triBudget >= fullTris;
     triBudget -= full ? fullTris : 6;
     vec3f pos = toLocal(sim::scaleToLength(c.frame.n, c.r));
     bool blink =
         c.invincible > 0 && ((g.tickCount() / (sim::TICK_RATE / 8)) & 1);
-    drawEntity(c, pos, vis[k].px, full, blink);
+    drawEntity(c, pos, vis_[k].px, full, blink);
     // Health gauge over enemies
-    if (!c.isPlayer && vis[k].px >= 2.5f && gaugeCount_ < MAX_GAUGES) {
+    if (!c.isPlayer && vis_[k].px >= 2.5f && gaugeCount_ < MAX_GAUGES) {
       float bodyR = c.bodyRadius / (float)FU;
       vec3f up = q30ToF(c.frame.n);
       float sx, sy;
       if (project(pos + up * (bodyR * 0.3f + 0.5f), sx, sy)) {
-        int w = (int)(vis[k].px * 1.6f);
+        int w = (int)(vis_[k].px * 1.6f);
         int wMin = ui(14, 6), wMax = ui(48, 12);
         w = w < wMin ? wMin : (w > wMax ? wMax : w);
         if (sx > -w && sx < w_ + w && sy > -8 && sy < h_ + 8) {

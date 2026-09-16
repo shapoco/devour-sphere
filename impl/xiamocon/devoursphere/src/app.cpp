@@ -137,6 +137,7 @@ void xmcAppSetup(void) {
   // screen blank until the clock has moved.
   g_lastUs = xmc::getTimeUs();
   g_accUs = ds::TICK_US;
+  ds::Profiler::paintCore0Stack();
   xmc::startCore1(core1Task);
 }
 

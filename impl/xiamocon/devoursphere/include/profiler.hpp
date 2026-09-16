@@ -42,7 +42,9 @@ class Profiler {
   // Paint core1's stack so that stackUsed() can find the high water mark.
   // Called from core1 itself, once, before it does any real work.
   static void paintCore1Stack();
+  static void paintCore0Stack();
   static uint32_t core1StackUsed();
+  static uint32_t core0StackUsed();
 
   // Format what was just measured for the next frame to draw
   void endFrame(uint64_t nowUs, const devoursphere::render::RenderStats &stats);
@@ -66,7 +68,9 @@ class Profiler {
   uint32_t core1WaitUs = 0;
   int ticks = 0;
   static void paintCore1Stack() {}
+  static void paintCore0Stack() {}
   static uint32_t core1StackUsed() { return 0; }
+  static uint32_t core0StackUsed() { return 0; }
   void endFrame(uint64_t, const devoursphere::render::RenderStats &) {}
   void drawOverlay(const g2::Surface &, int) {}
 #endif

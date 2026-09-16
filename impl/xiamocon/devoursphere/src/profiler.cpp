@@ -49,26 +49,47 @@ constexpr uint32_t STACK_PAINT = 0xC1C1C1C1u;
 
 }  // namespace
 
-// Linker symbols: core1's stack runs from __StackOneBottom up to
-// __StackOneTop (SCRATCH_X, 4 KB). Declared as arrays so that pointer
-// arithmetic over them is well defined.
+// Linker symbols. Each core gets 4 KB: core0 in SCRATCH_Y, core1 in
+// SCRATCH_X, and they are adjacent -- so an overflow of one now lands in the
+// other, which is exactly what makes this worth measuring. Declared as
+// arrays so that pointer arithmetic over them is well defined.
 extern "C" {
-extern uint32_t __StackOneBottom[];
+extern uint32_t __StackOneBottom[];  // core1, low address
 extern uint32_t __StackOneTop[];
+extern uint32_t __StackBottom[];  // core0, low address
+extern uint32_t __StackTop[];
 }
 
-void Profiler::paintCore1Stack() {
+namespace {
+uint32_t g_painted[2] = {0, 0};  // words painted, 0 = paint never ran
+
+uint32_t paint(uint32_t *bottom, int which) {
   uint32_t sp;
   __asm volatile("mov %0, sp" : "=r"(sp));
   // Everything below the current frame, less a little slack, is unused
   uint32_t *end = (uint32_t *)(sp - 64);
-  for (uint32_t *q = __StackOneBottom; q < end; q++) *q = STACK_PAINT;
+  uint32_t n = 0;
+  for (uint32_t *q = bottom; q < end; q++, n++) *q = STACK_PAINT;
+  g_painted[which] = n;
+  return n;
 }
 
+uint32_t used(const uint32_t *bottom, const uint32_t *top, int which) {
+  if (g_painted[which] == 0) return 0;  // never painted: nothing to report
+  const uint32_t *q = bottom;
+  while (q < top && *q == STACK_PAINT) q++;
+  return (uint32_t)((size_t)(top - q) * sizeof(uint32_t));
+}
+}  // namespace
+
+void Profiler::paintCore1Stack() { paint(__StackOneBottom, 1); }
+void Profiler::paintCore0Stack() { paint(__StackBottom, 0); }
+
 uint32_t Profiler::core1StackUsed() {
-  const uint32_t *q = __StackOneBottom;
-  while (q < __StackOneTop && *q == STACK_PAINT) q++;
-  return (uint32_t)((size_t)(__StackOneTop - q) * sizeof(uint32_t));
+  return used(__StackOneBottom, __StackOneTop, 1);
+}
+uint32_t Profiler::core0StackUsed() {
+  return used(__StackBottom, __StackTop, 0);
 }
 
 void Profiler::endFrame(uint64_t nowUs,
@@ -119,8 +140,12 @@ void Profiler::endFrame(uint64_t nowUs,
         p = putMs(p, end, cmdUs);
         p = putStr(p, end, " W");
         p = putMs(p, end, core1WaitUs);
+        // Stack high water marks, core1 then core0. Both stacks are 4096
+        // bytes and sit next to each other, so either reaching it is a bug.
         p = putStr(p, end, " S");
         p = putUint(p, end, core1StackUsed());
+        p = putStr(p, end, "/");
+        p = putUint(p, end, core0StackUsed());
         break;
       case 3:  // did the scene fit in the triangle buffer and the span pool?
         p = putStr(p, end, "TRI ");

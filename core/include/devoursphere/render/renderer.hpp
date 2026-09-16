@@ -233,6 +233,15 @@ class Renderer {
   // Per-frame bookkeeping
   uint32_t edgeKeys_[2048];  // edge dedupe hash table
   int lineCount_ = 0, pointCount_ = 0, entitiesDrawn_ = 0, kites_ = 0;
+  // Visible entities of the frame, sorted by distance. A member rather than
+  // a local: 256 of these is 3 KB, which is most of the 4 KB stack a core
+  // gets on RP2350 (the stacks live in SCRATCH_X / SCRATCH_Y and cannot be
+  // grown), and buildScene() would overflow it.
+  struct Vis {
+    float d, px;
+    int16_t idx;
+  };
+  Vis vis_[sim::MAX_ENTITIES];
   Gauge2D gauges_[MAX_GAUGES];
   int gaugeCount_ = 0;
   Marker2D markers_[MAX_MARKERS];
