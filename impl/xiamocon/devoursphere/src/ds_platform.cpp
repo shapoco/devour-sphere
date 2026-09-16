@@ -24,13 +24,19 @@ void frameIdle() { vTaskDelay(1); }
 void transferIdle() { taskYIELD(); }
 
 devoursphere::sim::Game *allocGame() {
-  // MALLOC_CAP_SPIRAM, not the default heap: 133 KB would not fit in the
-  // internal DRAM the linker leaves us
+#if DS_GAME_IN_PSRAM
+  // MALLOC_CAP_SPIRAM, not the default heap: 136 KB would not fit in the
+  // internal DRAM the linker leaves us without taking it from the arena
   void *p =
       heap_caps_malloc(sizeof(devoursphere::sim::Game), MALLOC_CAP_SPIRAM);
   trace("game in psram", (uint32_t)(uintptr_t)p);
   if (!p) return nullptr;
   return new (p) devoursphere::sim::Game();
+#else
+  static devoursphere::sim::Game game;
+  trace("game in dram", (uint32_t)(uintptr_t)&game);
+  return &game;
+#endif
 }
 
 uint16_t *allocBandBuffer(size_t bytes) {
