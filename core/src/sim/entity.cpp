@@ -147,30 +147,62 @@ void Game::updateAi(int idx) {
 
   if (c.hitStreak > 0) c.hitStreak--;
   if (c.evadeTicks > 0) {
-    // Under sustained fire: get out of the shooter's line of fire. The
-    // escape heading is sideways to the shooter (the side that needs the
-    // smaller turn, so the enemy keeps crossing the line rather than
-    // reversing), leaning away from it. Quick turn under brake while far
-    // off that heading, dash once pointing there.
-    c.aiMode = AiMode::FLEE;
+    // Under sustained fire (see EvadeMode)
     int from = c.evadeFrom;
-    Vec3 escape = {0, 0, 0};
-    if (from >= 0 && from < MAX_ENTITIES && entities[from].alive) {
-      Vec3 d = normalizeQ30(tangentTowards(c.frame.n, entities[from].frame.n));
-      Vec3 side = crossQ30(c.frame.n, d);  // across the line of fire
-      int32_t along = dotQ30(side, c.frame.t);
-      constexpr int32_t AMBIGUOUS = Q30_ONE / 8;  // within ~7 deg of the line
-      if (along < AMBIGUOUS && along > -AMBIGUOUS) along = c.evadeDir;
-      if (along < 0) side = -side;
-      escape = side - Vec3{d.x >> 1, d.y >> 1, d.z >> 1};
-    }
-    if (escape.x == 0 && escape.y == 0 && escape.z == 0) {
+    bool shooter = from >= 0 && from < MAX_ENTITIES && entities[from].alive;
+    if (!shooter) {
       // Shooter unknown or gone: break off in the remembered direction
+      c.aiMode = AiMode::FLEE;
       c.turn = c.evadeDir;
       c.braking = c.evadeTicks > AI_EVADE_TICKS / 2;
       c.dashing = !c.braking;
       return;
     }
+    const Entity &o = entities[from];
+    if (c.evadeMode == (uint8_t)EvadeMode::COUNTER) {
+      // Counterattack: quick turn under brake until the shooter is within
+      // AI_EVADE_TURN_ANGLE, fire whenever it is in the cone and in range,
+      // then charge (dash when it is far)
+      c.aiMode = AiMode::HUNT_ENTITY;
+      c.aiTarget = (int16_t)from;
+      int16_t err;
+      c.turn = steerTowards(c, o.frame.n, false, &err);
+      int32_t a = err < 0 ? -err : err;
+      c.braking = a > (int32_t)AI_EVADE_TURN_ANGLE;
+      Vec3 dn = normalizeQ30(tangentTowards(c.frame.n, o.frame.n));
+      const WeaponSpec &ws = WEAPON_SPECS[(int)c.weapon];
+      int64_t range = (int64_t)bulletSpeed(ws, c.size) * ws.lifetime;
+      int64_t d2;
+      bool inRange = tangentialDist2(c.frame.n, o.frame.n,
+                                     (int32_t)(range > INT32_MAX ? INT32_MAX
+                                                                 : range),
+                                     d2);
+      c.firing = inRange && dotQ30(c.frame.t, dn) > COS_FIRE_CONE;
+      c.dashing = !c.braking && inRange &&
+                  d2 > (int64_t)(30 * FU) * (30 * FU);
+      return;
+    }
+    // Break off: get out of the shooter's line of fire. The escape heading
+    // is sideways to the shooter, leaning away from it; the side is the one
+    // that needs the smaller turn when the maneuver starts (so the enemy
+    // keeps crossing the line rather than reversing) and flips halfway
+    // through for a zigzag. Quick turn under brake while far off that
+    // heading, dash once pointing there.
+    c.aiMode = AiMode::FLEE;
+    Vec3 d = normalizeQ30(tangentTowards(c.frame.n, o.frame.n));
+    Vec3 side = crossQ30(c.frame.n, d);  // across the line of fire
+    if (c.evadeMode == (uint8_t)EvadeMode::BREAK_PICK_SIDE) {
+      int32_t along = dotQ30(side, c.frame.t);
+      constexpr int32_t AMBIGUOUS = Q30_ONE / 8;  // within ~7 deg of the line
+      if (along > AMBIGUOUS) c.evadeDir = 1;
+      if (along < -AMBIGUOUS) c.evadeDir = -1;
+      c.evadeMode = (uint8_t)EvadeMode::BREAK;
+    } else if (c.evadeFlipAt > 0 && c.evadeTicks <= c.evadeFlipAt) {
+      c.evadeDir = (int8_t)-c.evadeDir;
+      c.evadeFlipAt = 0;
+    }
+    if (c.evadeDir < 0) side = -side;
+    Vec3 escape = side - Vec3{d.x >> 1, d.y >> 1, d.z >> 1};
     int16_t err = headingError(c.frame, escape);
     constexpr int16_t DEAD = (int16_t)degToBrad(4);
     c.turn = err > DEAD ? -1 : (err < -DEAD ? 1 : 0);

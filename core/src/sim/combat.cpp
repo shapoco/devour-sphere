@@ -247,10 +247,19 @@ void Game::damageEntity(int idx, int32_t dmg, int attacker, bool allowCrit) {
         c.hitStreak = 0;
         c.evadeTicks =
             (int16_t)(AI_EVADE_TICKS + rng_.range(0, AI_EVADE_TICKS / 2));
-        c.evadeFrom = (int16_t)(attacker >= 0 && attacker < MAX_ENTITIES
-                                    ? attacker
-                                    : -1);
+        bool known = attacker >= 0 && attacker < MAX_ENTITIES;
+        c.evadeFrom = (int16_t)(known ? attacker : -1);
         c.evadeDir = (int8_t)(rng_.below(2) ? 1 : -1);
+        c.evadeFlipAt = (int16_t)(c.evadeTicks / 2);
+        c.evadeMode = (uint8_t)EvadeMode::BREAK_PICK_SIDE;
+        // A shooter no bigger than about oneself is fought back at (when
+        // the health allows), otherwise (or by chance) the enemy breaks off
+        if (known && c.hp * AI_COUNTER_MIN_HP_DIV > c.hpMax &&
+            effectiveSizeQ8(entities[attacker]) * 100 <=
+                effectiveSizeQ8(c) * AI_COUNTER_MAX_RATIO_PCT &&
+            (int32_t)rng_.below(100) < AI_COUNTER_CHANCE_PCT) {
+          c.evadeMode = (uint8_t)EvadeMode::COUNTER;
+        }
       }
     } else {
       // Still under fire: keep evading (from the latest shooter)

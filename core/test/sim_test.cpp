@@ -484,51 +484,69 @@ static void testDifficultyAndEvade() {
   }
 
   // Evasion: an equal enemy straight ahead under vulcan fire starts evading
-  // after two quick hits, remembers the shooter, dashes and leaves the line
-  // of fire sideways
+  // after two quick hits and remembers the shooter. Depending on the roll it
+  // either breaks off (dashes and leaves the line of fire sideways) or
+  // counterattacks (turns on the player and fires back); over a handful of
+  // seeds both must occur
   {
-    Game g;
-    g.reset(2024);
-    g.debugStartSphere(1, 0);
-    Entity &p = g.entities[g.playerIndex()];
-    int enemy = firstEnemy(g, 1);
-    Entity &e = g.entities[enemy];
-    e.size = p.size;
-    e.hpMax = HP_PER_SIZE * (int32_t)e.size;
-    e.hp = e.hpMax;
-    e.fragmentCount = p.fragmentCount;
-    for (int k = 0; k < p.fragmentCount; k++) e.fragments[k] = p.fragments[k];
-    e.frame.t = p.frame.t;
-    e.frame.n = normalizeQ30(
-        p.frame.n +
-        scaleQ30(p.frame.t, (20 * FU) << (Q30_SHIFT - SPHERE_RADIUS_SHIFT)));
-    e.frame.t = orthonormalizeQ30(e.frame.t, e.frame.n);
-    e.r = p.r;
-    e.invincible = 0;
-    bool evaded = false, dashed = false, fromPlayer = false;
-    int32_t lateralMax = 0;
-    int after = 0;
-    for (int t = 0; t < 8 * TICK_RATE && g.entities[enemy].alive; t++) {
-      g.tick(Button::DOWN | Button::A);
-      const Entity &c = g.entities[enemy];
-      const Entity &q = g.player();
-      if (c.evadeTicks > 0) {
-        evaded = true;
-        if (c.evadeFrom == g.playerIndex()) fromPlayer = true;
+    int broke = 0, countered = 0;
+    for (uint32_t seed = 2024; seed < 2032; seed++) {
+      Game g;
+      g.reset(seed);
+      g.debugStartSphere(1, 0);
+      Entity &p = g.entities[g.playerIndex()];
+      int enemy = firstEnemy(g, 1);
+      Entity &e = g.entities[enemy];
+      e.size = p.size;
+      e.hpMax = HP_PER_SIZE * (int32_t)e.size;
+      e.hp = e.hpMax;
+      e.fragmentCount = p.fragmentCount;
+      for (int k = 0; k < p.fragmentCount; k++) e.fragments[k] = p.fragments[k];
+      e.frame.t = p.frame.t;
+      e.frame.n = normalizeQ30(
+          p.frame.n +
+          scaleQ30(p.frame.t, (20 * FU) << (Q30_SHIFT - SPHERE_RADIUS_SHIFT)));
+      e.frame.t = orthonormalizeQ30(e.frame.t, e.frame.n);
+      e.r = p.r;
+      e.invincible = 0;
+      bool evaded = false, dashed = false, fromPlayer = false;
+      bool counterMode = false, firedBack = false;
+      int32_t lateralMax = 0;
+      int after = 0;
+      for (int t = 0; t < 8 * TICK_RATE && g.entities[enemy].alive; t++) {
+        g.tick(Button::DOWN | Button::A);
+        const Entity &c = g.entities[enemy];
+        const Entity &q = g.player();
+        if (c.evadeTicks > 0) {
+          evaded = true;
+          if (c.evadeFrom == g.playerIndex()) fromPlayer = true;
+          if (c.evadeMode == (uint8_t)EvadeMode::COUNTER) counterMode = true;
+        }
+        if (evaded) {
+          if (c.dashing) dashed = true;
+          for (const Bullet &b : g.bullets)
+            if (b.alive && b.owner == enemy) firedBack = true;
+          Vec3 rel =
+              scaleToLength(c.frame.n, c.r) - scaleToLength(q.frame.n, q.r);
+          int32_t lateral = dotQ30(rel, q.frame.right());
+          if (lateral < 0) lateral = -lateral;
+          if (lateral > lateralMax) lateralMax = lateral;
+          if (++after > 3 * TICK_RATE) break;
+        }
       }
-      if (evaded) {
-        if (c.dashing) dashed = true;
-        Vec3 rel = scaleToLength(c.frame.n, c.r) - scaleToLength(q.frame.n, q.r);
-        int32_t lateral = dotQ30(rel, q.frame.right());
-        if (lateral < 0) lateral = -lateral;
-        if (lateral > lateralMax) lateralMax = lateral;
-        if (++after > 3 * TICK_RATE) break;
+      CHECK(evaded);
+      CHECK(fromPlayer);
+      if (counterMode) {
+        CHECK(firedBack);
+        countered++;
+      } else {
+        CHECK(dashed);
+        CHECK(lateralMax > 8 * FU);
+        broke++;
       }
     }
-    CHECK(evaded);
-    CHECK(fromPlayer);
-    CHECK(dashed);
-    CHECK(lateralMax > 8 * FU);
+    CHECK(broke >= 1);
+    CHECK(countered >= 1);
   }
 }
 

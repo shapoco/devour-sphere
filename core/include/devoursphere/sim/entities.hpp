@@ -47,6 +47,13 @@ struct Frame {
 
 enum class AiMode : uint8_t { WANDER, HUNT_FRAGMENT, HUNT_ENTITY, FLEE };
 
+// What an enemy under fire does (Entity::evadeMode)
+enum class EvadeMode : uint8_t {
+  BREAK_PICK_SIDE = 0,  // break off; the side is chosen at the next think
+  BREAK,                // break off sideways (evadeDir is the side)
+  COUNTER               // quick turn towards the shooter and fight back
+};
+
 struct Entity {
   bool alive;
   bool isPlayer;
@@ -67,7 +74,9 @@ struct Entity {
   int16_t absorbGuard;  // ticks during which the entity cannot be absorbed
   int16_t evadeTicks;   // AI: ticks left of an evasive maneuver
   int16_t evadeFrom;    // AI: entity whose fire triggered it (-1 = unknown)
-  int8_t evadeDir;      // AI: preferred side when the geometry is ambiguous
+  int16_t evadeFlipAt;  // AI: flip the escape side when evadeTicks gets here
+  int8_t evadeDir;      // AI: escape side (+1 / -1; see EvadeMode)
+  uint8_t evadeMode;    // AI: EvadeMode
   uint8_t hitStreak;    // AI: recent hits taken (decays)
 
   Fragment fragments[MAX_FRAGMENTS_PER_ENTITY];

@@ -267,6 +267,16 @@ constexpr int AI_FIRE_CHANCE_LEVELS = 4;
 constexpr int AI_EVADE_HITS = 2;
 constexpr int AI_EVADE_TICKS = 2 * TICK_RATE;
 constexpr uint16_t AI_EVADE_TURN_ANGLE = degToBrad(45);
+// Halfway through a break-off the enemy flips its escape side with another
+// quick turn (a zigzag), so it never just runs in a straight line. When the
+// shooter's effective size is at most AI_COUNTER_MAX_RATIO_PCT percent of
+// the enemy's own and the enemy still has more than 1 / AI_COUNTER_MIN_HP_DIV
+// of its health, it counterattacks instead with AI_COUNTER_CHANCE_PCT
+// percent probability: a quick turn under brake towards the shooter, firing
+// as soon as it is in the cone, then a charge.
+constexpr int32_t AI_COUNTER_CHANCE_PCT = 50;
+constexpr int32_t AI_COUNTER_MAX_RATIO_PCT = 125;
+constexpr int32_t AI_COUNTER_MIN_HP_DIV = 3;
 // Steering: brake (quick turn) when the target is more than this far around
 // and closer than AI_QUICK_TURN_FU
 constexpr uint16_t AI_QUICK_TURN_ANGLE = degToBrad(60);
