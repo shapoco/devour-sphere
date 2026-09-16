@@ -63,7 +63,10 @@ extern uint32_t __StackTop[];
 namespace {
 uint32_t g_painted[2] = {0, 0};  // words painted, 0 = paint never ran
 
+// Reading sp is Arm only; on a host build (the overlay is rendered there to
+// check its layout) the readout simply stays at zero.
 uint32_t paint(uint32_t *bottom, int which) {
+#ifdef __arm__
   uint32_t sp;
   __asm volatile("mov %0, sp" : "=r"(sp));
   // Everything below the current frame, less a little slack, is unused
@@ -72,6 +75,11 @@ uint32_t paint(uint32_t *bottom, int which) {
   for (uint32_t *q = bottom; q < end; q++, n++) *q = STACK_PAINT;
   g_painted[which] = n;
   return n;
+#else
+  (void)bottom;
+  (void)which;
+  return 0;
+#endif
 }
 
 uint32_t used(const uint32_t *bottom, const uint32_t *top, int which) {
@@ -138,13 +146,15 @@ void Profiler::endFrame(uint64_t nowUs,
                // whether fewer, taller bands would pay off.
         p = putStr(p, end, "CMD ");
         p = putMs(p, end, cmdUs);
-        p = putStr(p, end, " W");
+        p = putStr(p, end, "  W ");
         p = putMs(p, end, core1WaitUs);
-        // Stack high water marks, core1 then core0. Both stacks are 4096
-        // bytes and sit next to each other, so either reaching it is a bug.
-        p = putStr(p, end, " S");
+        break;
+      case 6:  // Stack high water marks. Both stacks are 4096 bytes and sit
+               // next to each other in SCRATCH_X / SCRATCH_Y, so neither can
+               // be grown and either reaching the limit is a bug.
+        p = putStr(p, end, "STK1 ");
         p = putUint(p, end, core1StackUsed());
-        p = putStr(p, end, "/");
+        p = putStr(p, end, "  STK0 ");
         p = putUint(p, end, core0StackUsed());
         break;
       case 3:  // did the scene fit in the triangle buffer and the span pool?

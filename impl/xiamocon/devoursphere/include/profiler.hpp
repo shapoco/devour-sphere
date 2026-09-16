@@ -54,7 +54,7 @@ class Profiler {
   void drawOverlay(const g2::Surface &band, int bandY);
 
  private:
-  static constexpr int LINES = 6;
+  static constexpr int LINES = 7;
   static constexpr int COLS = 21;
   bool on_ = false;
   char lines_[LINES][COLS + 1] = {};
