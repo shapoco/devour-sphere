@@ -52,9 +52,14 @@ class Profiler {
   // out right: the clip rectangle splits them between the two bands.
   void drawOverlay(const g2::Surface &band, int bandY);
 
+  // Up to two lines a platform may add below the standard ones (clocks, a
+  // transfer benchmark by several methods, ...). An empty line is not drawn.
+  static constexpr int COLS = 21;
+  static constexpr int EXTRA_LINES = 2;
+  char extra[EXTRA_LINES][COLS + 1] = {};
+
  private:
   static constexpr int LINES = 8;
-  static constexpr int COLS = 21;
   bool on_ = false;
   char lines_[LINES][COLS + 1] = {};
   uint64_t windowUs_ = 0;  // start of the frame rate window
@@ -69,6 +74,9 @@ class Profiler {
   int ticks = 0;
   void endFrame(uint64_t, const devoursphere::render::RenderStats &) {}
   void drawOverlay(const g2::Surface &, int) {}
+  static constexpr int COLS = 21;
+  static constexpr int EXTRA_LINES = 2;
+  char extra[EXTRA_LINES][COLS + 1] = {};
 #endif
 };
 

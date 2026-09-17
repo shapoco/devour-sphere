@@ -148,12 +148,18 @@ void Profiler::drawOverlay(const g2::Surface &band, int bandY) {
   // clipped away, so a line crossing the boundary is drawn in both bands and
   // comes out seamless.
   const int oy = -bandY;
+  int extras = 0;
+  while (extras < EXTRA_LINES && extra[extras][0]) extras++;
   const int w = g.measureText("00000000000000000000") + 2 * PAD;
-  const int h = LINES * LINE_ADV + 2 * PAD;
+  const int h = (LINES + extras) * LINE_ADV + 2 * PAD;
   g.fillRect(PANEL_X, PANEL_Y + oy, w, h, g2::makeColor(0, 0, 0, 190));
   g.setTextColor(g2::makeColor(150, 255, 170));
   for (int i = 0; i < LINES; i++) {
     g.drawString(PANEL_X + PAD, PANEL_Y + oy + PAD + i * LINE_ADV, lines_[i]);
+  }
+  for (int i = 0; i < extras; i++) {
+    g.drawString(PANEL_X + PAD, PANEL_Y + oy + PAD + (LINES + i) * LINE_ADV,
+                 extra[i]);
   }
 }
 

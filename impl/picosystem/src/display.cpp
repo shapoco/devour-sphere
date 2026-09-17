@@ -163,23 +163,51 @@ void Display::setWindow(int x, int y, int w, int h) {
 void Display::writeStart(int y, int w, int h, const uint16_t *pixels) {
   complete();  // the SPI must be idle before its clock or frame size change
   // Window commands as the SDK sends them (8-bit, 8 MHz, CS per command),
-  // then the pixels as one CS-low burst at the pixel clock in 16-bit frames
+  // then the pixels as one CS-low burst at the pixel clock
   spi_set_baudrate(SPI, CMD_HZ);
   spiFormat8();
   setWindow(0, y, w, h);
   spi_set_baudrate(SPI, pixelHz_);
-  spiFormat16();
-  gpio_put(PIN_DC, 1);
-  gpio_put(PIN_CS, 0);
+  const uint32_t words = (uint32_t)(w * h);
+
+  if (xfer_ == Xfer::CPU16) {
+    // Synchronous: swap each word (the buffer is big-endian, the SPI shifts
+    // a word MSB first) through a small staging buffer and keep the FIFO fed
+    static uint16_t stage[256];
+    spiFormat16();
+    gpio_put(PIN_DC, 1);
+    gpio_put(PIN_CS, 0);
+    for (uint32_t i = 0; i < words; i += 256) {
+      const uint32_t n = words - i < 256 ? words - i : 256;
+      for (uint32_t k = 0; k < n; k++) {
+        stage[k] = (uint16_t)__builtin_bswap16(pixels[i + k]);
+      }
+      spi_write16_blocking(SPI, stage, n);
+    }
+    while (spi_is_busy(SPI)) tight_loop_contents();
+    gpio_put(PIN_CS, 1);
+    return;
+  }
 
   dma_channel_config c = dma_channel_get_default_config(dma_);
-  channel_config_set_transfer_data_size(&c, DMA_SIZE_16);
   channel_config_set_read_increment(&c, true);
   channel_config_set_write_increment(&c, false);
   channel_config_set_dreq(&c, spi_get_dreq(SPI, true));
-  channel_config_set_bswap(&c, true);
-  dma_channel_configure(dma_, &c, &spi_get_hw(SPI)->dr, pixels,
-                        (uint32_t)(w * h), true);
+  uint32_t count = words;
+  if (xfer_ == Xfer::DMA16) {
+    // 16-bit words, byte-swapped on the way out, 16-bit SPI frames
+    spiFormat16();
+    channel_config_set_transfer_data_size(&c, DMA_SIZE_16);
+    channel_config_set_bswap(&c, true);
+  } else {
+    // Bytes in the order they already sit in memory, 8-bit SPI frames (the
+    // SPI is still in 8-bit mode from the commands)
+    channel_config_set_transfer_data_size(&c, DMA_SIZE_8);
+    count = words * 2;
+  }
+  gpio_put(PIN_DC, 1);
+  gpio_put(PIN_CS, 0);
+  dma_channel_configure(dma_, &c, &spi_get_hw(SPI)->dr, pixels, count, true);
   pending_ = true;
 }
 

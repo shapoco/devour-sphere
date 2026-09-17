@@ -12,9 +12,12 @@
 
 #include <hardware/clocks.h>
 #include <hardware/gpio.h>
+#include <hardware/spi.h>
 #include <hardware/vreg.h>
 #include <pico/multicore.h>
 #include <pico/stdlib.h>
+
+#include <cstdio>
 
 #include "devoursphere/devoursphere.hpp"
 #include "display.hpp"
@@ -324,6 +327,7 @@ void frame() {
 
 int main() {
   initButtons();
+  sleep_ms(2);  // let the pull-ups charge the pins before the first read
 #if DS_OVERCLOCK
   // What the PicoSystem SDK does: a modest overvolt, then 250 MHz. The board
   // file's flash divider (2) keeps the QSPI at 125 MHz, which the part
@@ -376,8 +380,38 @@ int main() {
                   ds::SPAN_CAPACITY);
 
   ds::stackWatchInitCore0();
-  // Both cores are otherwise idle here, so this is the transfer on its own
-  g_prof.xferUs = measureTransfer();
+  // Both cores are otherwise idle here, so this is the transfer on its own.
+  // All three ways of feeding the SPI are timed and the fastest is kept; the
+  // overlay's last two lines show the clocks and the three figures, so a
+  // slow transfer can be pinned on the clock, the DMA pacing or the SPI.
+  {
+    using Xfer = ds::Display::Xfer;
+    const Xfer modes[3] = {Xfer::DMA16, Xfer::DMA8, Xfer::CPU16};
+    uint32_t us[3];
+    int best = 0;
+    for (int i = 0; i < 3; i++) {
+      g_display.setTransfer(modes[i]);
+      us[i] = measureTransfer();
+      if (us[i] < us[best]) best = i;
+    }
+    g_display.setTransfer(modes[best]);
+    g_prof.xferUs = us[best];
+    const uint32_t sysMHz = clock_get_hz(clk_sys) / 1000000u;
+    const uint32_t periMHz = clock_get_hz(clk_peri) / 1000000u;
+    const uint32_t spi100k = spi_get_baudrate(spi0) / 100000u;  // 0.1 MHz
+    std::snprintf(g_prof.extra[0], sizeof(g_prof.extra[0]),
+                  "CLK %lu PERI %lu SPI %lu.%lu", (unsigned long)sysMHz,
+                  (unsigned long)periMHz, (unsigned long)(spi100k / 10),
+                  (unsigned long)(spi100k % 10));
+    // Transfer of a whole screen by DMA16 / DMA8 / CPU16, in ms (the one in
+    // use is the smallest)
+    std::snprintf(
+        g_prof.extra[1], sizeof(g_prof.extra[1]),
+        "16:%lu.%lu 8:%lu.%lu C:%lu.%lu", (unsigned long)(us[0] / 1000),
+        (unsigned long)(us[0] / 100 % 10), (unsigned long)(us[1] / 1000),
+        (unsigned long)(us[1] / 100 % 10), (unsigned long)(us[2] / 1000),
+        (unsigned long)(us[2] / 100 % 10));
+  }
 
   // Start owing one tick, so the first loop has something to do instead of
   // waiting for the clock to move
