@@ -90,11 +90,15 @@ static UiMetrics computeUi(int w, int h) {
   return m;
 }
 
-void Renderer::init(int width, int height, void *arena, size_t arenaSize) {
+void Renderer::init(int width, int height, void *arena, size_t arenaSize,
+                    int spanCapacity) {
   w_ = width;
   h_ = height;
   ui_ = computeUi(width, height);
-  g3d_.init((int16_t)width, (int16_t)height, arena, arenaSize);
+  g3::Config cfg =
+      g3::defaultConfig((int16_t)width, (int16_t)height, arena, arenaSize);
+  cfg.spanCapacity = spanCapacity;
+  g3d_.init(cfg);
   g3d_.disableClear();
 
   palette_[PAL_PLAYER] = flatMaterial(hueColor(sim::FRAGMENT_HUE, 220, 230));

@@ -157,8 +157,18 @@ class Renderer {
   static constexpr int MAX_DEBRIS = 64;
   static constexpr int MAX_DUST = 64;
 
-  // arena: working memory of the 3D renderer (192 KB or more recommended)
-  void init(int width, int height, void *arena, size_t arenaSize);
+  // arena: working memory of the 3D renderer. The triangle buffer it is
+  // divided into is what binds: about 37 KB on a 32-bit target holds the
+  // whole scene at 240x240 without the renderer thinning it, and the peak
+  // frame only uses half of that. 64 KB is comfortable there; the WASM front
+  // end keeps 256 KB because it has the room and draws bigger screens.
+  //
+  // spanCapacity: spans held per scanline, 0 for the ShapoGFX default (a
+  // quarter of what is left after the fixed part, which is far more than
+  // this scene needs -- see impl/xiamocon/SPEC.md). Whatever it saves goes
+  // to the triangle buffer.
+  void init(int width, int height, void *arena, size_t arenaSize,
+            int spanCapacity = 0);
 
   // The control hints of the title screen (init() keeps them, so this can be
   // called once at start up whatever the frame buffer size does afterwards)

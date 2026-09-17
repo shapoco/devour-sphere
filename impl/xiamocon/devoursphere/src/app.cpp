@@ -183,7 +183,8 @@ void xmcAppSetup(void) {
       render::ControlHints{}.dash,
       render::ControlHints{}.dashAlt,
   });
-  g_renderer.init(ds::SCREEN_W, ds::SCREEN_H, g_arena, sizeof(g_arena));
+  g_renderer.init(ds::SCREEN_W, ds::SCREEN_H, g_arena, sizeof(g_arena),
+                  ds::SPAN_CAPACITY);
   if (!g_bands.init()) {
     ds::trace("no memory for the band buffers, free", ds::freeInternalRam());
     g_game = nullptr;  // xmcAppLoop() bails out

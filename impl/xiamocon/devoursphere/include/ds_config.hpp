@@ -31,42 +31,48 @@ constexpr int BAND_H = 40;
 constexpr int BAND_COUNT = SCREEN_H / BAND_H;
 static_assert(SCREEN_H % BAND_H == 0, "the bands must tile the screen exactly");
 
-// Working memory of the 3D renderer. What binds here is not the whole arena
-// (23.4 KB in use at the measured peak) but the triangle buffer it is
-// divided into: buildScene() hands out what that buffer has left, so a small
-// one costs the entities their per-fragment detail and then thins the sphere
-// wireframe.
+// Working memory of the 3D renderer. What binds is not the whole arena but
+// the triangle buffer it is divided into: buildScene() hands out what that
+// buffer has left, so a small one costs the entities their per-fragment
+// detail (and, much further down, starts dropping primitives outright).
 //
-// Since ShapoGFX ba15719 that buffer is a byte budget rather than a slot
-// count: a primitive's record holds only the attributes it has (52 to 96
-// bytes here on a 32-bit target, entry included). Measured at 240x240 over
-// levels 1-7 x 3 seeds x 600 ticks driven by the AI player, priced on the
-// boards -- these are the numbers the profiling overlay shows:
+// Since ShapoGFX ba15719 the buffer is a byte budget rather than a slot
+// count -- a primitive's record holds only the attributes it has, 52 to 96
+// bytes here on a 32-bit target with the entry included. Measured at 240x240
+// over levels 1-7 x 3 seeds x 600 ticks driven by the AI player, priced on
+// the boards:
 //
-//     bytes the peak frame needs            17.7 KB
-//     bytes needed to stop thinning         about 38 KB
-//     triangle buffer at  96 KB (ESP32S3)   68.8 KB  = 1.8x the knee, 4.0x the peak
-//     triangle buffer at 128 KB (RP2350)    97.7 KB  = 2.6x the knee, 5.6x the peak
+//     the peak frame uses                     17.7 KB
+//     below this the renderer starts thinning 36.9 KB   (bit-identical above)
+//     64 KB arena with SPAN_CAPACITY spans    53.2 KB   = 1.48x / 3.07x
 //
-// Below the knee buildScene() starts handing out less, and the entities lose
-// their per-fragment detail first; primitives are only dropped much further
-// down. Both boards clear it comfortably, so ARENA_SIZE stays where it is.
-// The ESP32S3 keeps 96 KB rather than 128. Everything that is not static
-// there comes out of one pool: the band buffers (77 KB at 80-row bands), the
-// SPI driver's own buffers (32 KB) and every FreeRTOS task stack, including
-// the 8 KB core1 asks for. At 128 KB the arena leaves too little and the
-// core1 task is silently not created -- xmc::startCore1() does not check.
+// 64 KB was 128 (RP2350) and 96 (ESP32S3) when the buffer was a slot count
+// and every slot cost the same. Three ShapoGFX changes took the peak from
+// 25.1 KB to 17.7 (records sized to their contents, the texture path
+// compiled out, three of the four layers carrying no depth), and tuning
+// SPAN_CAPACITY gave the span pool's share back, so the same headroom now
+// fits in half the memory.
 //
-// There is room to go the other way now: 64 KB would still be 1.5x the knee
-// and 3x the peak, and Config::spanCapacity would give back another 18 KB
-// (the default reserves a quarter of the arena for spans, 451 of them, while
-// the measured peak is 35). That is worth doing on the ESP32S3, where the
-// DRAM is the scarce thing -- see ../SPEC.md.
-#if defined(ESP32)
-constexpr size_t ARENA_SIZE = 96 * 1024;
-#else
-constexpr size_t ARENA_SIZE = 128 * 1024;
-#endif
+// On the ESP32S3 that is the point of the exercise: everything not static
+// comes out of one pool -- the band buffers (77 KB at 80-row bands), the SPI
+// driver's own buffers (32 KB) and every FreeRTOS task stack, including the
+// 8 KB core1 asks for. At 128 KB the arena left too little and core1 was
+// silently not created (xmc::startCore1() does not check); this hands 32 KB
+// back to that pool. On the RP2350 it is 64 KB of .bss that nothing else
+// needs today.
+constexpr size_t ARENA_SIZE = 64 * 1024;
+
+// Spans held per scanline. The ShapoGFX default reserves a quarter of what
+// is left after the fixed part -- 451 spans, 23 KB, at the old 96 KB arena --
+// against a measured peak of 32 at 240x240. It barely grows with the screen
+// (54 at 480x320, 59 at 1280x720), because what sets it is how many
+// primitives cross one scanline, not how wide the scanline is. 128 is four
+// times the peak here and still twice the worst seen at any resolution.
+//
+// Overflowing drops spans, which leaves holes in the picture, so this is not
+// a number to shave: the profiling overlay's SPN line reports the real peak
+// and the drop count.
+constexpr int SPAN_CAPACITY = 128;
 
 // The simulation runs at a fixed 60 Hz whatever the frame rate is
 constexpr uint32_t TICK_US = 1000000u / devoursphere::sim::TICK_RATE;
