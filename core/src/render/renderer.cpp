@@ -694,6 +694,16 @@ void Renderer::drawStars() {
 // shown as a soft glow at the screen edge in their direction (a fan whose
 // color fades from the enemy's color at the center to black at the rim,
 // added onto the frame). Nearer enemies get bigger and brighter auras.
+//
+// With DEVOURSPHERE_SIMPLE_AURAS the glow is a solid triangle in the
+// enemy's color instead, its tip on the screen edge pointing at the enemy,
+// bigger the nearer the enemy. A fan is thirteen vertices, twelve
+// Gouraud-shaded triangles and a few thousand additively blended pixels --
+// about a millisecond each on a Cortex-M0+, and up to twelve of them in a
+// crowd; the triangle is one flat, opaque primitive.
+#ifndef DEVOURSPHERE_SIMPLE_AURAS
+#define DEVOURSPHERE_SIMPLE_AURAS 0
+#endif
 void Renderer::drawPresenceAuras() {
   const sim::Game &g = *game_;
   if (g.state() != sim::GameState::PLAYING) return;
@@ -734,9 +744,27 @@ void Renderer::drawPresenceAuras() {
     float cx = hx + dx * tEdge;
     float cy = hy + dy * tEdge;
     // Screen -> view space at DEPTH
-    float vx = (cx / w_ * 2.0f - 1.0f) * tanX * DEPTH;
-    float vy = (1.0f - cy / h_ * 2.0f) * tanY * DEPTH;
-    vec3f center = cam_.eye + viewDir_ * DEPTH + right * vx + up * vy;
+    auto toView = [&](float px, float py) {
+      float vx = (px / w_ * 2.0f - 1.0f) * tanX * DEPTH;
+      float vy = (1.0f - py / h_ * 2.0f) * tanY * DEPTH;
+      return cam_.eye + viewDir_ * DEPTH + right * vx + up * vy;
+    };
+#if DEVOURSPHERE_SIMPLE_AURAS
+    // A solid triangle: tip on the edge, base inwards, width across the
+    // direction. 8..18 px long on the reference screen, 6..13 on 240x240
+    // (it scales half as fast as the UI so it stays readable when small).
+    const float triLen = (8.0f + 10.0f * near) * (ui_.scale8 + 8) / 16.0f;
+    const float half = triLen * 0.55f;
+    const float bx = cx - dx * triLen, by = cy - dy * triLen;  // base center
+    const vec3f tri[3] = {toView(cx, cy),
+                          toView(bx - dy * half, by + dx * half),
+                          toView(bx + dy * half, by - dx * half)};
+    static const uint16_t triIdx[3] = {0, 1, 2};
+    putSolid(tri, 3, triIdx, 3, materialForEntity(c));
+    drawn++;
+    continue;
+#endif
+    vec3f center = toView(cx, cy);
     float radius = radiusPx / focalPx_ * DEPTH;
     g2::Color col = colorForEntity(c);
     float bright = 0.3f + 0.7f * near;
