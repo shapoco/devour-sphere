@@ -43,6 +43,9 @@ add_compile_definitions(
     PICO_STACK_SIZE=4096
     PICO_CORE1_STACK_SIZE=4096
     DEVOURSPHERE_TICK_RATE=30
+    # The wireframe's segment array: 240x240 budgets 550 lines (1100 x
+    # scale), so the 1100 the reference screen needs would waste 5.4 KB
+    DEVOURSPHERE_MAX_WIRE=560
 )
 
 # --- The shared game core -----------------------------------------------

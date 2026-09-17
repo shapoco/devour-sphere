@@ -170,6 +170,10 @@ enum FramePhase {
 class Renderer {
  public:
   static constexpr int PALETTE_SIZE = 24;
+#ifndef DEVOURSPHERE_MAX_WIRE
+#define DEVOURSPHERE_MAX_WIRE 1100
+#endif
+  static constexpr int MAX_WIRE = DEVOURSPHERE_MAX_WIRE;  // wireframe segments
   static constexpr int MAX_SPHERE_LEVEL = 7;
   static constexpr int MAX_GAUGES = 64;
   static constexpr int MAX_MARKERS = 40;
@@ -319,7 +323,9 @@ class Renderer {
     int16_t x0, y0, x1, y1;  // screen, 1/16 pixel, clipped to the screen
     uint8_t b0, b1;          // brightness at each end (wireBrightness())
   };
-  static constexpr int MAX_WIRE = 1100;  // the largest UiMetrics::wireLines
+  // The largest UiMetrics::wireLines is 1100; a small target may cap the
+  // array (10 bytes a segment) with DEVOURSPHERE_MAX_WIRE, and computeUi()
+  // keeps the budget within it
   WireSeg wire_[MAX_WIRE];
   int wireCount_ = 0;
   struct StarPt {

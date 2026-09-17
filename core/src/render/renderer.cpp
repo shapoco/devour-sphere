@@ -81,12 +81,13 @@ static UiMetrics computeUi(int w, int h) {
   m.gaugeH = at(8, 3);
   m.iconScale8 = m.scale8 < 4 ? 4 : m.scale8;
   m.markerScale8 = m.iconScale8;
-  // The wireframe shares the triangle buffer, so its budget only ever goes
-  // down: a small screen does not need 1100 lines, a big one cannot hold
-  // more than the buffer has room for
+  // The wireframe's line budget only ever goes down from the reference: a
+  // small screen does not need 1100 lines, and the segment array (MAX_WIRE,
+  // DEVOURSPHERE_MAX_WIRE) may be smaller than that on a small target
   m.wireLines = 1100 * m.scale8 / 8;
   if (m.wireLines > 1100) m.wireLines = 1100;
   if (m.wireLines < 220) m.wireLines = 220;
+  if (m.wireLines > Renderer::MAX_WIRE) m.wireLines = Renderer::MAX_WIRE;
   return m;
 }
 
@@ -1038,7 +1039,14 @@ void Renderer::buildScene() {
   // 64-bit figure is used on a host so the budget is never optimistic there.
   constexpr int TRI_BYTES = sizeof(void *) > 4 ? 76 : 64;
   g3::Stats st = g3d_.getStats();
-  int triBudget = (int)((st.triBytesTotal - st.triBytes) / TRI_BYTES) - 380;
+  // The reserve is what the fragments, bullets and effects drawn after the
+  // entities may need: 380 records on a large arena, but never more than a
+  // third of what is free -- on a 32 KB arena (21 KB of buffer, 336 records)
+  // a fixed 380 left every entity an outline.
+  const int slots = (int)((st.triBytesTotal - st.triBytes) / TRI_BYTES);
+  int reserve = 380;
+  if (reserve > slots / 3) reserve = slots / 3;
+  int triBudget = slots - reserve;
   for (int k = 0; k < n; k++) {
     const sim::Entity &c = g.entities[vis_[k].idx];
     int fullTris = (1 + 2 * c.fragmentCount) * 2;
