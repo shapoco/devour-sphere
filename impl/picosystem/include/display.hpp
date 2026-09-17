@@ -30,6 +30,14 @@ class Display {
   // next band. Calling this with a transfer still in flight waits for it.
   void writeStart(int y, int w, int h, const uint16_t *pixels);
 
+  // Fill the whole panel with one RGB565BE value (synchronous)
+  void fill(uint16_t rgb565be);
+
+  // Clock for the pixel bursts (default ds::SPI_HZ). Lowering it is a
+  // diagnostic: at 8 MHz a frame takes 115 ms, but if the picture then
+  // appears the wiring cannot take the full rate.
+  void setPixelClock(uint32_t hz) { pixelHz_ = hz; }
+
   // Whether a transfer is still in flight
   bool busy() const;
 
@@ -42,6 +50,7 @@ class Display {
   void setWindow(int x, int y, int w, int h);
   int dma_ = -1;
   bool pending_ = false;
+  uint32_t pixelHz_ = 0;  // 0 until init(): ds::SPI_HZ
 };
 
 }  // namespace ds

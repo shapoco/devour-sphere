@@ -55,55 +55,59 @@ void spiFormat16() {
 
 }  // namespace
 
+// One command with its parameters, framed exactly as the PicoSystem SDK's
+// _screen_command(): chip select low for the duration of this command only,
+// D/C low for the command byte and high for the parameters, at the SDK's
+// 8 MHz command clock. The SPI is left in 8-bit mode at that clock.
 void Display::command(uint8_t c, const uint8_t *data, size_t len) {
-  gpio_put(PIN_DC, 0);  // command
+  gpio_put(PIN_CS, 0);
+  gpio_put(PIN_DC, 0);
   spi_write_blocking(SPI, &c, 1);
   if (len) {
-    gpio_put(PIN_DC, 1);  // parameters
+    gpio_put(PIN_DC, 1);
     spi_write_blocking(SPI, data, len);
   }
+  gpio_put(PIN_CS, 1);
 }
 
 void Display::init() {
-  // Backlight straight on; the SDK dims it through PWM, which nothing here
-  // needs
+  // Backlight: the SDK drives it through PWM (gamma corrected); a plain
+  // output is enough here. Off until the panel is configured.
   gpio_init(PIN_BACKLIGHT);
   gpio_set_dir(PIN_BACKLIGHT, GPIO_OUT);
-  gpio_put(PIN_BACKLIGHT, 0);  // off until the panel is configured
+  gpio_put(PIN_BACKLIGHT, 0);
 
-  gpio_init(PIN_CS);
-  gpio_set_dir(PIN_CS, GPIO_OUT);
-  gpio_put(PIN_CS, 1);
-  gpio_init(PIN_DC);
-  gpio_set_dir(PIN_DC, GPIO_OUT);
-  gpio_init(PIN_RESET);
+  // From here to DISPON this is the PicoSystem SDK's _init_hardware()
+  // (hardware.cpp, MIT) step for step, including the order of the pin setup,
+  // the delays and the 8 MHz command clock. The one difference is COLMOD:
+  // 0x55 selects the 16-bit RGB565 mode, where the SDK's 0x03 selects
+  // 12-bit. Keep it that way: an ST7789 that is not brought up exactly like
+  // this has shown a black panel with the backlight on.
+  spi_init(SPI, CMD_HZ);
+  if (pixelHz_ == 0) pixelHz_ = SPI_HZ;
+
+  gpio_set_function(PIN_RESET, GPIO_FUNC_SIO);
   gpio_set_dir(PIN_RESET, GPIO_OUT);
-
-  // The commands go out at the full rate too: the panel takes them at the
-  // pixel clock (that is what the Xiamocon SDK does), and it saves switching
-  // the baud rate per band
-  spi_init(SPI, SPI_HZ);
-  spiFormat8();
-  gpio_set_function(PIN_SCK, GPIO_FUNC_SPI);
-  gpio_set_function(PIN_MOSI, GPIO_FUNC_SPI);
-
-  // Reset cycle
   gpio_put(PIN_RESET, 0);
   sleep_ms(100);
   gpio_put(PIN_RESET, 1);
-  sleep_ms(10);
 
-  // The PicoSystem SDK's bring-up sequence (hardware.cpp, MIT), except for
-  // COLMOD: 0x55 selects the 16-bit RGB565 mode instead of the SDK's 12-bit
-  // one. The panel-specific voltages and gamma tables are copied verbatim.
-  gpio_put(PIN_CS, 0);
+  gpio_set_function(PIN_DC, GPIO_FUNC_SIO);
+  gpio_set_dir(PIN_DC, GPIO_OUT);
+  gpio_set_function(PIN_CS, GPIO_FUNC_SIO);
+  gpio_set_dir(PIN_CS, GPIO_OUT);
+  gpio_set_function(PIN_SCK, GPIO_FUNC_SPI);
+  gpio_set_function(PIN_MOSI, GPIO_FUNC_SPI);
+  gpio_put(PIN_CS, 1);
+
   command(SWRESET);
-  sleep_ms(150);
+  sleep_ms(5);
   command(MADCTL, (const uint8_t *)"\x04", 1);
   command(TEON, (const uint8_t *)"\x00", 1);
   command(FRMCTR2, (const uint8_t *)"\x0C\x0C\x00\x33\x33", 5);
   command(COLMOD, (const uint8_t *)"\x55", 1);
   command(GAMSET, (const uint8_t *)"\x01", 1);
+
   command(GCTRL, (const uint8_t *)"\x14", 1);
   command(VCOMS, (const uint8_t *)"\x25", 1);
   command(LCMCTRL, (const uint8_t *)"\x2C", 1);
@@ -124,7 +128,6 @@ void Display::init() {
   sleep_ms(115);
   command(SLPOUT);
   command(DISPON);
-  gpio_put(PIN_CS, 1);
 
   // One DMA channel, reused for every band: 16-bit words, byte-swapped on
   // the way out (the buffer is big-endian, the SPI shifts each word MSB
@@ -133,13 +136,17 @@ void Display::init() {
 
   // Clear the panel before the backlight comes on, so the first thing seen
   // is not whatever the panel RAM held
-  static uint16_t black[SCREEN_W];
-  for (int i = 0; i < SCREEN_W; i++) black[i] = 0;
+  fill(0x0000);
+  gpio_put(PIN_BACKLIGHT, 1);
+}
+
+void Display::fill(uint16_t rgb565be) {
+  static uint16_t row[SCREEN_W];
+  for (int i = 0; i < SCREEN_W; i++) row[i] = rgb565be;
   for (int y = 0; y < SCREEN_H; y++) {
-    writeStart(y, SCREEN_W, 1, black);
+    writeStart(y, SCREEN_W, 1, row);
     complete();
   }
-  gpio_put(PIN_BACKLIGHT, 1);
 }
 
 void Display::setWindow(int x, int y, int w, int h) {
@@ -154,12 +161,16 @@ void Display::setWindow(int x, int y, int w, int h) {
 }
 
 void Display::writeStart(int y, int w, int h, const uint16_t *pixels) {
-  complete();  // the SPI must be idle before its frame size is changed
-  gpio_put(PIN_CS, 0);
+  complete();  // the SPI must be idle before its clock or frame size change
+  // Window commands as the SDK sends them (8-bit, 8 MHz, CS per command),
+  // then the pixels as one CS-low burst at the pixel clock in 16-bit frames
+  spi_set_baudrate(SPI, CMD_HZ);
   spiFormat8();
   setWindow(0, y, w, h);
-  gpio_put(PIN_DC, 1);  // pixel data from here on
+  spi_set_baudrate(SPI, pixelHz_);
   spiFormat16();
+  gpio_put(PIN_DC, 1);
+  gpio_put(PIN_CS, 0);
 
   dma_channel_config c = dma_channel_get_default_config(dma_);
   channel_config_set_transfer_data_size(&c, DMA_SIZE_16);

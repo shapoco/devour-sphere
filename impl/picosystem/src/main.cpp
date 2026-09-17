@@ -44,6 +44,27 @@ int g_bandCur = 0;  // free running across frames (see present())
 uint64_t g_lastUs = 0;
 uint32_t g_accUs = 0;
 
+// --- The RGB LED as a status light ------------------------------------------
+// Active high (the SDK drives it through PWM, level 0 = off; the board
+// file's PICO_DEFAULT_LED_PIN_INVERTED refers to something else). With no
+// serial port this is the only signal besides the panel, so the start-up
+// stages each set a colour: see ../SPEC.md "デバッグ".
+void led(bool r, bool g, bool b) {
+  gpio_put(PICOSYSTEM_LED_R_PIN, r);
+  gpio_put(PICOSYSTEM_LED_G_PIN, g);
+  gpio_put(PICOSYSTEM_LED_B_PIN, b);
+}
+
+void initLed() {
+  constexpr uint LED_PINS[] = {PICOSYSTEM_LED_R_PIN, PICOSYSTEM_LED_G_PIN,
+                               PICOSYSTEM_LED_B_PIN};
+  for (uint pin : LED_PINS) {
+    gpio_init(pin);
+    gpio_set_dir(pin, GPIO_OUT);
+    gpio_put(pin, 0);
+  }
+}
+
 // --- Buttons -------------------------------------------------------------
 // Active low with the internal pull-ups, as the SDK wires them. Y is not a
 // game button here: it toggles the timing overlay, the job FUNC does on
@@ -215,6 +236,10 @@ void presentFrame() {
   // frame's ticks and beginFrame(). The next writeStart() collects it.
   g_renderer.endFrame();
   g_prof.endFrame(time_us_64(), g_renderer.stats());
+  // Heartbeat: green toggles every 16 frames presented, so a frozen loop
+  // can be told from a frozen panel
+  static uint32_t frames = 0;
+  if ((++frames & 15) == 0) led(false, (frames & 16) != 0, false);
 }
 
 void frame() {
@@ -298,26 +323,47 @@ void frame() {
 }  // namespace
 
 int main() {
+  initButtons();
 #if DS_OVERCLOCK
   // What the PicoSystem SDK does: a modest overvolt, then 250 MHz. The board
   // file's flash divider (2) keeps the QSPI at 125 MHz, which the part
-  // tolerates -- the SDK ships this way.
-  vreg_set_voltage(VREG_VOLTAGE_1_20);
-  sleep_ms(10);
-  set_sys_clock_khz(ds::SYS_CLOCK_KHZ, true);
+  // tolerates -- the SDK ships this way. Holding DOWN at power-up skips it,
+  // to tell an unstable overclock from everything else.
+  if (!down(gpio_get_all(), PICOSYSTEM_SW_DOWN_PIN)) {
+    vreg_set_voltage(VREG_VOLTAGE_1_20);
+    sleep_ms(10);
+    set_sys_clock_khz(ds::SYS_CLOCK_KHZ, true);
+  }
 #endif
 
-  // The RGB LED is active low and floats at power-up: park it off
-  constexpr uint LED_PINS[] = {PICOSYSTEM_LED_R_PIN, PICOSYSTEM_LED_G_PIN,
-                               PICOSYSTEM_LED_B_PIN};
-  for (uint pin : LED_PINS) {
-    gpio_init(pin);
-    gpio_set_dir(pin, GPIO_OUT);
-    gpio_put(pin, 1);
+  initLed();
+  led(true, false, false);  // red: alive, about to bring the panel up
+  // Holding UP at power-up sends the pixels at the command clock (8 MHz):
+  // slow, but it separates "62.5 MHz is too fast for this path" from
+  // everything else
+  if (down(gpio_get_all(), PICOSYSTEM_SW_UP_PIN)) {
+    g_display.setPixelClock(ds::CMD_HZ);
   }
-
-  initButtons();
   g_display.init();
+  led(true, true, false);  // yellow: the panel answered the init sequence
+
+  // Panel self-test: three bars through the same band path the game uses,
+  // held while a face button is down (or for a moment at start-up). Seeing
+  // them proves the SPI, the DMA byte swap and the 16-bit mode; a black
+  // panel here means the bring-up, not the renderer.
+  {
+    const uint32_t t0 = (uint32_t)time_us_64();
+    do {
+      for (int b = 0; b < ds::BAND_COUNT; b++) {
+        const uint16_t c = b < 2 ? 0x00F8 : (b < 4 ? 0xE007 : 0x1F00);
+        uint16_t *buf = g_bands[b & 1];
+        for (int i = 0; i < ds::SCREEN_W * ds::BAND_H; i++) buf[i] = c;
+        g_display.writeStart(b * ds::BAND_H, ds::SCREEN_W, ds::BAND_H, buf);
+        g_display.complete();
+      }
+    } while ((uint32_t)time_us_64() - t0 < 1000000 ||
+             mapButtons(gpio_get_all()) & sim::Button::A);
+  }
 
   g_game.reset(ds::randomSeed());
   g_renderer.setControlHints(render::ControlHints{
@@ -341,6 +387,7 @@ int main() {
 #if DS_SIM_ON_CORE1
   multicore_launch_core1(core1Main);
 #endif
+  led(false, false, true);  // blue: entering the frame loop
 
   for (;;) frame();
 }

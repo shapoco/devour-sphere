@@ -58,6 +58,9 @@ constexpr uint32_t SYS_CLOCK_KHZ = DS_OVERCLOCK ? 250000 : 125000;
 // PIO program) and the Xiamocon SDK run the ST7789 at; a full 240x240x2
 // frame takes 14.75 ms at this rate, which is the frame rate ceiling.
 constexpr uint32_t SPI_HZ = 62500000;
+// Command clock: what the PicoSystem SDK initialises the panel at. Commands
+// are few and short, so this costs nothing per band.
+constexpr uint32_t CMD_HZ = 8000000;
 
 // core1 runs the simulation while core0 builds the scene, rasterizes the
 // bands and pushes them, exactly as on Xiamocon. Set to 0 to put everything
