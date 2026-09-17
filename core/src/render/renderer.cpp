@@ -753,7 +753,7 @@ void Renderer::drawPresenceAuras() {
     // A solid triangle: tip on the edge, base inwards, width across the
     // direction. 8..18 px long on the reference screen, 6..13 on 240x240
     // (it scales half as fast as the UI so it stays readable when small).
-    const float triLen = (8.0f + 10.0f * near) * (ui_.scale8 + 8) / 16.0f;
+    const float triLen = (20.0f + 20.0f * near) * (ui_.scale8 + 8) / 16.0f;
     const float half = triLen * 0.55f;
     const float bx = cx - dx * triLen, by = cy - dy * triLen;  // base center
     const vec3f tri[3] = {toView(cx, cy),
@@ -800,6 +800,11 @@ void Renderer::drawPresenceAuras() {
 // red (a gradient from the edge inwards, added onto the frame), deeper and
 // wider the closer the health gets to zero. Drawn last so it lies over
 // everything in the scene; the HUD is drawn on top of it.
+//
+// With DEVOURSPHERE_SIMPLE_AURAS only the top and bottom edges glow, and
+// half as wide: the four bands are four Gouraud, additively blended quads
+// covering a third of the screen, which took a Cortex-M0+ from 28 to 15 fps
+// the moment the health dropped.
 void Renderer::drawHealthWarning() {
   const sim::Game &g = *game_;
   if (g.state() != sim::GameState::PLAYING &&
@@ -816,7 +821,8 @@ void Renderer::drawHealthWarning() {
   g2::Color edge = g2::makeColor((int)(255 * bright), (int)(24 * bright),
                                  (int)(16 * bright));
   g2::Color inner = g2::makeColor(0, 0, 0);
-  float band = h_ * 0.1f;  // px
+  float band = h_ * (DEVOURSPHERE_SIMPLE_AURAS ? 0.05f : 0.1f);  // px
+  constexpr int BANDS = DEVOURSPHERE_SIMPLE_AURAS ? 2 : 4;
 
   constexpr float DEPTH = 2.0f;  // view-space distance of the quads
   ScreenPlane sp = screenPlane();
@@ -835,7 +841,7 @@ void Renderer::drawHealthWarning() {
       {0, 0, band, H, true},       // left
       {W - band, 0, W, H, false},  // right
   };
-  for (int b = 0; b < 4; b++) {
+  for (int b = 0; b < BANDS; b++) {
     const Band &bd = bands[b];
     bool horizontal = b < 2;
     g3::Vertex verts[4];
