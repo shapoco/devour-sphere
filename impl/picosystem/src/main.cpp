@@ -399,8 +399,12 @@ int main() {
     const uint32_t sysMHz = clock_get_hz(clk_sys) / 1000000u;
     const uint32_t periMHz = clock_get_hz(clk_peri) / 1000000u;
     const uint32_t spi100k = spi_get_baudrate(spi0) / 100000u;  // 0.1 MHz
+    // 21 columns: "C250 P250 SPI62.5". Truncation of an absurd value is the
+    // intended behaviour, hence the silenced warning.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-truncation"
     std::snprintf(g_prof.extra[0], sizeof(g_prof.extra[0]),
-                  "CLK %lu PERI %lu SPI %lu.%lu", (unsigned long)sysMHz,
+                  "C%lu P%lu SPI%lu.%lu", (unsigned long)sysMHz,
                   (unsigned long)periMHz, (unsigned long)(spi100k / 10),
                   (unsigned long)(spi100k % 10));
     // Transfer of a whole screen by DMA16 / DMA8 / CPU16, in ms (the one in
@@ -411,6 +415,7 @@ int main() {
         (unsigned long)(us[0] / 100 % 10), (unsigned long)(us[1] / 1000),
         (unsigned long)(us[1] / 100 % 10), (unsigned long)(us[2] / 1000),
         (unsigned long)(us[2] / 100 % 10));
+#pragma GCC diagnostic pop
   }
 
   // Start owing one tick, so the first loop has something to do instead of

@@ -175,7 +175,7 @@ Y を押すと Xiamocon 版と同じ計測パネルが左上に出る (行の意
 このターゲットではさらに 2 行が付く:
 
 ```
-CLK 250 PERI 250 SPI 62.5   clk_sys / clk_peri (MHz) と SPI の実クロック (MHz)
+C250 P250 SPI62.5           clk_sys / clk_peri (MHz) と SPI の実クロック (MHz)
 16:42.5 8:14.9 C:15.2       全画面転送の所要時間 (ms): DMA 16 ビット / DMA 8 ビット / CPU 書き込み
 ```
 
