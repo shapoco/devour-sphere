@@ -133,6 +133,15 @@ PicoSystem SDK と同じく、コア電圧を 1.20V に上げてから 250MHz �
 (`DS_OVERCLOCK=0` で定格 125MHz。すべての時間が 2 倍になる)。
 ボード定義のフラッシュ分周 2 で QSPI は 125MHz になるが、SDK が出荷時からこの設定で動いている。
 
+**`clk_peri` は自分で `clk_sys` に戻す。** pico-sdk 2.x の `set_sys_clock_pll()` は
+UART のボーレートを保つために `clk_peri` を USB PLL の 48MHz に切り替える
+(`PICO_CLOCK_ADJUST_PERI_CLOCK_WITH_SYS_CLOCK` を定義しない限り)。
+SPI も `clk_peri` から作られるので上限が 24MHz になり、初回の実機では
+`P48 SPI24.0`、全画面転送 42.5ms (理論値 14.75ms の 2.9 倍) だった。
+`main()` はクロック設定の直後に `clock_configure_undivided(clk_peri, ..., clk_sys)` で
+250MHz に戻してからパネルを初期化する (`spi_init()` はその時点の `clk_peri` から分周を決める)。
+計測パネルの `P250 SPI62.5` で確認できる。
+
 ## 2 つのコアの分担
 
 Xiamocon 版と同じ (impl/xiamocon/SPEC.md「2 つのコアの分担」)。

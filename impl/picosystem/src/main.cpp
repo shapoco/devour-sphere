@@ -339,6 +339,16 @@ int main() {
     set_sys_clock_khz(ds::SYS_CLOCK_KHZ, true);
   }
 #endif
+  // pico-sdk 2.x moves clk_peri to the 48 MHz USB PLL whenever the system
+  // clock is changed (set_sys_clock_pll(), unless
+  // PICO_CLOCK_ADJUST_PERI_CLOCK_WITH_SYS_CLOCK is set), so that the UART
+  // keeps its baud rate. The SPI is clocked from clk_peri too, and 48 MHz
+  // caps it at 24 MHz: the first board showed "P48 SPI24.0" and a 42.5 ms
+  // full-screen transfer. Put clk_peri back on clk_sys before the display is
+  // brought up; spi_init() derives its divider from clk_peri at that point.
+  clock_configure_undivided(clk_peri, 0,
+                            CLOCKS_CLK_PERI_CTRL_AUXSRC_VALUE_CLK_SYS,
+                            clock_get_hz(clk_sys));
 
   initLed();
   led(true, false, false);  // red: alive, about to bring the panel up
