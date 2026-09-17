@@ -276,10 +276,27 @@ class Renderer {
   uint8_t icoEdgeDepth_[12][12];
   EdgeDepths faceDepth_[20];
   int lineCount_ = 0, pointCount_ = 0, entitiesDrawn_ = 0, kites_ = 0;
-  // Per-traversal constants of the sphere wireframe (see wantLevel())
-  g3::vec3f playerUnit_ = {0, 0, 1};
-  float cosLevel6_[MAX_SPHERE_LEVEL + 1] = {};
-  float cosLevel5_[MAX_SPHERE_LEVEL + 1] = {};
+  // The integer camera the backdrop is projected with (sphere.cpp):
+  // derived from the float one at the end of updateCamera(). Vectors are
+  // Q30; the eye is in 1/16 world units relative to the sphere center; the
+  // focal length and the screen center are in 1/16 pixel.
+  struct CameraQ {
+    sim::Vec3 right, up, fwd;  // view basis
+    sim::Vec3 unit;            // sphere center -> eye (camUnit_)
+    sim::Vec3 player;          // sphere center -> player (for the LOD)
+    sim::Vec3 eye;
+    int32_t focal16, cx16, cy16;
+    int32_t cosHorizon;
+    int32_t cullCos[MAX_SPHERE_LEVEL + 1];
+    int32_t cosLevel6[MAX_SPHERE_LEVEL + 1];  // per traversal (sphereConstants)
+    int32_t cosLevel5[MAX_SPHERE_LEVEL + 1];
+  };
+  CameraQ camQ_ = {};
+  bool projectQ(const sim::Vec3 &pos, int32_t &sx, int32_t &sy) const;
+  // The stars' directions (Q30) and colors, fixed at init()
+  sim::Vec3 starDir_[120];
+  g2::Color starColor_[120];
+  bool starsValid_ = false;
   // Visible entities of the frame, sorted by distance. A member rather than
   // a local: 256 of these is 3 KB, which is most of the 4 KB stack a core
   // gets on RP2350 (the stacks live in SCRATCH_X / SCRATCH_Y and cannot be
@@ -317,7 +334,7 @@ class Renderer {
   uint16_t wireNative_[32] = {};
   g2::PixelFormat wireNativeFormat_ = g2::PixelFormat::GRAY1;
   bool wireNativeValid_ = false;
-  void addWireSegment(const g3::vec3f &a, const g3::vec3f &b, int ba, int bb);
+  void addWireSegment(const sim::Vec3 &ua, const sim::Vec3 &ub, int level);
   void drawBackdropBand(const g2::Surface &dst, int y, int h, int dstY);
   void drawWireSegment(const g2::Surface &dst, const WireSeg &s, int y, int h,
                        int dstY);
@@ -418,15 +435,15 @@ class Renderer {
   // Subdivide one face and draw the lines separating its children; returns
   // how deeply the mesh ended up subdivided along the face's own edges. See
   // sphere.cpp for why that is all a face draws.
-  EdgeDepths subdivideFace(const g3::vec3f &a, const g3::vec3f &b,
-                           const g3::vec3f &c, int level);
+  EdgeDepths subdivideFace(const sim::Vec3 &a, const sim::Vec3 &b,
+                           const sim::Vec3 &c, int level);
   void sphereConstants();
-  int wantLevel(const g3::vec3f &center, int level) const;
+  int wantLevel(const sim::Vec3 &center, int level) const;
   // Draw a-b as 2^depth chords lying on the sphere
-  void emitEdge(const g3::vec3f &a, const g3::vec3f &b, int depth, int level);
-  void emitSplitEdge(const g3::vec3f &a, const g3::vec3f &b, int depth,
+  void emitEdge(const sim::Vec3 &a, const sim::Vec3 &b, int depth, int level);
+  void emitSplitEdge(const sim::Vec3 &a, const sim::Vec3 &b, int depth,
                      int level);
-  void emitChord(const g3::vec3f &a, const g3::vec3f &b, int level);
+  void emitChord(const sim::Vec3 &a, const sim::Vec3 &b, int level);
   void traverseSphere(const int *order);
   void emitIcoEdges();
 

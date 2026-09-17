@@ -152,6 +152,12 @@ static inline vec3f q30ToF(const sim::Vec3 &v) {
   constexpr float k = 1.0f / (float)(1 << 30);
   return {v.x * k, v.y * k, v.z * k};
 }
+// A float in [-1, 1] to Q30, saturating (1.0 is exactly representable)
+static inline int32_t fToQ30(float v) {
+  if (v >= 1.0f) return sim::Q30_ONE;
+  if (v <= -1.0f) return -sim::Q30_ONE;
+  return (int32_t)(v * (float)(1 << 30));
+}
 
 vec3f Renderer::toLocal(const sim::Vec3 &worldUnits) const {
   constexpr float k = 1.0f / FU;
@@ -395,6 +401,27 @@ void Renderer::updateCamera(float dt) {
     cullCos_[l] = a >= PI ? -1.0f : std::cos(a);
     faceAngle *= 0.5f;
   }
+
+  // The integer camera of the backdrop (sphere.cpp). The view basis is the
+  // rows of the lookAt matrix; forward is what the matrix negates.
+  auto toQ = [](const vec3f &v) {
+    return sim::Vec3{fToQ30(v.x), fToQ30(v.y), fToQ30(v.z)};
+  };
+  camQ_.right = toQ({view_.m[0], view_.m[4], view_.m[8]});
+  camQ_.up = toQ({view_.m[1], view_.m[5], view_.m[9]});
+  camQ_.fwd = toQ({-view_.m[2], -view_.m[6], -view_.m[10]});
+  camQ_.unit = toQ(camUnit_);
+  camQ_.player = toQ(g3::normalize(sphereCenter_ * -1.0f));
+  constexpr float POS = (float)FU * 16.0f;  // FU -> 1/16 units
+  camQ_.eye = {(int32_t)(rel.x * POS), (int32_t)(rel.y * POS),
+               (int32_t)(rel.z * POS)};
+  camQ_.focal16 = (int32_t)(focalPx_ * 16.0f);
+  camQ_.cx16 = w_ * 8;  // (w / 2) * 16
+  camQ_.cy16 = h_ * 8;
+  camQ_.cosHorizon = fToQ30(cosHorizon_);
+  for (int l = 0; l <= MAX_SPHERE_LEVEL; l++) {
+    camQ_.cullCos[l] = cullCos_[l] <= -1.0f ? INT32_MIN : fToQ30(cullCos_[l]);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -598,31 +625,43 @@ static inline uint32_t mix32(uint32_t h) {
 
 void Renderer::drawStars() {
   constexpr int STARS = 120;
-  constexpr float DIST = 1500.0f;  // inside the far plane
-  g3d_.setPointSize(1);
+  constexpr int32_t DIST = 1500 * FU * 16;  // 1/16 units, inside the far plane
+  if (!starsValid_) {
+    // Fixed directions and colors: the float work happens once
+    for (int i = 0; i < STARS; i++) {
+      // Well mixed hashes (a plain multiply of consecutive indices leaves a
+      // visible lattice in the sky)
+      uint32_t h = mix32((uint32_t)i * 0x9E3779B9u + 0x1234567u);
+      uint32_t h2 = mix32(h ^ 0xA5A5A5A5u);
+      uint32_t h3 = mix32(h2 + 0x3C6EF372u);
+      float z = ((h & 0xFFFF) / 32768.0f) - 1.0f;  // -1..1
+      float phi = ((h2 & 0xFFFF) / 65536.0f) * 6.2831853f;
+      h2 = h3;
+      float r = std::sqrt(1.0f - z * z);
+      starDir_[i] = {fToQ30(r * std::cos(phi)), fToQ30(r * std::sin(phi)),
+                     fToQ30(z)};
+      int v8 = 90 + (int)((h2 >> 8) % 120);
+      starColor_[i] = g2::makeColor(v8, v8, v8 + 20 > 255 ? 255 : v8 + 20);
+    }
+    starsValid_ = true;
+  }
+  constexpr int32_t VIEW_MIN = (int32_t)(0.3f * (1 << 30));
+  constexpr int32_t LIMB_MARGIN = (int32_t)(0.05f * (1 << 30));
   for (int i = 0; i < STARS; i++) {
-    // Well mixed hashes (a plain multiply of consecutive indices leaves a
-    // visible lattice in the sky)
-    uint32_t h = mix32((uint32_t)i * 0x9E3779B9u + 0x1234567u);
-    uint32_t h2 = mix32(h ^ 0xA5A5A5A5u);
-    uint32_t h3 = mix32(h2 + 0x3C6EF372u);
-    float z = ((h & 0xFFFF) / 32768.0f) - 1.0f;  // -1..1
-    float phi = ((h2 & 0xFFFF) / 65536.0f) * 6.2831853f;
-    h2 = h3;
-    float r = std::sqrt(1.0f - z * z);
-    vec3f dir = {r * std::cos(phi), r * std::sin(phi), z};
+    const sim::Vec3 &dir = starDir_[i];
     // Only stars in front of the camera and above the sphere's limb
-    if (g3::dot(dir, viewDir_) < 0.3f) continue;
-    if (g3::dot(dir, camUnit_) < -cosHorizon_ + 0.05f) continue;
-    int v8 = 90 + (int)((h2 >> 8) % 120);
+    if (sim::dotQ30(dir, camQ_.fwd) < VIEW_MIN) continue;
+    if (sim::dotQ30(dir, camQ_.unit) < -camQ_.cosHorizon + LIMB_MARGIN)
+      continue;
     // Projected here, drawn as a pixel by drawBackdropBand()
-    float sx, sy;
-    if (starCount_ < MAX_STARS && project(cam_.eye + dir * DIST, sx, sy)) {
-      const int x = (int)sx, y = (int)sy;
+    const sim::Vec3 pos = {camQ_.eye.x + sim::mulQ30(dir.x, DIST),
+                           camQ_.eye.y + sim::mulQ30(dir.y, DIST),
+                           camQ_.eye.z + sim::mulQ30(dir.z, DIST)};
+    int32_t sx, sy;
+    if (starCount_ < MAX_STARS && projectQ(pos, sx, sy)) {
+      const int x = sx >> 4, y = sy >> 4;
       if (x >= 0 && x < w_ && y >= 0 && y < h_) {
-        stars_[starCount_++] = {
-            (int16_t)x, (int16_t)y,
-            g2::makeColor(v8, v8, v8 + 20 > 255 ? 255 : v8 + 20)};
+        stars_[starCount_++] = {(int16_t)x, (int16_t)y, starColor_[i]};
         pointCount_++;
       }
     }
