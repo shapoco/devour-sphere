@@ -916,6 +916,7 @@ void Renderer::buildScene() {
   // RGB565 step: it is one blue ramp fading with distance.
   drawStars();
   buildSphere();
+  frameProfile_.stamp(FP_SPHERE);
   // Layers. A scene is a sequence of them and each is drawn in front of the
   // ones opened before it, so the depth sort only has to resolve what is
   // inside one. Opening them back to front is this function's job.

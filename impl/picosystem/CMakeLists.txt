@@ -102,13 +102,24 @@ target_link_libraries(${APP_NAME} PRIVATE
     devoursphere::render      # pulls in devoursphere::sim and shapoco::gfx
 )
 
-# The 3D rasterizer (ShapoGFX gfx3d.cpp, ~48 KB of code) runs from RAM.
-# The RP2040 executes from flash through a 16 KB XIP cache, and the span
-# loops are its worst case. OFF keeps the SDK's default placement, for
-# measuring the difference.
-option(DS_GFX3D_IN_RAM "Place ShapoGFX's 3D rasterizer in RAM" ON)
-if(DS_GFX3D_IN_RAM)
-    pico_set_linker_script(${APP_NAME} ${CMAKE_CURRENT_SOURCE_DIR}/memmap_picosystem.ld)
+# Which code runs from RAM. The RP2040 executes from flash through one
+# 16 KB XIP cache that both cores share, so whatever both are running at
+# once evicts the other's code. The choice is measured on the device (see
+# ../SPEC.md, "コードを RAM に置く"):
+#   sim    the simulation (core1's whole program, ~40 KB): the default
+#   gfx3d  ShapoGFX's 3D rasterizer (~48 KB), what the first build used
+#   none   the SDK's default placement
+set(DS_RAM_CODE "sim" CACHE STRING "Code placed in RAM: sim, gfx3d or none")
+if(DS_RAM_CODE STREQUAL "sim")
+    set(DS_RAM_CODE_EXCLUDE "*libdevoursphere_sim.a:")
+elseif(DS_RAM_CODE STREQUAL "gfx3d")
+    set(DS_RAM_CODE_EXCLUDE "*libshapogfx.a:gfx3d.cpp.o")
+elseif(DS_RAM_CODE STREQUAL "none")
+    set(DS_RAM_CODE_EXCLUDE "")
+else()
+    message(FATAL_ERROR "DS_RAM_CODE must be sim, gfx3d or none (got ${DS_RAM_CODE})")
 endif()
+configure_file(memmap_picosystem.ld.in ${CMAKE_CURRENT_BINARY_DIR}/memmap_picosystem.ld @ONLY)
+pico_set_linker_script(${APP_NAME} ${CMAKE_CURRENT_BINARY_DIR}/memmap_picosystem.ld)
 
 pico_add_extra_outputs(${APP_NAME})   # this is what produces the .uf2

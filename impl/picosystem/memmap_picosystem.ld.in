@@ -1,5 +1,6 @@
 /* Devour Sphere for PicoSystem: pico-sdk 2.2.0 memmap_default.ld (rp2040) with
-   one rule added, marked "Devour Sphere" below. */
+   one rule added, marked "Devour Sphere" below. This is a template:
+   CMakeLists.txt fills in DS_RAM_CODE_EXCLUDE. */
 /* Based on GCC ARM embedded samples.
    Defines the following symbols for use by code:
     __exidx_start
@@ -72,10 +73,11 @@ SECTIONS
         /* bit of a hack right now to exclude all floating point and time critical (e.g. memset, memcpy) code from
          * FLASH ... we will include any thing excluded here in .data below by default */
         *(.init)
-        /* Devour Sphere: the 3D rasterizer runs from RAM (see ../SPEC.md,
-           "gfx3d を RAM に置く"). Excluded here, it falls through to the
-           *(.text*) rule of .data below, like the SDK's own memcpy/float. */
-        *(EXCLUDE_FILE(*libgcc.a: *libc.a:*lib_a-mem*.o *libm.a: *libshapogfx.a:gfx3d.cpp.o) .text*)
+        /* Devour Sphere: the objects named by DS_RAM_CODE run from RAM (see
+           ../SPEC.md, "コードを RAM に置く"). Excluded here, they fall through
+           to the *(.text*) rule of .data below, like the SDK's own
+           memcpy/float. */
+        *(EXCLUDE_FILE(*libgcc.a: *libc.a:*lib_a-mem*.o *libm.a: @DS_RAM_CODE_EXCLUDE@) .text*)
         *(.fini)
         /* Pull all c'tors into .text */
         *crtbegin.o(.ctors)
