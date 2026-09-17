@@ -24,7 +24,9 @@ int32_t divQ30(int32_t a, int32_t b) {
 }
 
 // Newton iteration from an initial guess >= sqrt(v): the sequence decreases
-// monotonically to floor(sqrt(v)). Integer only, hence deterministic.
+// monotonically to floor(sqrt(v)). Integer only, hence deterministic. The
+// division is 32-bit, which every target does in hardware (the RP2040 through
+// its SIO divider).
 uint32_t isqrt32(uint32_t v) {
   if (v < 2) return v;
   int bits = 32 - __builtin_clz(v);
@@ -36,15 +38,28 @@ uint32_t isqrt32(uint32_t v) {
   }
 }
 
+// Digit by digit, two bits of the argument per step, and exact: the same
+// floor(sqrt(v)) the Newton form gave. No division at all. Newton on a 64-bit
+// value needs a 64-bit division per step, and that is a library call on
+// every embedded target (some hundred cycles on a Cortex-M0+); this is called
+// about two thousand times a tick (the fragment layout forces and every
+// normalize), so it was most of the tick's division cost.
 uint32_t isqrt64(uint64_t v) {
   if (v < ((uint64_t)1 << 32)) return isqrt32((uint32_t)v);
-  int bits = 64 - __builtin_clzll(v);
-  uint64_t r = (uint64_t)1 << ((bits + 1) >> 1);
-  for (;;) {
-    uint64_t nr = (r + v / r) >> 1;
-    if (nr >= r) return (uint32_t)r;
-    r = nr;
+  // Start at the highest even bit position at or below the top set bit
+  int top = 63 - __builtin_clzll(v);
+  uint64_t bit = (uint64_t)1 << (top & ~1);
+  uint64_t r = 0;
+  while (bit) {
+    if (v >= r + bit) {
+      v -= r + bit;
+      r = (r >> 1) + bit;
+    } else {
+      r >>= 1;
+    }
+    bit >>= 2;
   }
+  return (uint32_t)r;
 }
 
 // atan(x) for x in [0, 1] (Q15) in brad; polynomial approximation
@@ -71,23 +86,40 @@ uint16_t atan2Brad(int32_t y, int32_t x) {
   return a;
 }
 
+// One 64-bit division (the reciprocal of the length) and three multiplies,
+// instead of the three exact divisions this used to do. The result can differ
+// from the exact quotient by a couple of Q30 steps, which is far below what
+// the simulation resolves; it is not bit-identical to the older form.
 Vec3 normalizeQ30(const Vec3 &in) {
-  Vec3 a = in;
-  // Keep the squared length representable in 64 bits
-  for (;;) {
-    int32_t m = absI32(a.x);
-    if (absI32(a.y) > m) m = absI32(a.y);
-    if (absI32(a.z) > m) m = absI32(a.z);
-    if (m <= 0x5FFFFFFF) break;
-    a.x >>= 1, a.y >>= 1, a.z >>= 1;
+  // 64-bit working copies: the scaling below multiplies and shifts signed
+  // values, and 64 bits keeps every step in range (and away from the
+  // undefined left shift of a negative int32)
+  int64_t x = in.x, y = in.y, z = in.z;
+  uint64_t m = (uint64_t)(x < 0 ? -x : x);
+  uint64_t my = (uint64_t)(y < 0 ? -y : y), mz = (uint64_t)(z < 0 ? -z : z);
+  if (my > m) m = my;
+  if (mz > m) m = mz;
+  if (m == 0) return {0, 0, Q30_ONE};
+  // Bring the largest magnitude into [2^29, 2^30): keeps the squared length
+  // in 64 bits, and gives a short vector the same precision as a long one
+  const int top = 63 - __builtin_clzll(m);  // 0..31
+  if (top < 29) {
+    const int64_t k = (int64_t)1 << (29 - top);
+    x *= k, y *= k, z *= k;
+  } else if (top > 29) {
+    const int sh = top - 29;
+    x >>= sh, y >>= sh, z >>= sh;
   }
-  uint64_t len2 = (uint64_t)dot64(a, a);
-  uint32_t len = isqrt64(len2);
-  if (len == 0) return {0, 0, Q30_ONE};
+  const uint64_t len2 = (uint64_t)(x * x + y * y + z * z);  // [2^58, 3 * 2^60)
+  const uint32_t len = isqrt64(len2);                       // [2^29, 2^31)
+  // inv = 2^61 / len is in (2^30, 2^32]; a component is below 2^30 in
+  // magnitude, so the product stays below 2^62. Then
+  // x / len * 2^30 = (x * inv) >> 31.
+  const int64_t inv = (int64_t)(((uint64_t)1 << 61) / len);
   return {
-      (int32_t)(((int64_t)a.x * Q30_ONE) / (int64_t)len),
-      (int32_t)(((int64_t)a.y * Q30_ONE) / (int64_t)len),
-      (int32_t)(((int64_t)a.z * Q30_ONE) / (int64_t)len),
+      (int32_t)((x * inv) >> 31),
+      (int32_t)((y * inv) >> 31),
+      (int32_t)((z * inv) >> 31),
   };
 }
 

@@ -7,11 +7,27 @@ static constexpr int32_t QUARTER_POW2_Q16[4] = {65536, 77936, 92682, 110218};
 
 // The kite half-size grows with the fourth root of the size (doubling the
 // size makes the fragment only 19% wider), so entities grow slowly on screen
+static constexpr int32_t halfSizeOf(int sizeLog2) {
+  int32_t base = (FU / 2) << (sizeLog2 >> 2);
+  return (int32_t)(((int64_t)base * QUARTER_POW2_Q16[sizeLog2 & 3]) >> 16);
+}
+
+// Tabulated: this is asked about four thousand times a tick (every force in
+// the fragment layout), and the 64-bit multiply is not free everywhere.
+static constexpr int32_t HALF_SIZE[MAX_SIZE_LOG2 + 1] = {
+    halfSizeOf(0),  halfSizeOf(1),  halfSizeOf(2),  halfSizeOf(3),
+    halfSizeOf(4),  halfSizeOf(5),  halfSizeOf(6),  halfSizeOf(7),
+    halfSizeOf(8),  halfSizeOf(9),  halfSizeOf(10), halfSizeOf(11),
+    halfSizeOf(12), halfSizeOf(13), halfSizeOf(14), halfSizeOf(15),
+    halfSizeOf(16), halfSizeOf(17), halfSizeOf(18), halfSizeOf(19),
+    halfSizeOf(20),
+};
+static_assert(MAX_SIZE_LOG2 == 20, "HALF_SIZE lists one entry per exponent");
+
 int32_t fragmentHalfSize(int sizeLog2) {
   if (sizeLog2 < 0) sizeLog2 = 0;
   if (sizeLog2 > MAX_SIZE_LOG2) sizeLog2 = MAX_SIZE_LOG2;
-  int32_t base = (FU / 2) << (sizeLog2 >> 2);
-  return (int32_t)(((int64_t)base * QUARTER_POW2_Q16[sizeLog2 & 3]) >> 16);
+  return HALF_SIZE[sizeLog2];
 }
 
 int32_t altitudeForSize(uint32_t size) {

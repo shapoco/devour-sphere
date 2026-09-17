@@ -23,8 +23,22 @@ void Game::reset(uint32_t seed) {
   displayScaleLog2_ = 0;
   prevButtons_ = 0xFF;  // buttons held during reset do not count as presses
   stats_ = {};
-  startSphere(false);
+  // Everything a game leaves behind, so that a Game reset in place behaves
+  // exactly like a fresh one (the high score is the one thing meant to
+  // survive; autoPlayer_ is a debug switch the caller owns)
+  scoreQ8_ = 0;
+  resetUpgrades();
+  lastUpgradeKind_ = UpgradeKind::NONE;
+  respawnDelay_ = 0;
+  effectCount_ = 0;
+  aliveEntities_ = 0;
+  maxBodyRadius_ = 0;
+  maxCoreReach_ = 0;
+  // The state first: spawnPlayer() rolls a random weapon on the title
+  // screen and takes the chosen one otherwise, so the sphere built here
+  // must not see the state of the game that just ended
   setState(GameState::TITLE);
+  startSphere(false);
 }
 
 void Game::debugStartSphere(int level, int weapon) {
