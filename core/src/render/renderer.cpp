@@ -615,9 +615,17 @@ void Renderer::drawStars() {
     if (g3::dot(dir, viewDir_) < 0.3f) continue;
     if (g3::dot(dir, camUnit_) < -cosHorizon_ + 0.05f) continue;
     int v8 = 90 + (int)((h2 >> 8) % 120);
-    putPoint3(cam_.eye + dir * DIST,
-              g2::makeColor(v8, v8, v8 + 20 > 255 ? 255 : v8 + 20),
-              palette_[PAL_LINE]);
+    // Projected here, drawn as a pixel by drawBackdropBand()
+    float sx, sy;
+    if (starCount_ < MAX_STARS && project(cam_.eye + dir * DIST, sx, sy)) {
+      const int x = (int)sx, y = (int)sy;
+      if (x >= 0 && x < w_ && y >= 0 && y < h_) {
+        stars_[starCount_++] = {
+            (int16_t)x, (int16_t)y,
+            g2::makeColor(v8, v8, v8 + 20 > 255 ? 255 : v8 + 20)};
+        pointCount_++;
+      }
+    }
   }
 }
 
@@ -899,26 +907,20 @@ void Renderer::buildScene() {
   g3d_.disableEnvironmentLight();
   g3d_.setDepthBias(0.0f);
 
+  // The backdrop. The stars sit 1500 FU away on a sphere around the camera
+  // and nothing in the scene is behind them; everything that stands on the
+  // surface is in front of the sphere wireframe. Neither needs depth, and
+  // neither goes through the 3D pipeline any more: both are projected here
+  // and drawn into each band ahead of the 3D layers (see WireSeg). Within
+  // the wireframe, which of two crossing edges wins costs at most one
+  // RGB565 step: it is one blue ramp fading with distance.
+  drawStars();
+  buildSphere();
   // Layers. A scene is a sequence of them and each is drawn in front of the
   // ones opened before it, so the depth sort only has to resolve what is
   // inside one. Opening them back to front is this function's job.
   //
-  // The stars sit 1500 FU away on a sphere around the camera: nothing in the
-  // scene is behind them and none of them hides another, so they need no
-  // depth of their own.
-  g3d_.beginLayer(g3::LayerFlags::NO_DEPTH);
-  drawStars();
-  // The sphere wireframe. Everything that stands on the surface is in front
-  // of it, so it can be settled by the layer rather than by depth; within
-  // itself it is one blue ramp fading with distance (wireColor()), so which
-  // of two crossing edges wins costs at most one RGB565 step. Measured over
-  // 147 frames: at worst 131 pixels of 57,600 differ, by 9 of 255. What it
-  // buys is 12 bytes off each of its records -- about 40% of the scene --
-  // and one sort less.
-  g3d_.beginLayer(g3::LayerFlags::NO_DEPTH);
-  buildSphere();
-  frameProfile_.stamp(FP_SPHERE);
-  // The world: everything standing on the surface, depth sorted as before.
+  // The world: everything standing on the surface, depth sorted.
   g3d_.beginLayer();
   // Upgrades first: their horizon markers must never be crowded out by
   // the enemies' markers; then the enemies carrying one, shown whatever
@@ -1072,6 +1074,8 @@ void Renderer::beginFrame(const sim::Game &game, float dt) {
   updateScoreDisplay(dt);
   lineCount_ = 0;
   pointCount_ = 0;
+  wireCount_ = 0;
+  starCount_ = 0;
   gaugeCount_ = 0;
   markerCount_ = 0;
   entitiesDrawn_ = 0;
@@ -1091,6 +1095,7 @@ void Renderer::renderBand(const g2::Surface &dst, int y, int h, int dstY) {
   g2::Graphics2D g(dst);
   g.setClipRect(0, dstY, w_, h);
   g.clear(g2::makeColor(0, 0, 4));
+  drawBackdropBand(dst, y, h, dstY);
   frameProfile_.stamp(FP_BAND_2D);
   g3d_.render(0, (int16_t)y, (int16_t)w_, (int16_t)h, dst, 0, (int16_t)dstY);
   frameProfile_.stamp(FP_BAND_3D);

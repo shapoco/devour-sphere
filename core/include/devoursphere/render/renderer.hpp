@@ -289,6 +289,39 @@ class Renderer {
     int16_t idx;
   };
   Vis vis_[sim::MAX_ENTITIES];
+
+  // The backdrop -- the stars and the sphere wireframe -- is not put through
+  // the 3D pipeline. Both layers carry no depth and everything in the world
+  // is in front of them, so beginFrame() projects them to screen segments
+  // and points, and renderBand() draws those straight into the band before
+  // the 3D layers. What it saves is a vertex transform, a primitive setup
+  // and a record for every line, and a span per scanline the line crosses:
+  // on a Cortex-M0+ that was 240 us per line in beginFrame() and most of
+  // the rasterization time.
+  struct WireSeg {
+    int16_t x0, y0, x1, y1;  // screen, 1/16 pixel, clipped to the screen
+    uint8_t b0, b1;          // brightness at each end (wireBrightness())
+  };
+  static constexpr int MAX_WIRE = 1100;  // the largest UiMetrics::wireLines
+  WireSeg wire_[MAX_WIRE];
+  int wireCount_ = 0;
+  struct StarPt {
+    int16_t x, y;
+    g2::Color c;
+  };
+  static constexpr int MAX_STARS = 120;
+  StarPt stars_[MAX_STARS];
+  int starCount_ = 0;
+  // Native pixels of the wireframe ramp, 32 steps of brightness, built for
+  // the format of the band being drawn
+  uint16_t wireNative_[32] = {};
+  g2::PixelFormat wireNativeFormat_ = g2::PixelFormat::GRAY1;
+  bool wireNativeValid_ = false;
+  void addWireSegment(const g3::vec3f &a, const g3::vec3f &b, int ba, int bb);
+  void drawBackdropBand(const g2::Surface &dst, int y, int h, int dstY);
+  void drawWireSegment(const g2::Surface &dst, const WireSeg &s, int y, int h,
+                       int dstY);
+
   Gauge2D gauges_[MAX_GAUGES];
   int gaugeCount_ = 0;
   Marker2D markers_[MAX_MARKERS];

@@ -44,15 +44,16 @@ static const uint8_t ICO_FACES[20][3] = {
     {4, 9, 5},  {2, 4, 11}, {6, 2, 10},  {8, 6, 7},  {9, 8, 1},
 };
 
-// Color of a wireframe vertex: fades with the distance from the eye
-static g2::Color wireColor(float d, int level) {
+// Brightness (0..255) of a wireframe vertex: fades with the distance from
+// the eye. The color is the ramp WIRE_DIM..WIRE_BRIGHT at that brightness.
+static constexpr g2::Color WIRE_DIM = g2::makeColor(6, 14, 40);
+static constexpr g2::Color WIRE_BRIGHT = g2::makeColor(70, 130, 235);
+static int wireBrightness(float d, int level) {
   float t = (FADE_FAR - d) / (FADE_FAR - FADE_NEAR);
   t = g3::clamp01(t);
   int it = (int)(t * 200) + (level <= 1 ? 55 : (level == 2 ? 30 : 0));
   if (it > 255) it = 255;
-  g2::Color dim = g2::makeColor(6, 14, 40);
-  g2::Color bright = g2::makeColor(70, 130, 235);
-  return g2::lerpColor(dim, bright, it);
+  return it;
 }
 
 // One chord of the wireframe, clipped against the horizon.
@@ -75,8 +76,177 @@ void Renderer::emitChord(const vec3f &a, const vec3f &b, int level) {
   if (sphereDryRun_) return;
   vec3f pa = sphereCenter_ + ua * SPHERE_R;
   vec3f pb = sphereCenter_ + ub * SPHERE_R;
-  putLine3(pa, pb, wireColor(g3::length(pa - cam_.eye), level),
-           wireColor(g3::length(pb - cam_.eye), level), palette_[PAL_LINE]);
+  addWireSegment(pa, pb, wireBrightness(g3::length(pa - cam_.eye), level),
+                 wireBrightness(g3::length(pb - cam_.eye), level));
+}
+
+// Project a chord to the screen and keep it as a 2D segment. A chord with an
+// end behind the near plane is dropped, which is what the 3D pipeline did
+// with such a line; the rest is clipped to the screen (Liang-Barsky) so the
+// band drawing never has to test a coordinate.
+void Renderer::addWireSegment(const vec3f &a, const vec3f &b, int ba, int bb) {
+  if (wireCount_ >= MAX_WIRE) return;
+  float x0, y0, x1, y1;
+  if (!project(a, x0, y0) || !project(b, x1, y1)) return;
+  const float dx = x1 - x0, dy = y1 - y0;
+  float t0 = 0.0f, t1 = 1.0f;
+  auto clip = [&](float p, float q) {
+    if (p == 0.0f) return q >= 0.0f;
+    const float r = q / p;
+    if (p < 0.0f) {
+      if (r > t1) return false;
+      if (r > t0) t0 = r;
+    } else {
+      if (r < t0) return false;
+      if (r < t1) t1 = r;
+    }
+    return true;
+  };
+  if (!clip(-dx, x0) || !clip(dx, (float)w_ - x0) || !clip(-dy, y0) ||
+      !clip(dy, (float)h_ - y0)) {
+    return;
+  }
+  WireSeg &seg = wire_[wireCount_++];
+  seg.x0 = (int16_t)((x0 + t0 * dx) * 16.0f + 0.5f);
+  seg.y0 = (int16_t)((y0 + t0 * dy) * 16.0f + 0.5f);
+  seg.x1 = (int16_t)((x0 + t1 * dx) * 16.0f + 0.5f);
+  seg.y1 = (int16_t)((y0 + t1 * dy) * 16.0f + 0.5f);
+  seg.b0 = (uint8_t)(ba + (int)((bb - ba) * t0));
+  seg.b1 = (uint8_t)(ba + (int)((bb - ba) * t1));
+  lineCount_++;
+}
+
+// The 16-bit word that a pixel of color c occupies in memory, for the two
+// formats the fast path writes directly (the "native" pixel of RGB565BE is
+// byte-swapped in memory: see CursorRgb565BE::write)
+static bool directWord(g2::PixelFormat f) {
+  return f == g2::PixelFormat::RGB565BE || f == g2::PixelFormat::ARGB4444;
+}
+static uint16_t memoryWord(g2::PixelFormat f, g2::Color c) {
+  const uint16_t native = (uint16_t)g2::colorToNative(f, c);
+  return f == g2::PixelFormat::RGB565BE ? g2::bswap16(native) : native;
+}
+
+// One wireframe segment into one band. Integer DDA over the major axis
+// from the segment's own start, so the pieces drawn into neighbouring bands
+// join exactly; the pixel range that falls into the band is worked out
+// first rather than walked, which matters for a long line crossing many
+// bands. Coordinates are 1/16 pixel, the DDA runs in 1/4096 of that.
+void Renderer::drawWireSegment(const g2::Surface &dst, const WireSeg &s, int y,
+                               int h, int dstY) {
+  int X0 = s.x0, Y0 = s.y0, X1 = s.x1, Y1 = s.y1, B0 = s.b0, B1 = s.b1;
+  const bool xMajor =
+      (X1 - X0 < 0 ? X0 - X1 : X1 - X0) >= (Y1 - Y0 < 0 ? Y0 - Y1 : Y1 - Y0);
+  if (!xMajor) {  // walk y: swap the axes and swap back when plotting
+    int t = X0;
+    X0 = Y0;
+    Y0 = t;
+    t = X1;
+    X1 = Y1;
+    Y1 = t;
+  }
+  if (X0 > X1) {  // walk in the positive direction of the major axis
+    int t = X0;
+    X0 = X1;
+    X1 = t;
+    t = Y0;
+    Y0 = Y1;
+    Y1 = t;
+    t = B0;
+    B0 = B1;
+    B1 = t;
+  }
+  const int dx = X1 - X0, dy = Y1 - Y0;
+  // Pixels whose center (p * 16 + 8) lies within [X0, X1] along the major
+  // axis
+  const int p0 = (X0 + 7) >> 4, p1 = (X1 - 8) >> 4;
+  const int n = p1 - p0 + 1;
+  if (n <= 0) return;
+  // Minor coordinate and brightness per major pixel, in 1/16 px x 2^12
+  const int dMinor = dx > 0 ? (int)(((int64_t)dy << 16) / dx) : 0;
+  const int dBright = n > 1 ? ((B1 - B0) << 16) / (n - 1) : 0;
+  int minor0 = (Y0 << 12) + (((p0 * 16 + 8 - X0) * dMinor) >> 4);
+  // The pixels of the segment that fall into the band
+  int kLo = 0, kHi = n - 1;
+  if (xMajor) {
+    const int bandLo = y << 16, bandHi = ((y + h) << 16) - 1;
+    if (dMinor == 0) {
+      const int row = minor0 >> 16;
+      if (row < y || row >= y + h) return;
+    } else {
+      // Solve for the pixels whose row spans the band; the per-pixel test
+      // below takes care of the rounding at both ends
+      int kA = (bandLo - minor0) / dMinor;
+      int kB = (bandHi - minor0) / dMinor;
+      if (kA > kB) {
+        const int t = kA;
+        kA = kB;
+        kB = t;
+      }
+      kA -= 1;
+      kB += 1;
+      if (kA > kLo) kLo = kA;
+      if (kB < kHi) kHi = kB;
+      if (kLo > kHi) return;
+    }
+  } else {
+    // y is the major axis here: only the band's rows
+    const int kA = y - p0, kB = y + h - 1 - p0;
+    if (kA > kLo) kLo = kA;
+    if (kB < kHi) kHi = kB;
+    if (kLo > kHi) return;
+  }
+  const bool wide = directWord(dst.format);
+  g2::Graphics2D g(dst);
+  int minor = minor0 + kLo * dMinor;
+  int bright = (B0 << 16) + kLo * dBright;
+  for (int k = kLo; k <= kHi; k++, minor += dMinor, bright += dBright) {
+    const int major = p0 + k;
+    const int m = minor >> 16;  // pixel along the minor axis
+    const int px = xMajor ? major : m, py = xMajor ? m : major;
+    if (py >= y && py < y + h && px >= 0 && px < w_) {
+      const int b = bright >> 16;
+      if (wide) {
+        uint16_t *row = (uint16_t *)dst.linePtr(py - y + dstY);
+        row[px] = wireNative_[(b < 0 ? 0 : (b > 255 ? 255 : b)) >> 3];
+      } else {
+        g.fillRect(px, py - y + dstY, 1, 1,
+                   g2::lerpColor(WIRE_DIM, WIRE_BRIGHT, b));
+      }
+    }
+  }
+}
+
+// The stars and the wireframe of one band, before the 3D layers
+void Renderer::drawBackdropBand(const g2::Surface &dst, int y, int h,
+                                int dstY) {
+  if (!wireNativeValid_ || wireNativeFormat_ != dst.format) {
+    for (int i = 0; i < 32; i++) {
+      wireNative_[i] = memoryWord(
+          dst.format, g2::lerpColor(WIRE_DIM, WIRE_BRIGHT, i * 8 + 4));
+    }
+    wireNativeFormat_ = dst.format;
+    wireNativeValid_ = true;
+  }
+  g2::Graphics2D g(dst);
+  const bool wide = directWord(dst.format);
+  for (int i = 0; i < starCount_; i++) {
+    const StarPt &st = stars_[i];
+    if (st.y < y || st.y >= y + h) continue;
+    if (wide) {
+      uint16_t *row = (uint16_t *)dst.linePtr(st.y - y + dstY);
+      row[st.x] = memoryWord(dst.format, st.c);
+    } else {
+      g.fillRect(st.x, st.y - y + dstY, 1, 1, st.c);
+    }
+  }
+  for (int i = 0; i < wireCount_; i++) {
+    const WireSeg &seg = wire_[i];
+    const int lo = seg.y0 < seg.y1 ? seg.y0 : seg.y1;
+    const int hi = seg.y0 < seg.y1 ? seg.y1 : seg.y0;
+    if ((hi >> 4) < y || (lo >> 4) >= y + h) continue;
+    drawWireSegment(dst, seg, y, h, dstY);
+  }
 }
 
 // Draw a-b as the 2^depth chords the mesh actually has along it, bisecting

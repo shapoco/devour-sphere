@@ -31,7 +31,7 @@ static_assert(SCREEN_H % BAND_H == 0, "the bands must tile the screen exactly");
 // spans take 10.8 KB, so 48 KB is the smallest arena that never thins. The
 // Xiamocon build keeps 64 KB because it has the RAM; here every 16 KB
 // matters (256 KB in all), and 48 KB draws the same picture.
-constexpr size_t ARENA_SIZE = 48 * 1024;
+constexpr size_t ARENA_SIZE = 40 * 1024;
 
 // Spans held per scanline. Measured peak at 240x240 is 32; 128 is the value
 // the Xiamocon build settled on. Overflowing drops spans, which leaves holes
