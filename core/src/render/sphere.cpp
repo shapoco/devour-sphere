@@ -83,7 +83,7 @@ static constexpr g2::Color WIRE_BRIGHT = g2::makeColor(70, 130, 235);
 static int wireBrightness(int32_t dist, int level) {
   constexpr int32_t NEAR = (int32_t)(FADE_NEAR * FU * 16),
                     FAR = (int32_t)(FADE_FAR * FU * 16);
-  int32_t t200 = (int32_t)(((int64_t)(FAR - dist) * 200) / (FAR - NEAR));
+  int32_t t200 = ((FAR - dist) / 64) * 200 / ((FAR - NEAR) / 64);  // 32-bit
   if (t200 < 0) t200 = 0;
   if (t200 > 200) t200 = 200;
   int it = t200 + (level <= 1 ? 55 : (level == 2 ? 30 : 0));

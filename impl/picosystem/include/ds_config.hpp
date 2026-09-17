@@ -25,13 +25,12 @@ constexpr int BAND_COUNT = SCREEN_H / BAND_H;
 static_assert(SCREEN_H % BAND_H == 0, "the bands must tile the screen exactly");
 
 // Working memory of the 3D renderer. What binds is the triangle buffer it is
-// divided into: the renderer starts thinning the scene when that buffer has
-// less than 36.9 KB (measured at 240x240 over levels 1-7 x 3 seeds x 600
-// ticks; the peak frame uses 17.0 KB). The fixed part plus SPAN_CAPACITY
-// spans take 10.8 KB, so 48 KB is the smallest arena that never thins. The
-// Xiamocon build keeps 64 KB because it has the RAM; here every 16 KB
-// matters (256 KB in all), and 48 KB draws the same picture.
-constexpr size_t ARENA_SIZE = 40 * 1024;
+// divided into: the renderer thins the scene when that buffer runs low. With
+// the stars and the sphere wireframe drawn outside the 3D pipeline only the
+// world and the overlays are in it: the device reports 6-11 KB in use of
+// the 21 KB a 32 KB arena leaves after the fixed part and SPAN_CAPACITY
+// spans (10.8 KB). The Xiamocon build keeps 64 KB because it has the RAM.
+constexpr size_t ARENA_SIZE = 32 * 1024;
 
 // Spans held per scanline. Measured peak at 240x240 is 32; 128 is the value
 // the Xiamocon build settled on. Overflowing drops spans, which leaves holes

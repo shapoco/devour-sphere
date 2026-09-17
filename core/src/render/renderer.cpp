@@ -175,8 +175,26 @@ bool Renderer::project(const vec3f &p, float &sx, float &sy) const {
   return true;
 }
 
+// Horizon margins of the integer pre-culls, Q30
+static constexpr int32_t HORIZON_Q01 = (int32_t)(0.01f * (1 << 30));
+static constexpr int32_t HORIZON_Q02 = (int32_t)(0.02f * (1 << 30));
+
+// sin / cos from the simulation's table (1025 points, linear interpolation,
+// error ~1e-6). libm's sinf / cosf are pure software on a core without an
+// FPU and cost a few thousand cycles each; these cost a multiply and a
+// lookup.
+static inline uint16_t radToBrad(float rad) {
+  return (uint16_t)(int32_t)(rad * (65536.0f / (2.0f * PI)));
+}
+static inline float fastSin(float rad) {
+  return sim::sinQ30(radToBrad(rad)) * (1.0f / (float)(1 << 30));
+}
+static inline float fastCos(float rad) {
+  return sim::cosQ30(radToBrad(rad)) * (1.0f / (float)(1 << 30));
+}
+
 static vec3f rotateAroundAxis(const vec3f &v, const vec3f &axis, float angle) {
-  float c = std::cos(angle), s = std::sin(angle);
+  float c = fastCos(angle), s = fastSin(angle);
   return v * c + g3::cross(axis, v) * s + axis * (g3::dot(axis, v) * (1 - c));
 }
 
@@ -538,8 +556,10 @@ void Renderer::drawFloatingFragments() {
     bool edible = (1u << fp.sizeLog2) * sim::FOOD_NOTICE_RATIO >= playerSize;
     const g3::Material &m =
         palette_[edible ? PAL_FRAGMENT : PAL_FRAGMENT_WHITE];
+    // Horizon test in integer, before anything is converted to float
+    if (sim::dotQ30(fp.n, camQ_.unit) < camQ_.cosHorizon - HORIZON_Q01)
+      continue;
     vec3f up = q30ToF(fp.n);
-    if (g3::dot(up, camUnit_) < cosHorizon_ - 0.01f) continue;
     vec3f pos = toLocal(sim::scaleToLength(fp.n, fp.r));
     vec3f rel = pos - cam_.eye;
     float d = g3::length(rel);
@@ -559,8 +579,8 @@ void Renderer::drawFloatingFragments() {
     vec3f helper = std::fabs(up.x) < 0.9f ? vec3f{1, 0, 0} : vec3f{0, 1, 0};
     vec3f a = g3::normalize(g3::cross(up, helper));
     vec3f b = g3::cross(up, a);
-    float ang = fp.spin * BRAD_TO_RAD;
-    vec3f dir = a * std::cos(ang) + b * std::sin(ang);
+    vec3f dir = a * (sim::cosQ30(fp.spin) * (1.0f / (float)(1 << 30))) +
+                b * (sim::sinQ30(fp.spin) * (1.0f / (float)(1 << 30)));
     vec3f perp = g3::cross(up, dir);
     putKite(pos, dir, perp, s, s * 2.5f, m);
   }
@@ -571,8 +591,9 @@ void Renderer::drawBullets() {
   for (int i = 0; i < sim::MAX_BULLETS; i++) {
     const sim::Bullet &b = g.bullets[i];
     if (!b.alive) continue;
+    if (sim::dotQ30(b.frame.n, camQ_.unit) < camQ_.cosHorizon - HORIZON_Q01)
+      continue;
     vec3f up = q30ToF(b.frame.n);
-    if (g3::dot(up, camUnit_) < cosHorizon_ - 0.01f) continue;
     vec3f pos = toLocal(sim::scaleToLength(b.frame.n, b.r));
     vec3f rel = pos - cam_.eye;
     if (g3::dot(rel, viewDir_) < -2.0f) continue;
@@ -731,7 +752,7 @@ void Renderer::drawPresenceAuras() {
     for (int k = 0; k <= SEGMENTS; k++) {
       float a = k * (2.0f * PI / SEGMENTS);
       verts[k + 1].position =
-          center + (right * std::cos(a) + up * std::sin(a)) * radius;
+          center + (right * fastCos(a) + up * fastSin(a)) * radius;
       verts[k + 1].normal = {0, 1, 0};
       verts[k + 1].uv = {0, 0};
       verts[k + 1].color = g2::makeColor(0, 0, 0);
@@ -838,7 +859,7 @@ void Renderer::addEnemyMarker(const sim::Entity &c, bool always) {
   float len = g3::length(d);
   if (len < 1e-5f) return;
   d = d * (1.0f / len);
-  vec3f hp = camUnit_ * std::cos(horizonAngle_) + d * std::sin(horizonAngle_);
+  vec3f hp = camUnit_ * fastCos(horizonAngle_) + d * fastSin(horizonAngle_);
   vec3f world = sphereCenter_ + hp * SPHERE_R;
   float sx, sy;
   if (!project(world, sx, sy)) return;
@@ -970,7 +991,7 @@ void Renderer::buildScene() {
     const sim::Entity &c = g.entities[i];
     if (!c.alive || c.isPlayer || c.upgrade == (uint8_t)sim::UpgradeKind::NONE)
       continue;
-    if (g3::dot(q30ToF(c.frame.n), camUnit_) < cosHorizon_ - 0.02f) {
+    if (sim::dotQ30(c.frame.n, camQ_.unit) < camQ_.cosHorizon - HORIZON_Q02) {
       addEnemyMarker(c, true);
     }
   }
@@ -980,15 +1001,14 @@ void Renderer::buildScene() {
   for (int i = 0; i < sim::MAX_ENTITIES; i++) {
     const sim::Entity &c = g.entities[i];
     if (!c.alive) continue;
-    vec3f up = q30ToF(c.frame.n);
-    float bodyR = c.bodyRadius / (float)FU;
-    if (g3::dot(up, camUnit_) < cosHorizon_ - 0.02f) {
+    if (sim::dotQ30(c.frame.n, camQ_.unit) < camQ_.cosHorizon - HORIZON_Q02) {
       // Beyond the horizon: a marker (carriers were collected above)
       if (!c.isPlayer && c.upgrade == (uint8_t)sim::UpgradeKind::NONE) {
         addEnemyMarker(c, false);
       }
       continue;
     }
+    float bodyR = c.bodyRadius / (float)FU;
     vec3f pos = toLocal(sim::scaleToLength(c.frame.n, c.r));
     vec3f rel = pos - cam_.eye;
     float d = g3::length(rel);

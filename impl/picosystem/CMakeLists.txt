@@ -63,6 +63,12 @@ target_compile_definitions(shapogfx PUBLIC
 # Nothing in this game is textured (verified in the Xiamocon build, see
 # impl/xiamocon/devoursphere/CMakeLists.txt). PRIVATE: read by src/gfx3d only.
 target_compile_definitions(shapogfx PRIVATE SHAPOGFX3D_TEXTURE=0)
+# The span loops (render() and what it calls per span, ~14 KB) run from RAM
+# through the SDK's .time_critical placement; the rest of the 3D library
+# stays in flash. See ../SPEC.md "コードを RAM に置く".
+target_compile_definitions(shapogfx PRIVATE
+    "SHAPOGFX3D_HOT_ATTR=__attribute__((section(\".time_critical.gfx3d\")))"
+    SHAPOGFX3D_HOT_INSTANTIATE=1)
 
 # --- The firmware --------------------------------------------------------
 add_executable(${APP_NAME}
