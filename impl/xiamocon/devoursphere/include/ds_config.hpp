@@ -42,9 +42,9 @@ static_assert(SCREEN_H % BAND_H == 0, "the bands must tile the screen exactly");
 // over levels 1-7 x 3 seeds x 600 ticks driven by the AI player, priced on
 // the boards:
 //
-//     the peak frame uses                     17.7 KB
+//     the peak frame uses                     17.0 KB
 //     below this the renderer starts thinning 36.9 KB   (bit-identical above)
-//     64 KB arena with SPAN_CAPACITY spans    53.2 KB   = 1.48x / 3.07x
+//     64 KB arena with SPAN_CAPACITY spans    53.2 KB   = 1.48x / 3.13x
 //
 // 64 KB was 128 (RP2350) and 96 (ESP32S3) when the buffer was a slot count
 // and every slot cost the same. Three ShapoGFX changes took the peak from

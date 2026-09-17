@@ -193,10 +193,6 @@ class Renderer {
   int width() const { return w_; }
   int height() const { return h_; }
 
-  // Internal (public for the traversal helper): one face of the sphere
-  void subdivideFace(const g3::vec3f &a, const g3::vec3f &b, const g3::vec3f &c,
-                     int level);
-
  private:
   int w_ = 0, h_ = 0;
   UiMetrics ui_;
@@ -241,7 +237,22 @@ class Renderer {
   bool sphereCountValid_ = false;
 
   // Per-frame bookkeeping
-  uint32_t edgeKeys_[2048];  // edge dedupe hash table
+  // How deeply the mesh is subdivided along each of a face's three edges
+  // ([0] = v0-v1, [1] = v1-v2, [2] = v2-v0), four bits each so that the
+  // whole thing rides back from subdivideFace() in a register. A leaf
+  // reports zero on all three.
+  using EdgeDepths = uint16_t;
+  static constexpr int edgeDepth(EdgeDepths e, int i) {
+    return (e >> (i * 4)) & 0xF;
+  }
+  static constexpr EdgeDepths makeEdgeDepths(int e0, int e1, int e2) {
+    return (EdgeDepths)((e0 & 0xF) | ((e1 & 0xF) << 4) | ((e2 & 0xF) << 8));
+  }
+  // Subdivision depth of each icosahedron edge (255: the two vertices are
+  // not an edge of it), taken from the deeper of the two faces that share
+  // it, and what each of the 20 faces reported
+  uint8_t icoEdgeDepth_[12][12];
+  EdgeDepths faceDepth_[20];
   int lineCount_ = 0, pointCount_ = 0, entitiesDrawn_ = 0, kites_ = 0;
   // Visible entities of the frame, sorted by distance. A member rather than
   // a local: 256 of these is 3 KB, which is most of the 4 KB stack a core
@@ -344,7 +355,19 @@ class Renderer {
   // sphere.cpp
   void buildSphere();
   int countSphereLines(int shift, const int *order);
-  void emitEdge(const g3::vec3f &a, const g3::vec3f &b, int level);
+  // Subdivide one face and draw the lines separating its children; returns
+  // how deeply the mesh ended up subdivided along the face's own edges. See
+  // sphere.cpp for why that is all a face draws.
+  EdgeDepths subdivideFace(const g3::vec3f &a, const g3::vec3f &b,
+                           const g3::vec3f &c, int level);
+  int wantLevel(const g3::vec3f &center, int level) const;
+  // Draw a-b as 2^depth chords lying on the sphere
+  void emitEdge(const g3::vec3f &a, const g3::vec3f &b, int depth, int level);
+  void emitSplitEdge(const g3::vec3f &a, const g3::vec3f &b, int depth,
+                     int level);
+  void emitChord(const g3::vec3f &a, const g3::vec3f &b, int level);
+  void traverseSphere(const int *order);
+  void emitIcoEdges();
 
   // effects.cpp
   void shiftEffects(const g3::vec3f &delta);
