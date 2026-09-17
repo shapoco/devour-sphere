@@ -20,3 +20,6 @@ __pycache__/
 
 # Release outputs
 releases/
+
+# Others
+tmp.*
