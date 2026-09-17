@@ -2,8 +2,9 @@
 
 #if DS_PROFILE
 
-#include "ds_platform.hpp"
 #include "shapoco/gfx2d/fonts.hpp"
+
+#include <ds_platform.hpp>  // see profiler.hpp for the angle brackets
 
 namespace ds {
 

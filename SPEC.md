@@ -36,6 +36,14 @@ impl/xiamocon/ 配下に Xiamocon (XIAO RP2350 / ESP32S3 用のゲーム機型�
 
 詳細は impl/xiamocon/SPEC.md を参照のこと。
 
+### PicoSystem 版
+
+impl/picosystem/ 配下に PicoSystem (Pimoroni の RP2040 携帯ゲーム機) 向けの実装が置かれる。
+PicoSystem SDK は使わず (フレームバッファを静的に確保してしまう)、素の pico-sdk プロジェクトとして
+ST7789 を 16 ビットモードで帯ごとに駆動する。フレームループと計測オーバーレイは Xiamocon 版と共通。
+
+詳細は impl/picosystem/SPEC.md を参照のこと。
+
 ## ディレクトリ構成
 
 ```
@@ -44,6 +52,7 @@ CMakeLists.txt       ネイティブビルド (コア、テスト、確認用フ
 core/                コアプログラム (core/SPEC.md)
 impl/wasm/           WASM 版 (impl/wasm/SPEC.md)
 impl/xiamocon/       Xiamocon 版 (impl/xiamocon/SPEC.md)
+impl/picosystem/     PicoSystem 版 (impl/picosystem/SPEC.md)
 docs/                公開用の静的サイト (docs/play/ がゲーム)
 submodule/shapo-gfx/ ShapoGFX (git submodule)
 launch_web_server.sh docs/ をローカルで配信する
@@ -72,6 +81,14 @@ xmc build                                        # RP2350 と ESP32S3 の両方
 xmc build -p rp2350_pico_sdk                     # .cmake/devoursphere.uf2 だけ
 ```
 
+PicoSystem 版も pico-sdk を使う別のトップレベルのビルド (Xiamocon SDK は不要):
+
+```sh
+cd impl/picosystem
+cmake -S . -B build -DPICO_SDK_PATH=~/pico/pico-sdk
+cmake --build build -j                           # build/devoursphere.uf2
+```
+
 C/C++ のコードは .clang-format (ShapoGFX と同じ設定) で整形する。
 
 ## リリース
@@ -87,8 +104,8 @@ GitHub の releases に置くファイルは `./make_release.sh` が作る (Xiam
 - impl/ の各ターゲットをビルドする。WASM 版は含めない
   (ダウンロードさせるものではなく docs/play/ で公開するため)。
 - `releases/devour-sphere-YYYYMMDD/<ターゲット>/` に置いて zip にまとめる。
-  ターゲットは今のところ `xiamocon-rp2350` (devour-sphere.uf2) と
-  `xiamocon-esp32s3` (devour-sphere.factory.bin と upload.sh)。
+  ターゲットは `xiamocon-rp2350` (devour-sphere.uf2)、
+  `xiamocon-esp32s3` (devour-sphere.factory.bin と upload.sh)、`picosystem` (devour-sphere.uf2)。
 - ESP32S3 の factory イメージは bootloader・パーティションテーブル・boot_app0・
   アプリをオフセット通りに連結したものなので、0x0 に 1 回書けば済む。
   同梱の `upload.sh` は esptool を探して (`esptool` / `esptool.py` /

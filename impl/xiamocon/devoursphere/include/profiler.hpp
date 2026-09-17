@@ -16,8 +16,13 @@
 #include <cstdint>
 
 #include "devoursphere/render/renderer.hpp"
-#include "ds_config.hpp"
 #include "shapoco/gfx2d/gfx2d.hpp"
+
+// Angle brackets on purpose: this file is shared with the PicoSystem front
+// end (impl/picosystem/), which compiles it against a ds_config.hpp /
+// ds_platform.hpp of its own. A quoted include would find the ones next to
+// this file first, whatever the include path says.
+#include <ds_config.hpp>
 
 #ifndef DS_PROFILE
 #define DS_PROFILE 1

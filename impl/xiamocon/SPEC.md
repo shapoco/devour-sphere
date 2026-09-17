@@ -35,7 +35,8 @@ impl/xiamocon/
       app.cpp          xmcApp* エントリ、静的領域、フレームループ、入力変換
       band_writer.cpp  帯の ping-pong と DMA 転送
       ds_platform.cpp  乱数シードとスタック計測 (ターゲットごとの実装)
-      profiler.cpp     計測とオーバーレイ
+      profiler.cpp     計測とオーバーレイ (PicoSystem 版 impl/picosystem/ と共有。
+                       そのため ds_config.hpp / ds_platform.hpp を <...> でインクルードする)
 ```
 
 ディレクトリ名が `devoursphere` でなければならないのは、`xmc run` が
@@ -83,18 +84,18 @@ RP2350A のリンカ領域は `RAM` 512KB (`.data` + `.bss` + ヒープ) と、
 (`crt0.S` と `multicore.c` は INTERFACE ライブラリ経由で `xmc_pfm` 側に
 コンパイルされるため、`target_compile_definitions()` では効かない)。
 
-`.bss` の実測 (ShapoGFX 8eff034 時点。`arm-none-eabi-nm --size-sort -S` で採取):
+`.bss` の実測 (sim の配列上限を絞った後。合計は `arm-none-eabi-size`、内訳は sizeof):
 
 | 用途 | サイズ |
 |---|---|
 | 3D アリーナ | 65,536 |
-| `sim::Game` | 136,512 |
+| `sim::Game` | 95,360 (上限を絞る前は 136,512) |
 | 帯バッファ x2 (240x40) | 38,400 |
-| `render::Renderer` | 12,192 |
-| SDK / pico-sdk / newlib / TinyUSB ほか | 約 7,250 |
-| **合計** | **259,888 (253.8KB / 512KB)** |
+| `render::Renderer` | 11,680 |
+| SDK / pico-sdk / newlib / TinyUSB ほか | 約 11,600 |
+| **合計** | **222,608 (217.4KB / 512KB)** |
 
-`.text` は 291,764 バイト (4MB のフラッシュに対して十分小さい)。
+`.text` (+ `.rodata` + `.data`) は 293,152 バイト (4MB のフラッシュに対して十分小さい)。
 `.bss` は ShapoGFX の更新ではほとんど変わらない (アリーナは固定長の配列で、
 その中の割り付けが変わるだけ。ba15719 でレイヤテーブル 24B が増えた)。
 フラッシュの方は 8eff034 で +2.7KB、b03055e で +4.3KB、ba15719 で +5.2KB。
@@ -105,10 +106,12 @@ ba15719 でレコードのレイアウトごとに特化したスパンビルダ
 このゲームは `PackedVertex` を使わないが、これを落とすマクロは無い。
 動的確保はしない。`sim::Game` だけで 133KB あるのでスタックには絶対に置かない。
 
-`pico_set_binary_type(copy_to_ram)` はまだ使えないが、**射程には入った**。
-RAM に載せる必要があるのは `.text` 195,320 + `.rodata` 77,900 + `.data` 9,724 +
-`.bss` 259,888 = **542,832 バイト**で、512KB (524,288) を 18,544 超えている。
-アリーナを 64KB に落とす前は 90KB 近く超えていた。
+`pico_set_binary_type(copy_to_ram)` は**収まる計算になった (未検証)**。
+RAM に載せる必要があるのは `.text` + `.rodata` + `.data` の 293,152 と
+`.bss` 222,608 で、合計 **515,760 バイト**。512KB (524,288) まで 8,528 バイトの余裕がある
+(sim の配列上限を絞って `Game` が 41KB 減る前は 18,544 超えていた。
+アリーナを 64KB に落とす前は 90KB 近く超えていた)。
+SDK のスタックや初期化時のヒープが同じ 512KB から取られるので、実機で試して確かめること。
 SPEC の「これ以上速くするには」に書いたとおり、gfx3d のスパンループは
 XIP フラッシュ実行の最悪ケースなので、ここを詰められると効く。
 

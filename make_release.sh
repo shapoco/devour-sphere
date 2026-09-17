@@ -9,7 +9,10 @@
 # Any failing step stops the script, so a half-built zip is never produced.
 #
 # Needs the Xiamocon SDK environment (pico-sdk, PlatformIO, the `xmc` tool);
-# the script sources setup.shrc for it. See impl/xiamocon/SPEC.md.
+# the script sources setup.shrc for it. See impl/xiamocon/SPEC.md. The
+# PicoSystem target only needs pico-sdk (PICO_SDK_PATH, defaulting to
+# ~/pico/pico-sdk) and picotool (picotool_DIR, optional; the SDK fetches and
+# builds one otherwise).
 
 set -euo pipefail
 
@@ -77,6 +80,23 @@ ESP_DIR="$STAGE/xiamocon-esp32s3"
 mkdir -p "$ESP_DIR"
 cp "$FACTORY" "$ESP_DIR/$NAME.factory.bin"
 
+# --- impl/picosystem: a plain pico-sdk build --------------------------------
+PS_DIR="$REPO_ROOT/impl/picosystem"
+cd "$PS_DIR"
+if [ "$CLEAN" = 1 ]; then
+  step "Cleaning impl/picosystem"
+  rm -rf build
+fi
+step "Building PicoSystem"
+PS_CMAKE_ARGS=(-DPICO_SDK_PATH="${PICO_SDK_PATH:-$HOME/pico/pico-sdk}")
+if [ -n "${picotool_DIR:-}" ]; then PS_CMAKE_ARGS+=(-Dpicotool_DIR="$picotool_DIR"); fi
+cmake -S . -B build "${PS_CMAKE_ARGS[@]}"
+cmake --build build -j
+PS_UF2="build/devoursphere.uf2"
+[ -f "$PS_UF2" ] || { echo "missing $PS_DIR/$PS_UF2" >&2; exit 1; }
+mkdir -p "$STAGE/picosystem"
+cp "$PS_UF2" "$STAGE/picosystem/$NAME.uf2"
+
 step "Writing the upload script and the README"
 cat > "$ESP_DIR/upload.sh" <<'EOF'
 #!/usr/bin/env bash
@@ -133,13 +153,20 @@ Firmware for Xiamocon (a XIAO RP2350 / ESP32S3 handheld). The browser version
 needs no download: see docs/play/ on the project page.
 
 Controls: LEFT / RIGHT turn, UP dashes, DOWN brakes, A / B / X / Y fire and
-confirm. Hold FUNC while playing to overlay the timing counters.
+confirm. Hold FUNC while playing to overlay the timing counters. (PicoSystem:
+A / B / X fire, Y toggles the timing overlay.)
 
 xiamocon-rp2350/  - for XIAO RP2350
   $NAME.uf2
     Put the board in mass storage mode (hold Down, hold the power button for
     3 seconds, then release Down) and copy the .uf2 onto the drive that
     appears. The board reboots into the game by itself.
+
+picosystem/       - for PicoSystem (Pimoroni, RP2040)
+  $NAME.uf2
+    Hold X while switching the PicoSystem on to get the BOOTSEL drive, then
+    copy the .uf2 onto it. Built without the PicoSystem SDK; see
+    impl/picosystem/SPEC.md.
 
 xiamocon-esp32s3/ - for XIAO ESP32S3
   $NAME.factory.bin, upload.sh

@@ -1,7 +1,7 @@
 # Devour Sphere
 
 サイバー空間の「スフィア」上空で、他のエンティティと戦い、フラグメントを喰らって巨大化していく
-3D シューティングゲーム。組み込み機器 (RP2350) とブラウザ (WebAssembly) で同じ
+3D シューティングゲーム。組み込み機器 (RP2350 / ESP32S3 / RP2040) とブラウザ (WebAssembly) で同じ
 コアプログラムが動く。
 
 このゲームは組み込み向けグラフィックスライブラリ [ShapoGFX](https://github.com/shapoco/shapo-gfx)
@@ -10,16 +10,17 @@
 
 - **遊ぶ:** https://shapoco.github.io/devour-sphere/play/
 - **仕様:** [SPEC.md](SPEC.md), [core/SPEC.md](core/SPEC.md),
-  [impl/wasm/SPEC.md](impl/wasm/SPEC.md), [impl/xiamocon/SPEC.md](impl/xiamocon/SPEC.md)
+  [impl/wasm/SPEC.md](impl/wasm/SPEC.md), [impl/xiamocon/SPEC.md](impl/xiamocon/SPEC.md),
+  [impl/picosystem/SPEC.md](impl/picosystem/SPEC.md)
 
 ## 操作
 
-| 操作 | キー | Xiamocon |
-|---|---|---|
-| 旋回 | ← → / A D | ← → |
-| ダッシュ (体力を消費) | ↑ / W | ↑ |
-| ブレーキ (旋回が速くなる) | ↓ / S | ↓ |
-| 攻撃・決定 | スペース / I J K L | A / B / X / Y |
+| 操作 | キー | Xiamocon | PicoSystem |
+|---|---|---|---|
+| 旋回 | ← → / A D | ← → | ← → |
+| ダッシュ (体力を消費) | ↑ / W | ↑ | ↑ |
+| ブレーキ (旋回が速くなる) | ↓ / S | ↓ | ↓ |
+| 攻撃・決定 | スペース / I J K L | A / B / X / Y | A / B / X |
 
 ブラウザ版はゲームパッドとタッチ操作 (仮想パッド) にも対応。
 
@@ -39,6 +40,14 @@ make -C impl/wasm        # WASM 版 (Emscripten)
 source ~/path/to/xiamocon/setup.shrc
 cd impl/xiamocon/devoursphere
 xmc build                      # 両方のターゲット
+```
+
+PicoSystem (RP2040) 版 (pico-sdk のみ):
+
+```sh
+cd impl/picosystem
+cmake -S . -B build -DPICO_SDK_PATH=~/path/to/pico-sdk
+cmake --build build -j         # build/devoursphere.uf2
 ```
 
 ## License
