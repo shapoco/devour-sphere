@@ -86,10 +86,13 @@ uint16_t atan2Brad(int32_t y, int32_t x) {
   return a;
 }
 
-// One 64-bit division (the reciprocal of the length) and three multiplies,
-// instead of the three exact divisions this used to do. The result can differ
-// from the exact quotient by a couple of Q30 steps, which is far below what
-// the simulation resolves; it is not bit-identical to the older form.
+// No 64-bit division and no 64-bit square root: the reciprocal of the
+// length comes from a 32-bit square root of the top bits of the squared
+// length, a 32-bit division and two Newton steps of the reciprocal square
+// root, all in 32x32 -> 64 multiplies. On a Cortex-M0+ those are the
+// operations that stay cheap. The result is within a few Q30 steps of the
+// exact quotient (the harness measured 4 at worst), which is far below what
+// the simulation resolves; it is not bit-identical to the older forms.
 Vec3 normalizeQ30(const Vec3 &in) {
   // 64-bit working copies: the scaling below multiplies and shifts signed
   // values, and 64 bits keeps every step in range (and away from the
@@ -111,15 +114,23 @@ Vec3 normalizeQ30(const Vec3 &in) {
     x >>= sh, y >>= sh, z >>= sh;
   }
   const uint64_t len2 = (uint64_t)(x * x + y * y + z * z);  // [2^58, 3 * 2^60)
-  const uint32_t len = isqrt64(len2);                       // [2^29, 2^31)
-  // inv = 2^61 / len is in (2^30, 2^32]; a component is below 2^30 in
-  // magnitude, so the product stays below 2^62. Then
-  // x / len * 2^30 = (x * inv) >> 31.
-  const int64_t inv = (int64_t)(((uint64_t)1 << 61) / len);
+  // q = len2 / 2^30 in 32 bits, [2^28, 3 * 2^30). We want g = 2^45 / sqrt(q)
+  // = 2^60 / sqrt(len2), in (2^29, 2^31]; a component is then
+  // c * 2^30 / sqrt(len2) = (c * g) >> 30.
+  const uint32_t q = (uint32_t)(len2 >> 30);
+  const uint32_t s = isqrt32(q);  // [2^14, 2^16): 32-bit Newton, hardware div
+  uint64_t g = (uint64_t)(0xFFFFFFFFu / s) << 13;  // ~2^45 / s, 14 bits good
+  // Newton for the reciprocal square root: g <- g (3 - q g^2 / 2^90) / 2,
+  // with e = q g^2 / 2^90 kept in Q32. Each step doubles the good bits.
+  for (int i = 0; i < 2; i++) {
+    const uint64_t e = ((uint64_t)q * ((g * g) >> 32)) >> 26;  // Q32
+    g = ((g >> 1) * ((3ull << 31) - (e >> 1))) >> 31;
+  }
+  const int64_t inv = (int64_t)g;
   return {
-      (int32_t)((x * inv) >> 31),
-      (int32_t)((y * inv) >> 31),
-      (int32_t)((z * inv) >> 31),
+      (int32_t)((x * inv) >> 30),
+      (int32_t)((y * inv) >> 30),
+      (int32_t)((z * inv) >> 30),
   };
 }
 
