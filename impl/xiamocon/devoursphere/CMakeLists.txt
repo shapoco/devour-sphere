@@ -67,13 +67,30 @@ add_subdirectory(${DS_ROOT}/submodule/shapo-gfx shapogfx)
 add_subdirectory(${DS_ROOT}/core devoursphere_core)
 
 # Only RGB565BE is ever drawn; dropping the others takes their code out of
-# both the 2D blitters and the 3D span writers.
+# both the 2D blitters and the 3D span writers. PUBLIC because the format
+# macros are read by the headers too, so every translation unit has to agree.
 target_compile_definitions(shapogfx PUBLIC
     SHAPOGFX_FORMAT_GRAY1=0
     SHAPOGFX_FORMAT_RGB444=0
     SHAPOGFX_FORMAT_ARGB4444=0
     SHAPOGFX_FORMAT_RGB565BE=1
 )
+
+# Nothing in this game is textured: every material comes from the three
+# factories in core/src/render/renderer.cpp, none of which sets a texture or
+# the TEXTURE / ENV_MAP flags, and every Vertex::uv is {0, 0}. Compiling the
+# texture path out takes 36 bytes off a Triangle (128 -> 92) and 16 off a
+# Span (64 -> 48), so a 128 KB arena holds 1064 triangles instead of 717.
+# Verified bit-identical over levels 0-7 at 240x240.
+#
+# PRIVATE, unlike the formats above: the SHAPOGFX3D_ macros are read by
+# src/gfx3d/*.cpp only and change no public type.
+#
+# If anything here ever does grow a texture, this is what silently drops it
+# -- the members of a disabled feature are ignored at run time, so it would
+# still compile and just draw untextured. The WASM front end does not set
+# this, so the two would disagree.
+target_compile_definitions(shapogfx PRIVATE SHAPOGFX3D_TEXTURE=0)
 
 # --- The firmware --------------------------------------------------------
 add_executable(${APP_NAME})
