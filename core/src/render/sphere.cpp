@@ -136,22 +136,38 @@ void Renderer::emitSplitEdge(const vec3f &a, const vec3f &b, int depth,
 
 // The subdivision level wanted at a point of the surface: finer near the
 // player's position on it.
+//
+// "The nearest point of the face is within R FU of the player" is
+// ang - faceAngle < R / SPHERE_R, i.e. cos(ang) > cos(faceAngle + R /
+// SPHERE_R); the right-hand side depends only on the level and the shift,
+// so sphereConstants() tabulates it and the test is one dot product. The
+// earlier form took an acos per face, which on a core without an FPU
+// (RP2040) cost more than the rest of the traversal together.
 int Renderer::wantLevel(const vec3f &center, int level) const {
-  vec3f playerUnit = g3::normalize(sphereCenter_ * -1.0f);
-  float cosDist = g3::dot(center, playerUnit);
-  float faceAngle = 0.6524f / (float)(1 << level);  // angular radius
-  float ang = std::acos(cosDist > 1 ? 1 : (cosDist < -1 ? -1 : cosDist));
-  float dist = (ang - faceAngle) * SPHERE_R;  // FU to the nearest point
-  int shift = sphereShift_;
-  float unit = camNominal_ / (float)(1 << shift);  // radii in FU
-  int want = BASE_LEVEL - shift;
-  if (dist < LEVEL6_RADIUS * unit) {
+  float cosDist = g3::dot(center, playerUnit_);
+  int want = BASE_LEVEL - sphereShift_;
+  if (cosDist > cosLevel6_[level]) {
     want += 2;
-  } else if (dist < LEVEL5_RADIUS * unit) {
+  } else if (cosDist > cosLevel5_[level]) {
     want += 1;
   }
   if (want < 1) want = 1;
   return want;
+}
+
+// The per-traversal constants: the player's direction from the center and
+// the two cos thresholds of wantLevel() per level, for the current shift
+void Renderer::sphereConstants() {
+  playerUnit_ = g3::normalize(sphereCenter_ * -1.0f);
+  const float unit = camNominal_ / (float)(1 << sphereShift_);  // radii, FU
+  for (int level = 0; level <= MAX_SPHERE_LEVEL; level++) {
+    const float faceAngle = 0.6524f / (float)(1 << level);  // angular radius
+    float a6 = faceAngle + LEVEL6_RADIUS * unit / SPHERE_R;
+    float a5 = faceAngle + LEVEL5_RADIUS * unit / SPHERE_R;
+    // Beyond a half turn every face qualifies: cos would come back up
+    cosLevel6_[level] = a6 >= 3.14159265f ? -2.0f : std::cos(a6);
+    cosLevel5_[level] = a5 >= 3.14159265f ? -2.0f : std::cos(a5);
+  }
 }
 
 // A face draws the three lines that separate its own four children, and
@@ -190,12 +206,11 @@ Renderer::EdgeDepths Renderer::subdivideFace(const vec3f &a, const vec3f &b,
       {&a, &ab, &ca}, {&ab, &b, &bc}, {&ca, &bc, &c}, {&ab, &bc, &ca}};
   // Children nearest to the player first, so that when the line budget
   // runs out only the far faces end up coarse
-  vec3f playerUnit = g3::normalize(sphereCenter_ * -1.0f);
   float key[4];
   int order[4] = {0, 1, 2, 3};
   for (int i = 0; i < 4; i++) {
     vec3f cen = *tri[i][0] + *tri[i][1] + *tri[i][2];
-    key[i] = -g3::dot(cen, playerUnit);
+    key[i] = -g3::dot(cen, playerUnit_);
   }
   for (int i = 1; i < 4; i++) {
     int o = order[i], j = i - 1;
@@ -227,6 +242,7 @@ Renderer::EdgeDepths Renderer::subdivideFace(const vec3f &a, const vec3f &b,
 // they are drawn here, each subdivided to the deeper of what the two faces
 // sharing it reported.
 void Renderer::traverseSphere(const int *order) {
+  sphereConstants();
   std::memset(icoEdgeDepth_, 0xFF, sizeof(icoEdgeDepth_));
   for (int i = 0; i < 20; i++) {
     int f = order[i];

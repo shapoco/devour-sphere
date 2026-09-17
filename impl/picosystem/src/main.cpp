@@ -208,6 +208,8 @@ void phaseLine(char *line, const char *head, const char *labels,
 // The tick profile is per tick (the batch total divided by its ticks); the
 // frame profile is per frame. Both are drawn one frame late, like everything
 // on the overlay. Letters: see ../SPEC.md "デバッグ表示".
+uint32_t g_overlayUs = 0;  // drawing the overlay itself, per frame
+
 void updatePhaseLines(int ticks) {
   if (!g_prof.on()) {
     for (auto &l : g_prof.extra) l[0] = '\0';
@@ -216,10 +218,28 @@ void updatePhaseLines(int ticks) {
   const uint32_t *tp = g_game.tickProfile().us;
   const uint32_t *fp = g_renderer.frameProfile().us;
   const uint32_t div = ticks > 0 ? (uint32_t)ticks : 1;
-  phaseLine(g_prof.extra[0], "TK ", "EBF", tp, 3, div);
-  phaseLine(g_prof.extra[1], "", "OKCX", tp + 3, 4, div);
-  phaseLine(g_prof.extra[2], "BG ", "CFS", fp, 3, 0);
-  phaseLine(g_prof.extra[3], "", "OHR", fp + 3, 3, 0);
+  const uint32_t tickRest[4] = {
+      tp[sim::Game::TP_BULLETS], tp[sim::Game::TP_FRAGMENTS],
+      tp[sim::Game::TP_EATING],
+      tp[sim::Game::TP_COLLISIONS] + tp[sim::Game::TP_ORDERS] +
+          tp[sim::Game::TP_OTHER]};
+  const uint32_t scene[4] = {
+      fp[render::FP_SPHERE], fp[render::FP_ENTITIES], fp[render::FP_SCENE_REST],
+      fp[render::FP_CAMERA] + fp[render::FP_EFFECTS] + fp[render::FP_SORT]};
+  const uint32_t bands[3] = {fp[render::FP_BAND_3D], fp[render::FP_BAND_2D],
+                             g_overlayUs};
+  phaseLine(g_prof.extra[0], "", "AMLF", tp, 4, div);  // per tick
+  phaseLine(g_prof.extra[1], "", "BFKX", tickRest, 4, div);
+  phaseLine(g_prof.extra[2], "", "SOHX", scene, 4, 0);  // beginFrame
+  phaseLine(g_prof.extra[3], "", "DUV", bands, 3, 0);   // the bands
+}
+
+// The phase clock costs a timer read per phase and entity, so it is only
+// installed while the overlay is on. Switched between batches, when the
+// Game belongs to this core.
+uint32_t clockUs() { return (uint32_t)time_us_64(); }
+void updateProfileClock() {
+  devoursphere::profileClockUs = g_prof.on() ? clockUs : nullptr;
 }
 
 // --- Frames ---------------------------------------------------------------
@@ -257,6 +277,7 @@ void drawFrame(int ticks) {
 // index runs free across frames: the last band of a frame is still in
 // flight when the next frame starts.
 void presentFrame() {
+  g_overlayUs = 0;
   g_prof.rasterUs = 0;
   g_prof.dmaWaitUs = 0;
   g_prof.cmdUs = 0;
@@ -266,8 +287,10 @@ void presentFrame() {
     g_bandCur ^= 1;
     const uint32_t t = (uint32_t)time_us_64();
     g_renderer.renderBand(bandSurface(idx), y, ds::BAND_H, 0);
+    const uint32_t t1 = (uint32_t)time_us_64();
     g_prof.drawOverlay(bandSurface(idx), y);
     const uint32_t t2 = (uint32_t)time_us_64();
+    g_overlayUs += t2 - t1;
     g_prof.rasterUs += t2 - t;
     // Waits for the previous band if we outran the display, then queues
     // this one; the two halves are timed separately
@@ -331,6 +354,7 @@ void frame() {
     keepHighScore();
     updatePhaseLines(ran);  // the batch just collected, and the last frame
     g_game.resetTickProfile();
+    updateProfileClock();
     drawFrame(ran);
   }
 
@@ -360,6 +384,7 @@ void frame() {
   keepHighScore();
   updatePhaseLines(ticks);
   g_game.resetTickProfile();
+  updateProfileClock();
   drawFrame(ticks);
   presentFrame();
 #endif
@@ -390,9 +415,6 @@ int main() {
   initLed();
   initButtons();
   g_display.init();
-
-  // The phase timers of the core read this clock, on either core
-  devoursphere::profileClockUs = [] { return (uint32_t)time_us_64(); };
 
   g_game.reset(ds::randomSeed());
   g_renderer.setControlHints(render::ControlHints{

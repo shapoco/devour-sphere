@@ -383,20 +383,25 @@ void Game::tick(uint8_t buttons) {
                     (autoPlayer_ && state_ == GameState::PLAYING);
     if (aiDriven && ((tickCount_ + (uint32_t)i) % AI_THINK_INTERVAL) == 0) {
       updateAi(i);
+      tickProfile_.stamp(TP_AI);
     }
     moveEntity(c);
     // The fragment physics of entities far from the player runs at a lower rate
     int64_t d2;
     bool near = c.isPlayer ||
                 tangentialDist2(p.frame.n, c.frame.n, LAYOUT_NEAR_FU * FU, d2);
+    tickProfile_.stamp(TP_MOVE);
     if (near || ((tickCount_ + (uint32_t)i) & 3) == 0) {
       updateLayout(c);
       mergeFragments(c);
+      tickProfile_.stamp(TP_LAYOUT);
     }
-    if (c.firing) fireWeapon(i);
+    if (c.firing) {
+      fireWeapon(i);
+      tickProfile_.stamp(TP_FIRE);
+    }
   }
-
-  tickProfile_.stamp(TP_ENTITIES);
+  tickProfile_.stamp(TP_OTHER);
 
   if (state_ == GameState::PLAYING && p.alive) updateShieldRegen();
   updateBullets();

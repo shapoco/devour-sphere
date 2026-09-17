@@ -108,12 +108,15 @@ class Game {
 
   // Where the ticks spend their time, accumulated since the last reset and
   // only counted while devoursphere::profileClockUs is set. Slots:
-  //   0 entities (AI, movement, fragment layout, firing)
-  //   1 bullets   2 floating fragments and upgrades   3 neighbor orders
-  //   4 eating    5 entity collisions
-  //   6 everything else (menus, ranks, respawns, transitions)
+  //   0 AI decisions   1 movement   2 fragment layout and merging
+  //   3 firing         4 bullets    5 floating fragments and upgrades
+  //   6 neighbor orders   7 eating   8 entity collisions
+  //   9 everything else (menus, ranks, respawns, transitions)
   enum TickPhase {
-    TP_ENTITIES = 0,
+    TP_AI = 0,
+    TP_MOVE,
+    TP_LAYOUT,
+    TP_FIRE,
     TP_BULLETS,
     TP_FRAGMENTS,
     TP_ORDERS,

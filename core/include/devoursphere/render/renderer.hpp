@@ -153,6 +153,8 @@ struct RenderStats {
 //   2 stars and the sphere wireframe   3 entities (markers, sorting, bodies)
 //   4 the rest of the scene (floating fragments, bullets, effects, overlays)
 //   5 ShapoGFX beginRender (the depth sort)
+// and where renderBand() spends its, summed over the bands of a frame:
+//   6 the 3D rasterizer   7 the 2D work (clear, gauges, HUD)
 enum FramePhase {
   FP_CAMERA = 0,
   FP_EFFECTS,
@@ -160,6 +162,8 @@ enum FramePhase {
   FP_ENTITIES,
   FP_SCENE_REST,
   FP_SORT,
+  FP_BAND_3D,
+  FP_BAND_2D,
   FP_COUNT
 };
 
@@ -272,6 +276,10 @@ class Renderer {
   uint8_t icoEdgeDepth_[12][12];
   EdgeDepths faceDepth_[20];
   int lineCount_ = 0, pointCount_ = 0, entitiesDrawn_ = 0, kites_ = 0;
+  // Per-traversal constants of the sphere wireframe (see wantLevel())
+  g3::vec3f playerUnit_ = {0, 0, 1};
+  float cosLevel6_[MAX_SPHERE_LEVEL + 1] = {};
+  float cosLevel5_[MAX_SPHERE_LEVEL + 1] = {};
   // Visible entities of the frame, sorted by distance. A member rather than
   // a local: 256 of these is 3 KB, which is most of the 4 KB stack a core
   // gets on RP2350 (the stacks live in SCRATCH_X / SCRATCH_Y and cannot be
@@ -379,6 +387,7 @@ class Renderer {
   // sphere.cpp for why that is all a face draws.
   EdgeDepths subdivideFace(const g3::vec3f &a, const g3::vec3f &b,
                            const g3::vec3f &c, int level);
+  void sphereConstants();
   int wantLevel(const g3::vec3f &center, int level) const;
   // Draw a-b as 2^depth chords lying on the sphere
   void emitEdge(const g3::vec3f &a, const g3::vec3f &b, int depth, int level);

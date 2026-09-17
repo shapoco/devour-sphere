@@ -593,11 +593,23 @@ RP2350 (520KB SRAM) では帯バッファを含めて
 同じオブジェクトを `reset()` し直した結果は、新しく作ったオブジェクトと bit 単位で一致する。
 残るのはハイスコア (表示用) と `debugAutoPlayer` のフラグだけ。
 
+### ワイヤーフレームの分割判定
+
+面をどこまで分割するか (`wantLevel()`) は「面の最寄り点がプレイヤーから R FU 以内か」で決める。
+これは `ang - faceAngle < R / SPHERE_R`、つまり `cos(ang) > cos(faceAngle + R / SPHERE_R)` と
+同じで、右辺はレベルとシフトだけで決まるので走査ごとに表 (`cosLevel5_` / `cosLevel6_`) に
+しておき、面ごとの判定は内積 1 回にしている。以前は面ごとに `acos` を呼んでいて、
+FPU の無い RP2040 ではそれだけで走査の残り全部より重かった。
+プレイヤー方向の単位ベクトルも走査ごとに 1 回 (`playerUnit_`)。
+丸めの違いで閾値ぎりぎりの面の段数が変わることがあり、固定条件 21 本中 2 本で
+フレームハッシュが変わったが、見た目は同じ。
+
 ### フェーズ計測
 
 `devoursphere::profileClockUs` (include/devoursphere/profile.hpp) にマイクロ秒の時計を入れると、
 `Game::tick()` と `Renderer::beginFrame()` がフェーズごとの所要時間を積算する
-(`Game::tickProfile()` / `Renderer::frameProfile()`、それぞれ `TickPhase` / `FramePhase` のスロット)。
+(`Game::tickProfile()` / `Renderer::frameProfile()`、それぞれ `TickPhase` / `FramePhase` のスロット。
+`renderBand()` も 3D と 2D の 2 スロットに積算する)。
 時計が無いときのコストはフェーズごとの null 判定 1 回なので常にコンパイルされる。
 値は sim が決して読まないので決定性には関係ない。PicoSystem 版がオーバーレイに出す。
 

@@ -1087,10 +1087,13 @@ void Renderer::beginFrame(const sim::Game &game, float dt) {
 }
 
 void Renderer::renderBand(const g2::Surface &dst, int y, int h, int dstY) {
+  frameProfile_.begin();
   g2::Graphics2D g(dst);
   g.setClipRect(0, dstY, w_, h);
   g.clear(g2::makeColor(0, 0, 4));
+  frameProfile_.stamp(FP_BAND_2D);
   g3d_.render(0, (int16_t)y, (int16_t)w_, (int16_t)h, dst, 0, (int16_t)dstY);
+  frameProfile_.stamp(FP_BAND_3D);
   int oy = dstY - y;
   const int gaugeH = ui(3, 2), gaugeB = ui(1, 1);
   for (int i = 0; i < gaugeCount_; i++) {
@@ -1105,6 +1108,7 @@ void Renderer::renderBand(const g2::Surface &dst, int y, int h, int dstY) {
     if (fill > 0) g.fillRect(gg.x, gg.y + oy, fill, gaugeH, c);
   }
   drawHud(g, oy);
+  frameProfile_.stamp(FP_BAND_2D);
 }
 
 void Renderer::endFrame() { g3d_.endRender(); }

@@ -18,7 +18,7 @@ inline uint32_t (*profileClockUs)() = nullptr;
 
 // Accumulates the time between successive stamp() calls into slots
 struct PhaseTimer {
-  static constexpr int MAX = 8;
+  static constexpr int MAX = 12;
   uint32_t us[MAX] = {};
   uint32_t last = 0;
 
