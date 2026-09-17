@@ -102,4 +102,13 @@ target_link_libraries(${APP_NAME} PRIVATE
     devoursphere::render      # pulls in devoursphere::sim and shapoco::gfx
 )
 
+# The 3D rasterizer (ShapoGFX gfx3d.cpp, ~48 KB of code) runs from RAM.
+# The RP2040 executes from flash through a 16 KB XIP cache, and the span
+# loops are its worst case. OFF keeps the SDK's default placement, for
+# measuring the difference.
+option(DS_GFX3D_IN_RAM "Place ShapoGFX's 3D rasterizer in RAM" ON)
+if(DS_GFX3D_IN_RAM)
+    pico_set_linker_script(${APP_NAME} ${CMAKE_CURRENT_SOURCE_DIR}/memmap_picosystem.ld)
+endif()
+
 pico_add_extra_outputs(${APP_NAME})   # this is what produces the .uf2

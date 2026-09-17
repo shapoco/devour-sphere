@@ -6,6 +6,7 @@
 
 #include <cstdint>
 
+#include "devoursphere/profile.hpp"
 #include "devoursphere/sim/config.hpp"
 #include "devoursphere/sim/entities.hpp"
 #include "devoursphere/sim/fixed.hpp"
@@ -105,6 +106,25 @@ class Game {
   const EffectEvent *effects() const { return effects_; }
   int effectCount() const { return effectCount_; }
 
+  // Where the ticks spend their time, accumulated since the last reset and
+  // only counted while devoursphere::profileClockUs is set. Slots:
+  //   0 entities (AI, movement, fragment layout, firing)
+  //   1 bullets   2 floating fragments and upgrades   3 neighbor orders
+  //   4 eating    5 entity collisions
+  //   6 everything else (menus, ranks, respawns, transitions)
+  enum TickPhase {
+    TP_ENTITIES = 0,
+    TP_BULLETS,
+    TP_FRAGMENTS,
+    TP_ORDERS,
+    TP_EATING,
+    TP_COLLISIONS,
+    TP_OTHER,
+    TP_COUNT
+  };
+  const PhaseTimer &tickProfile() const { return tickProfile_; }
+  void resetTickProfile() { tickProfile_.reset(); }
+
   Entity entities[MAX_ENTITIES];
   FloatingFragment floatingFragments[MAX_FLOATING_FRAGMENTS];
   Bullet bullets[MAX_BULLETS];
@@ -170,6 +190,7 @@ class Game {
   void addScore(int64_t baseQ8);
   int32_t stayFactorQ8() const;
   DebugStats stats_ = {};
+  PhaseTimer tickProfile_;
   EffectEvent effects_[MAX_EFFECTS];
   int effectCount_ = 0;
   void pushEffect(EffectKind kind, int entity, const Vec3 &n, int32_t r,

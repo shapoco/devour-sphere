@@ -33,20 +33,6 @@ class Display {
   // Fill the whole panel with one RGB565BE value (synchronous)
   void fill(uint16_t rgb565be);
 
-  // Clock for the pixel bursts (default ds::SPI_HZ). Lowering it is a
-  // diagnostic: at 8 MHz a frame takes 115 ms, but if the picture then
-  // appears the wiring cannot take the full rate.
-  void setPixelClock(uint32_t hz) { pixelHz_ = hz; }
-
-  // How the pixels of a band reach the SPI. DMA16 is the intended one (one
-  // DREQ handshake per pixel, byte swap in the DMA); DMA8 is what the
-  // Xiamocon SDK does; CPU16 keeps the FIFO fed from the core and is
-  // synchronous. main.cpp times all three at start-up and keeps the fastest,
-  // because the first board measured DMA16 at 2.9x the theoretical time.
-  enum class Xfer : uint8_t { DMA16, DMA8, CPU16 };
-  void setTransfer(Xfer x) { xfer_ = x; }
-  Xfer transfer() const { return xfer_; }
-
   // Whether a transfer is still in flight
   bool busy() const;
 
@@ -59,8 +45,6 @@ class Display {
   void setWindow(int x, int y, int w, int h);
   int dma_ = -1;
   bool pending_ = false;
-  uint32_t pixelHz_ = 0;  // 0 until init(): ds::SPI_HZ
-  Xfer xfer_ = Xfer::DMA16;
 };
 
 }  // namespace ds

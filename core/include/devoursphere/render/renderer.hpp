@@ -23,6 +23,7 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "devoursphere/profile.hpp"
 #include "devoursphere/sim/game.hpp"
 #include "shapoco/gfx2d/gfx2d.hpp"
 #include "shapoco/gfx3d/gfx3d.hpp"
@@ -147,6 +148,21 @@ struct RenderStats {
   g3::Stats gfx;
 };
 
+// Where beginFrame() spends its time (see devoursphere/profile.hpp). Slots:
+//   0 camera   1 effects (collect + update)
+//   2 stars and the sphere wireframe   3 entities (markers, sorting, bodies)
+//   4 the rest of the scene (floating fragments, bullets, effects, overlays)
+//   5 ShapoGFX beginRender (the depth sort)
+enum FramePhase {
+  FP_CAMERA = 0,
+  FP_EFFECTS,
+  FP_SPHERE,
+  FP_ENTITIES,
+  FP_SCENE_REST,
+  FP_SORT,
+  FP_COUNT
+};
+
 class Renderer {
  public:
   static constexpr int PALETTE_SIZE = 24;
@@ -188,6 +204,8 @@ class Renderer {
   void endFrame();
 
   RenderStats stats() const;
+  const PhaseTimer &frameProfile() const { return frameProfile_; }
+  void resetFrameProfile() { frameProfile_.reset(); }
   const UiMetrics &uiMetrics() const { return ui_; }
   const Camera &camera() const { return cam_; }
   int width() const { return w_; }
@@ -284,6 +302,7 @@ class Renderer {
   // fraction of the remaining gap per second, so it keeps pace with the
   // faster gains on later spheres) and snaps down when the score drops
   double scoreShown_ = 0;
+  PhaseTimer frameProfile_;
   static constexpr float SCORE_ROLL_PER_SEC = 4.0f;    // fraction of the gap
   static constexpr float SCORE_ROLL_MIN_PER_SEC = 30;  // points
   void updateScoreDisplay(float dt);

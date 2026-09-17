@@ -917,6 +917,7 @@ void Renderer::buildScene() {
   // and one sort less.
   g3d_.beginLayer(g3::LayerFlags::NO_DEPTH);
   buildSphere();
+  frameProfile_.stamp(FP_SPHERE);
   // The world: everything standing on the surface, depth sorted as before.
   g3d_.beginLayer();
   // Upgrades first: their horizon markers must never be crowded out by
@@ -1006,6 +1007,7 @@ void Renderer::buildScene() {
     }
   }
 
+  frameProfile_.stamp(FP_ENTITIES);
   drawFloatingFragments();
   drawBullets();
   drawEffects();
@@ -1018,6 +1020,7 @@ void Renderer::buildScene() {
   drawHealthWarning();
   drawMarkers();
   g3d_.endScene();
+  frameProfile_.stamp(FP_SCENE_REST);
 }
 
 // ---------------------------------------------------------------------------
@@ -1043,6 +1046,7 @@ void Renderer::updateScoreDisplay(float dt) {
 }
 
 void Renderer::beginFrame(const sim::Game &game, float dt) {
+  frameProfile_.begin();
   game_ = &game;
   // Everything the HUD reads, taken here so that renderBand() never touches
   // the simulation (see HudState)
@@ -1073,10 +1077,13 @@ void Renderer::beginFrame(const sim::Game &game, float dt) {
   entitiesDrawn_ = 0;
   kites_ = 0;
   updateCamera(dt);
+  frameProfile_.stamp(FP_CAMERA);
   collectEffects();
   updateEffects(dt);
+  frameProfile_.stamp(FP_EFFECTS);
   buildScene();
   g3d_.beginRender();
+  frameProfile_.stamp(FP_SORT);
 }
 
 void Renderer::renderBand(const g2::Surface &dst, int y, int h, int dstY) {

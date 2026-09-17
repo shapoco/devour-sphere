@@ -194,6 +194,9 @@ library.json              PlatformIO から `core/` をライブラリとして�
   そのまま Q30_ONE 倍されて長さ √2 になるなど、入力が小さいほど粗かった)。
 - `fragmentHalfSize()` は 21 エントリの表 (`constexpr` で同じ式から生成)。
   tick あたり 4,000 回近く呼ばれ、64 ビット乗算だった。
+- 配置物理の力 (`addForce`) は、距離の 2 乗が 32 ビットに収まるとき (成分が ±32768 未満。
+  ローカル座標はコア半径の 15 倍までしか離れないので実質常に) 32 ビットの平方根を使う。
+  同じ floor(sqrt) なので結果は同一。
 - 乱数は xorshift32。スフィアごとのシードは `Game::sphereSeed()`。
 
 ### 時間と入力
@@ -589,6 +592,14 @@ RP2350 (520KB SRAM) では帯バッファを含めて
 エフェクト、そして状態を TITLE にしてからスフィアを作る)。
 同じオブジェクトを `reset()` し直した結果は、新しく作ったオブジェクトと bit 単位で一致する。
 残るのはハイスコア (表示用) と `debugAutoPlayer` のフラグだけ。
+
+### フェーズ計測
+
+`devoursphere::profileClockUs` (include/devoursphere/profile.hpp) にマイクロ秒の時計を入れると、
+`Game::tick()` と `Renderer::beginFrame()` がフェーズごとの所要時間を積算する
+(`Game::tickProfile()` / `Renderer::frameProfile()`、それぞれ `TickPhase` / `FramePhase` のスロット)。
+時計が無いときのコストはフェーズごとの null 判定 1 回なので常にコンパイルされる。
+値は sim が決して読まないので決定性には関係ない。PicoSystem 版がオーバーレイに出す。
 
 ### テスト
 

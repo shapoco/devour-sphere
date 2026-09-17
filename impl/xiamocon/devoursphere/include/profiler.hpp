@@ -52,10 +52,11 @@ class Profiler {
   // out right: the clip rectangle splits them between the two bands.
   void drawOverlay(const g2::Surface &band, int bandY);
 
-  // Up to two lines a platform may add below the standard ones (clocks, a
-  // transfer benchmark by several methods, ...). An empty line is not drawn.
+  // Up to four lines a platform may add below the standard ones (the
+  // PicoSystem front end shows the tick and frame phase breakdown). An
+  // empty line is not drawn.
   static constexpr int COLS = 21;
-  static constexpr int EXTRA_LINES = 2;
+  static constexpr int EXTRA_LINES = 4;
   char extra[EXTRA_LINES][COLS + 1] = {};
 
  private:
@@ -75,7 +76,7 @@ class Profiler {
   void endFrame(uint64_t, const devoursphere::render::RenderStats &) {}
   void drawOverlay(const g2::Surface &, int) {}
   static constexpr int COLS = 21;
-  static constexpr int EXTRA_LINES = 2;
+  static constexpr int EXTRA_LINES = 4;
   char extra[EXTRA_LINES][COLS + 1] = {};
 #endif
 };

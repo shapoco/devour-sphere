@@ -173,13 +173,11 @@ void Game::updateAi(int idx) {
       const WeaponSpec &ws = WEAPON_SPECS[(int)c.weapon];
       int64_t range = (int64_t)bulletSpeed(ws, c.size) * ws.lifetime;
       int64_t d2;
-      bool inRange = tangentialDist2(c.frame.n, o.frame.n,
-                                     (int32_t)(range > INT32_MAX ? INT32_MAX
-                                                                 : range),
-                                     d2);
+      bool inRange =
+          tangentialDist2(c.frame.n, o.frame.n,
+                          (int32_t)(range > INT32_MAX ? INT32_MAX : range), d2);
       c.firing = inRange && dotQ30(c.frame.t, dn) > COS_FIRE_CONE;
-      c.dashing = !c.braking && inRange &&
-                  d2 > (int64_t)(30 * FU) * (30 * FU);
+      c.dashing = !c.braking && inRange && d2 > (int64_t)(30 * FU) * (30 * FU);
       return;
     }
     // Break off: get out of the shooter's line of fire. The escape heading
@@ -348,12 +346,21 @@ void Game::moveEntity(Entity &c) {
 static void addForce(int64_t &fx, int64_t &fy, int32_t px, int32_t py,
                      int32_t qx, int32_t qy, int32_t d0, int32_t A) {
   int64_t dx = (int64_t)qx - px, dy = (int64_t)qy - py;
-  int64_t d2 = dx * dx + dy * dy;
-  if (d2 == 0) {
+  if (dx == 0 && dy == 0) {
     fx += A;  // coincident: push sideways
     return;
   }
-  uint32_t d = isqrt64((uint64_t)d2);
+  // Local coordinates stay within a few thousand units (15x the core
+  // half-size at most, measured), so the squared distance almost always
+  // fits 32 bits: the same floor(sqrt) for a fraction of the cost on a core
+  // without 64-bit arithmetic. The 64-bit form is kept for the rest.
+  uint32_t d;
+  if (dx > -32768 && dx < 32768 && dy > -32768 && dy < 32768) {
+    const int32_t x = (int32_t)dx, y = (int32_t)dy;
+    d = isqrt32((uint32_t)(x * x + y * y));
+  } else {
+    d = isqrt64((uint64_t)(dx * dx + dy * dy));
+  }
   if (d == 0) d = 1;
   // inv = 2^24 / d (one 32-bit division; d < 2^24 in practice)
   int64_t inv = (d < (1u << 24)) ? (int64_t)((1u << 24) / d) : 1;

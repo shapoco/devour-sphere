@@ -310,6 +310,7 @@ void Game::checkTransitions() {
 }
 
 void Game::tick(uint8_t buttons) {
+  tickProfile_.begin();
   uint8_t pressed = buttons & (uint8_t)~prevButtons_;
   prevButtons_ = buttons;
   events_ = 0;
@@ -371,6 +372,8 @@ void Game::tick(uint8_t buttons) {
     p.firing = false;
   }
 
+  tickProfile_.stamp(TP_OTHER);
+
   // The neighbor queries of the AI use the orders of the previous tick
   for (int i = 0; i < MAX_ENTITIES; i++) {
     Entity &c = entities[i];
@@ -393,16 +396,24 @@ void Game::tick(uint8_t buttons) {
     if (c.firing) fireWeapon(i);
   }
 
+  tickProfile_.stamp(TP_ENTITIES);
+
   if (state_ == GameState::PLAYING && p.alive) updateShieldRegen();
   updateBullets();
+  tickProfile_.stamp(TP_BULLETS);
   updateFloatingFragments();
   updateFloatingUpgrades();
+  tickProfile_.stamp(TP_FRAGMENTS);
   rebuildOrders();
+  tickProfile_.stamp(TP_ORDERS);
   handleEating();
+  tickProfile_.stamp(TP_EATING);
   handleEntityCollisions();
+  tickProfile_.stamp(TP_COLLISIONS);
   updateRanks();
   updateRespawns();
   checkTransitions();
+  tickProfile_.stamp(TP_OTHER);
 }
 
 // Stay factor (Q8): lingering on a sphere pays less and less

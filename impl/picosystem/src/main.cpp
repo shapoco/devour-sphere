@@ -12,14 +12,12 @@
 
 #include <hardware/clocks.h>
 #include <hardware/gpio.h>
-#include <hardware/spi.h>
 #include <hardware/vreg.h>
 #include <pico/multicore.h>
 #include <pico/stdlib.h>
 
-#include <cstdio>
-
 #include "devoursphere/devoursphere.hpp"
+#include "devoursphere/profile.hpp"
 #include "display.hpp"
 #include "ds_config.hpp"
 #include "ds_platform.hpp"
@@ -46,27 +44,6 @@ int g_bandCur = 0;  // free running across frames (see present())
 // whatever the device manages.
 uint64_t g_lastUs = 0;
 uint32_t g_accUs = 0;
-
-// --- The RGB LED as a status light ------------------------------------------
-// Active high (the SDK drives it through PWM, level 0 = off; the board
-// file's PICO_DEFAULT_LED_PIN_INVERTED refers to something else). With no
-// serial port this is the only signal besides the panel, so the start-up
-// stages each set a colour: see ../SPEC.md "デバッグ".
-void led(bool r, bool g, bool b) {
-  gpio_put(PICOSYSTEM_LED_R_PIN, r);
-  gpio_put(PICOSYSTEM_LED_G_PIN, g);
-  gpio_put(PICOSYSTEM_LED_B_PIN, b);
-}
-
-void initLed() {
-  constexpr uint LED_PINS[] = {PICOSYSTEM_LED_R_PIN, PICOSYSTEM_LED_G_PIN,
-                               PICOSYSTEM_LED_B_PIN};
-  for (uint pin : LED_PINS) {
-    gpio_init(pin);
-    gpio_set_dir(pin, GPIO_OUT);
-    gpio_put(pin, 0);
-  }
-}
 
 // --- Buttons -------------------------------------------------------------
 // Active low with the internal pull-ups, as the SDK wires them. Y is not a
@@ -103,6 +80,18 @@ uint8_t mapButtons(uint32_t gpio) {
     out |= sim::Button::A;
   }
   return out;
+}
+
+// The RGB LED is active high (the SDK drives it by PWM level) and floats at
+// power-up: park it off
+void initLed() {
+  constexpr uint LED_PINS[] = {PICOSYSTEM_LED_R_PIN, PICOSYSTEM_LED_G_PIN,
+                               PICOSYSTEM_LED_B_PIN};
+  for (uint pin : LED_PINS) {
+    gpio_init(pin);
+    gpio_set_dir(pin, GPIO_OUT);
+    gpio_put(pin, 0);
+  }
 }
 
 // --- The two cores ---------------------------------------------------------
@@ -181,6 +170,58 @@ void keepHighScore() {
   }
 }
 
+// --- Phase breakdown on the overlay ---------------------------------------
+// Integer formatting only (see profiler.cpp for why not printf)
+char *putStr(char *p, char *end, const char *s) {
+  while (*s && p < end) *p++ = *s++;
+  return p;
+}
+
+// Microseconds as "x.y" milliseconds
+char *putMs1(char *p, char *end, uint32_t us) {
+  char tmp[12];
+  uint32_t v = us / 1000;
+  int n = 0;
+  do {
+    tmp[n++] = (char)('0' + v % 10);
+    v /= 10;
+  } while (v && n < (int)sizeof(tmp));
+  while (n > 0 && p < end) *p++ = tmp[--n];
+  if (p < end) *p++ = '.';
+  if (p < end) *p++ = (char)('0' + (us / 100) % 10);
+  return p;
+}
+
+// Label + value pairs into one overlay line
+void phaseLine(char *line, const char *head, const char *labels,
+               const uint32_t *us, int count, uint32_t div) {
+  char *p = line, *end = line + ds::Profiler::COLS;
+  p = putStr(p, end, head);
+  for (int i = 0; i < count; i++) {
+    if (i > 0 && p < end) *p++ = ' ';
+    if (p < end) *p++ = labels[i];
+    p = putMs1(p, end, div ? us[i] / div : us[i]);
+  }
+  *p = '\0';
+}
+
+// The tick profile is per tick (the batch total divided by its ticks); the
+// frame profile is per frame. Both are drawn one frame late, like everything
+// on the overlay. Letters: see ../SPEC.md "デバッグ表示".
+void updatePhaseLines(int ticks) {
+  if (!g_prof.on()) {
+    for (auto &l : g_prof.extra) l[0] = '\0';
+    return;
+  }
+  const uint32_t *tp = g_game.tickProfile().us;
+  const uint32_t *fp = g_renderer.frameProfile().us;
+  const uint32_t div = ticks > 0 ? (uint32_t)ticks : 1;
+  phaseLine(g_prof.extra[0], "TK ", "EBF", tp, 3, div);
+  phaseLine(g_prof.extra[1], "", "OKCX", tp + 3, 4, div);
+  phaseLine(g_prof.extra[2], "BG ", "CFS", fp, 3, 0);
+  phaseLine(g_prof.extra[3], "", "OHR", fp + 3, 3, 0);
+}
+
 // --- Frames ---------------------------------------------------------------
 g2::Surface bandSurface(int i) {
   return {g2::PixelFormat::RGB565BE, (int16_t)ds::SCREEN_W, (int16_t)ds::BAND_H,
@@ -203,6 +244,7 @@ uint32_t measureTransfer() {
 // Draw the state the simulation has reached, and push it a band at a time
 void drawFrame(int ticks) {
   const uint32_t begin0 = (uint32_t)time_us_64();
+  g_renderer.resetFrameProfile();
   // Simulation time, not wall time: the renderer advances the camera
   // smoothing, the debris and the score roll-up by dt, and those have to
   // stay in step with the ticks that actually ran.
@@ -239,10 +281,6 @@ void presentFrame() {
   // frame's ticks and beginFrame(). The next writeStart() collects it.
   g_renderer.endFrame();
   g_prof.endFrame(time_us_64(), g_renderer.stats());
-  // Heartbeat: green toggles every 16 frames presented, so a frozen loop
-  // can be told from a frozen panel
-  static uint32_t frames = 0;
-  if ((++frames & 15) == 0) led(false, (frames & 16) != 0, false);
 }
 
 void frame() {
@@ -291,6 +329,8 @@ void frame() {
   // touch the Game here.
   if (ran > 0) {
     keepHighScore();
+    updatePhaseLines(ran);  // the batch just collected, and the last frame
+    g_game.resetTickProfile();
     drawFrame(ran);
   }
 
@@ -318,6 +358,8 @@ void frame() {
   g_prof.core1WaitUs = 0;
   if (ticks == 0) return;  // ahead of the simulation: nothing new to show
   keepHighScore();
+  updatePhaseLines(ticks);
+  g_game.resetTickProfile();
   drawFrame(ticks);
   presentFrame();
 #endif
@@ -326,18 +368,13 @@ void frame() {
 }  // namespace
 
 int main() {
-  initButtons();
-  sleep_ms(2);  // let the pull-ups charge the pins before the first read
 #if DS_OVERCLOCK
   // What the PicoSystem SDK does: a modest overvolt, then 250 MHz. The board
   // file's flash divider (2) keeps the QSPI at 125 MHz, which the part
-  // tolerates -- the SDK ships this way. Holding DOWN at power-up skips it,
-  // to tell an unstable overclock from everything else.
-  if (!down(gpio_get_all(), PICOSYSTEM_SW_DOWN_PIN)) {
-    vreg_set_voltage(VREG_VOLTAGE_1_20);
-    sleep_ms(10);
-    set_sys_clock_khz(ds::SYS_CLOCK_KHZ, true);
-  }
+  // tolerates -- the SDK ships this way.
+  vreg_set_voltage(VREG_VOLTAGE_1_20);
+  sleep_ms(10);
+  set_sys_clock_khz(ds::SYS_CLOCK_KHZ, true);
 #endif
   // pico-sdk 2.x moves clk_peri to the 48 MHz USB PLL whenever the system
   // clock is changed (set_sys_clock_pll(), unless
@@ -351,33 +388,11 @@ int main() {
                             clock_get_hz(clk_sys));
 
   initLed();
-  led(true, false, false);  // red: alive, about to bring the panel up
-  // Holding UP at power-up sends the pixels at the command clock (8 MHz):
-  // slow, but it separates "62.5 MHz is too fast for this path" from
-  // everything else
-  if (down(gpio_get_all(), PICOSYSTEM_SW_UP_PIN)) {
-    g_display.setPixelClock(ds::CMD_HZ);
-  }
+  initButtons();
   g_display.init();
-  led(true, true, false);  // yellow: the panel answered the init sequence
 
-  // Panel self-test: three bars through the same band path the game uses,
-  // held while a face button is down (or for a moment at start-up). Seeing
-  // them proves the SPI, the DMA byte swap and the 16-bit mode; a black
-  // panel here means the bring-up, not the renderer.
-  {
-    const uint32_t t0 = (uint32_t)time_us_64();
-    do {
-      for (int b = 0; b < ds::BAND_COUNT; b++) {
-        const uint16_t c = b < 2 ? 0x00F8 : (b < 4 ? 0xE007 : 0x1F00);
-        uint16_t *buf = g_bands[b & 1];
-        for (int i = 0; i < ds::SCREEN_W * ds::BAND_H; i++) buf[i] = c;
-        g_display.writeStart(b * ds::BAND_H, ds::SCREEN_W, ds::BAND_H, buf);
-        g_display.complete();
-      }
-    } while ((uint32_t)time_us_64() - t0 < 1000000 ||
-             mapButtons(gpio_get_all()) & sim::Button::A);
-  }
+  // The phase timers of the core read this clock, on either core
+  devoursphere::profileClockUs = [] { return (uint32_t)time_us_64(); };
 
   g_game.reset(ds::randomSeed());
   g_renderer.setControlHints(render::ControlHints{
@@ -390,43 +405,8 @@ int main() {
                   ds::SPAN_CAPACITY);
 
   ds::stackWatchInitCore0();
-  // Both cores are otherwise idle here, so this is the transfer on its own.
-  // All three ways of feeding the SPI are timed and the fastest is kept; the
-  // overlay's last two lines show the clocks and the three figures, so a
-  // slow transfer can be pinned on the clock, the DMA pacing or the SPI.
-  {
-    using Xfer = ds::Display::Xfer;
-    const Xfer modes[3] = {Xfer::DMA16, Xfer::DMA8, Xfer::CPU16};
-    uint32_t us[3];
-    int best = 0;
-    for (int i = 0; i < 3; i++) {
-      g_display.setTransfer(modes[i]);
-      us[i] = measureTransfer();
-      if (us[i] < us[best]) best = i;
-    }
-    g_display.setTransfer(modes[best]);
-    g_prof.xferUs = us[best];
-    const uint32_t sysMHz = clock_get_hz(clk_sys) / 1000000u;
-    const uint32_t periMHz = clock_get_hz(clk_peri) / 1000000u;
-    const uint32_t spi100k = spi_get_baudrate(spi0) / 100000u;  // 0.1 MHz
-    // 21 columns: "C250 P250 SPI62.5". Truncation of an absurd value is the
-    // intended behaviour, hence the silenced warning.
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wformat-truncation"
-    std::snprintf(g_prof.extra[0], sizeof(g_prof.extra[0]),
-                  "C%lu P%lu SPI%lu.%lu", (unsigned long)sysMHz,
-                  (unsigned long)periMHz, (unsigned long)(spi100k / 10),
-                  (unsigned long)(spi100k % 10));
-    // Transfer of a whole screen by DMA16 / DMA8 / CPU16, in ms (the one in
-    // use is the smallest)
-    std::snprintf(
-        g_prof.extra[1], sizeof(g_prof.extra[1]),
-        "16:%lu.%lu 8:%lu.%lu C:%lu.%lu", (unsigned long)(us[0] / 1000),
-        (unsigned long)(us[0] / 100 % 10), (unsigned long)(us[1] / 1000),
-        (unsigned long)(us[1] / 100 % 10), (unsigned long)(us[2] / 1000),
-        (unsigned long)(us[2] / 100 % 10));
-#pragma GCC diagnostic pop
-  }
+  // Both cores are otherwise idle here, so this is the transfer on its own
+  g_prof.xferUs = measureTransfer();
 
   // Start owing one tick, so the first loop has something to do instead of
   // waiting for the clock to move
@@ -436,7 +416,6 @@ int main() {
 #if DS_SIM_ON_CORE1
   multicore_launch_core1(core1Main);
 #endif
-  led(false, false, true);  // blue: entering the frame loop
 
   for (;;) frame();
 }
