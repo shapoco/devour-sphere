@@ -34,6 +34,13 @@ static_assert(SCREEN_H % BAND_H == 0, "the bands must tile the screen exactly");
 // Xiamocon build keeps 64 KB because it has the RAM.
 constexpr size_t ARENA_SIZE = 40 * 1024;
 
+// Triangles a frame may spend on full entity bodies (Renderer::
+// setDetailTriangles). Each body is up to 18 triangles and costs about a
+// millisecond through the float vertex pipeline here, so a crowded screen
+// fell from 28 to 20 fps with no cap. 144 keeps the eight nearest bodies
+// and draws the rest as outlines. 0 lifts the cap.
+constexpr int DETAIL_TRIANGLES = 144;
+
 // Spans held per scanline. Measured peak at 240x240 is 32; 128 is the value
 // the Xiamocon build settled on. Overflowing drops spans, which leaves holes
 // in the picture, so this is not a number to shave.

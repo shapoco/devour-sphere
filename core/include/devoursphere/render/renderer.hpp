@@ -212,6 +212,14 @@ class Renderer {
   void endFrame();
 
   RenderStats stats() const;
+
+  // Cap on the triangles spent on full entity bodies per frame (0 = only
+  // what the triangle buffer allows). The bodies are the one part of the
+  // frame whose cost grows with the crowd: each is up to 18 triangles
+  // through the float vertex pipeline, ~60 us a kite on a Cortex-M0+. With
+  // a cap the nearest entities keep their bodies and the rest are drawn as
+  // outlines, and the frame time stops depending on how many are in view.
+  void setDetailTriangles(int tris) { detailTris_ = tris; }
   const PhaseTimer &frameProfile() const { return frameProfile_; }
   void resetFrameProfile() { frameProfile_.reset(); }
   const UiMetrics &uiMetrics() const { return ui_; }
@@ -367,6 +375,7 @@ class Renderer {
   // faster gains on later spheres) and snaps down when the score drops
   double scoreShown_ = 0;
   PhaseTimer frameProfile_;
+  int detailTris_ = 0;
   static constexpr float SCORE_ROLL_PER_SEC = 4.0f;    // fraction of the gap
   static constexpr float SCORE_ROLL_MIN_PER_SEC = 30;  // points
   void updateScoreDisplay(float dt);

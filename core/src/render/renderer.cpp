@@ -1047,6 +1047,7 @@ void Renderer::buildScene() {
   int reserve = 380;
   if (reserve > slots / 3) reserve = slots / 3;
   int triBudget = slots - reserve;
+  if (detailTris_ > 0 && triBudget > detailTris_) triBudget = detailTris_;
   for (int k = 0; k < n; k++) {
     const sim::Entity &c = g.entities[vis_[k].idx];
     int fullTris = (1 + 2 * c.fragmentCount) * 2;

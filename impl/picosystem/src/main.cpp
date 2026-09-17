@@ -425,6 +425,7 @@ int main() {
   });
   g_renderer.init(ds::SCREEN_W, ds::SCREEN_H, g_arena, sizeof(g_arena),
                   ds::SPAN_CAPACITY);
+  g_renderer.setDetailTriangles(ds::DETAIL_TRIANGLES);
 
   ds::stackWatchInitCore0();
   // Both cores are otherwise idle here, so this is the transfer on its own
