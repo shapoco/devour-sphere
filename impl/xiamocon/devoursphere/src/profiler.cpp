@@ -111,11 +111,16 @@ void Profiler::endFrame(uint64_t nowUs,
         p = putUint(p, end, stackUsedCore0());
         break;
       case 3:  // did the scene fit in the triangle buffer and the span pool?
+        // The buffer is a byte budget, not a slot count: ShapoGFX sizes each
+        // primitive's record to what it carries, so the count alone says
+        // nothing about how full it is.
         p = putStr(p, end, "TRI ");
         p = putUint(p, end, (uint32_t)stats.gfx.triCount);
+        p = putStr(p, end, " ");
+        p = putUint(p, end, (uint32_t)(stats.gfx.triBytes / 1024));
         p = putStr(p, end, "/");
-        p = putUint(p, end, (uint32_t)stats.gfx.triCapacity);
-        p = putStr(p, end, " d");
+        p = putUint(p, end, (uint32_t)(stats.gfx.triBytesTotal / 1024));
+        p = putStr(p, end, "K d");
         p = putUint(p, end, (uint32_t)stats.gfx.triDropped);
         break;
       case 4:  // ... and in the arena

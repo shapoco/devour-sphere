@@ -895,8 +895,26 @@ void Renderer::buildScene() {
   g3d_.disableEnvironmentLight();
   g3d_.setDepthBias(0.0f);
 
+  // Layers. A scene is a sequence of them and each is drawn in front of the
+  // ones opened before it, so the depth sort only has to resolve what is
+  // inside one. Opening them back to front is this function's job.
+  //
+  // The stars sit 1500 FU away on a sphere around the camera: nothing in the
+  // scene is behind them and none of them hides another, so they need no
+  // depth of their own.
+  g3d_.beginLayer(g3::LayerFlags::NO_DEPTH);
   drawStars();
+  // The sphere wireframe. Everything that stands on the surface is in front
+  // of it, so it can be settled by the layer rather than by depth; within
+  // itself it is one blue ramp fading with distance (wireColor()), so which
+  // of two crossing edges wins costs at most one RGB565 step. Measured over
+  // 147 frames: at worst 131 pixels of 57,600 differ, by 9 of 255. What it
+  // buys is 12 bytes off each of its records -- about 40% of the scene --
+  // and one sort less.
+  g3d_.beginLayer(g3::LayerFlags::NO_DEPTH);
   buildSphere();
+  // The world: everything standing on the surface, depth sorted as before.
+  g3d_.beginLayer();
   // Upgrades first: their horizon markers must never be crowded out by
   // the enemies' markers; then the enemies carrying one, shown whatever
   // their size and distance; the other enemies take what is left
@@ -943,9 +961,17 @@ void Renderer::buildScene() {
   }
 
   // Triangle budget: what is left after the wireframe, minus a reserve for
-  // fragments, bullets and effects
+  // fragments, bullets and effects.
+  //
+  // The triangle buffer is a byte budget, not a slot count: ShapoGFX stores
+  // each primitive in the record layout it needs. Entity bodies are the
+  // cheapest kind -- flat (putKite / putQuad give every vertex the same
+  // color) and depth sorted -- so their record is the header plus the depth
+  // plane, and the buffer also spends 4 bytes on an entry for each. The
+  // 64-bit figure is used on a host so the budget is never optimistic there.
+  constexpr int TRI_BYTES = sizeof(void *) > 4 ? 76 : 64;
   g3::Stats st = g3d_.getStats();
-  int triBudget = st.triCapacity - st.triCount - 380;
+  int triBudget = (int)((st.triBytesTotal - st.triBytes) / TRI_BYTES) - 380;
   for (int k = 0; k < n; k++) {
     const sim::Entity &c = g.entities[vis_[k].idx];
     int fullTris = (1 + 2 * c.fragmentCount) * 2;
@@ -978,8 +1004,13 @@ void Renderer::buildScene() {
 
   drawFloatingFragments();
   drawBullets();
-  drawPresenceAuras();
   drawEffects();
+  // Screen-space overlays: fans and quads on planes 1.9 to 2.0 units in
+  // front of the camera, all additive, already in back-to-front order and
+  // nearer than anything in the world. Drawing them after drawEffects()
+  // rather than around it is what the depth sort was doing anyway.
+  g3d_.beginLayer(g3::LayerFlags::NO_DEPTH);
+  drawPresenceAuras();
   drawHealthWarning();
   drawMarkers();
   g3d_.endScene();

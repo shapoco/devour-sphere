@@ -79,9 +79,8 @@ target_compile_definitions(shapogfx PUBLIC
 # Nothing in this game is textured: every material comes from the three
 # factories in core/src/render/renderer.cpp, none of which sets a texture or
 # the TEXTURE / ENV_MAP flags, and every Vertex::uv is {0, 0}. Compiling the
-# texture path out takes 36 bytes off a Triangle (128 -> 92) and 16 off a
-# Span (64 -> 48), so a 128 KB arena holds 1064 triangles instead of 717.
-# Verified bit-identical over levels 0-7 at 240x240.
+# texture path out takes the texture planes out of every primitive record and
+# 4 bytes off a span. Verified bit-identical over levels 0-7 at 240x240.
 #
 # PRIVATE, unlike the formats above: the SHAPOGFX3D_ macros are read by
 # src/gfx3d/*.cpp only and change no public type.

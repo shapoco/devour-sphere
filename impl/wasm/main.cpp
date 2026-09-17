@@ -187,8 +187,10 @@ int main(int argc, char **argv) {
   std::printf("lines=%d points=%d entities=%d kites=%d\n", st.lines, st.points,
               st.entitiesDrawn, st.kites);
   std::printf(
-      "tris %d/%d (dropped %d), spans peak %d/%d (dropped %d), arena %zu/%zu\n",
-      st.gfx.triCount, st.gfx.triCapacity, st.gfx.triDropped, st.gfx.spanPeak,
+      "tris %d in %zu/%zu B (dropped %d), layers %d (dropped %d), "
+      "spans peak %d/%d (dropped %d), arena %zu/%zu\n",
+      st.gfx.triCount, st.gfx.triBytes, st.gfx.triBytesTotal, st.gfx.triDropped,
+      st.gfx.layerCount, st.gfx.layersDropped, st.gfx.spanPeak,
       st.gfx.spanCapacity, st.gfx.spanDropped, st.gfx.arenaUsed,
       st.gfx.arenaSize);
   return 0;

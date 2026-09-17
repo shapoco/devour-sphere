@@ -31,39 +31,37 @@ constexpr int BAND_H = 40;
 constexpr int BAND_COUNT = SCREEN_H / BAND_H;
 static_assert(SCREEN_H % BAND_H == 0, "the bands must tile the screen exactly");
 
-// Working memory of the 3D renderer. What binds here is not the bytes the
-// scene uses (30.4 KB at the measured peak) but the triangle buffer the
-// arena is divided into: buildScene() hands out what triCapacity leaves
-// over, so a small buffer costs the entities their per-fragment detail and
-// then thins the sphere wireframe.
+// Working memory of the 3D renderer. What binds here is not the whole arena
+// (23.4 KB in use at the measured peak) but the triangle buffer it is
+// divided into: buildScene() hands out what that buffer has left, so a small
+// one costs the entities their per-fragment detail and then thins the sphere
+// wireframe.
 //
-// Measured at 240x240 over levels 1-7 driven by the AI player, peak
-// triangles against the resulting capacity. The capacities are the 32-bit
-// ones the two boards actually get, which is what the profiling overlay
-// shows. Both boards build with SHAPOGFX3D_TEXTURE=0 (see CMakeLists.txt),
-// which is what the right-hand column is:
+// Since ShapoGFX ba15719 that buffer is a byte budget rather than a slot
+// count: a primitive's record holds only the attributes it has (52 to 96
+// bytes here on a 32-bit target, entry included). Measured at 240x240 over
+// levels 1-7 x 3 seeds x 600 ticks driven by the AI player, priced on the
+// boards -- these are the numbers the profiling overlay shows:
 //
-//                  textured      untextured (what is built)
-//      48 KB       193/251       193/350
-//      64 KB       193/344       198/478
-//      76 KB          -          263/574    <- the knee
-//      96 KB       230/530       263/734
-//     128 KB       263/717       263/1064
-//     256 KB       263/1700      263/2429
+//     bytes the peak frame needs            17.7 KB
+//     bytes needed to stop thinning         about 38 KB
+//     triangle buffer at  96 KB (ESP32S3)   68.8 KB  = 1.8x the knee, 4.0x the peak
+//     triangle buffer at 128 KB (RP2350)    97.7 KB  = 2.6x the knee, 5.6x the peak
 //
-// 76 KB is the knee: the scene reaches its natural size (263 triangles) and
-// nothing changes above it. Dropping the texture path took 36 bytes off a
-// Triangle and 16 off a Span, which moved the knee down from 104 KB and is
-// what finally lets the ESP32S3's 96 KB hold the whole scene.
+// Below the knee buildScene() starts handing out less, and the entities lose
+// their per-fragment detail first; primitives are only dropped much further
+// down. Both boards clear it comfortably, so ARENA_SIZE stays where it is.
 // The ESP32S3 keeps 96 KB rather than 128. Everything that is not static
 // there comes out of one pool: the band buffers (77 KB at 80-row bands), the
 // SPI driver's own buffers (32 KB) and every FreeRTOS task stack, including
 // the 8 KB core1 asks for. At 128 KB the arena leaves too little and the
 // core1 task is silently not created -- xmc::startCore1() does not check.
-// 96 KB now gives 734 entries against a peak of 263, so it clears the knee
-// with 2.8x to spare; 128 KB on the RP2350 has 4x. Both could be cut back
-// towards 76 KB if the DRAM were ever needed elsewhere, but neither board is
-// short of it today.
+//
+// There is room to go the other way now: 64 KB would still be 1.5x the knee
+// and 3x the peak, and Config::spanCapacity would give back another 18 KB
+// (the default reserves a quarter of the arena for spans, 451 of them, while
+// the measured peak is 35). That is worth doing on the ESP32S3, where the
+// DRAM is the scarce thing -- see ../SPEC.md.
 #if defined(ESP32)
 constexpr size_t ARENA_SIZE = 96 * 1024;
 #else
