@@ -27,12 +27,15 @@ static_assert(SCREEN_H % BAND_H == 0, "the bands must tile the screen exactly");
 // Working memory of the 3D renderer. What binds is the triangle buffer it is
 // divided into: buildScene() gives the entities their full bodies only while
 // that buffer has room beyond a reserve for what is drawn after them. With
-// the stars and the sphere wireframe drawn outside the 3D pipeline only the
-// world and the overlays are in it; 40 KB leaves 29 KB of buffer after the
-// fixed part and SPAN_CAPACITY spans (10.8 KB). 32 KB was tried and drew
-// every entity as an outline: 21 KB minus the reserve was nothing. The
-// Xiamocon build keeps 64 KB because it has the RAM.
-constexpr size_t ARENA_SIZE = 40 * 1024;
+// the stars, the sphere wireframe, the outlines, the effects, the points and
+// the markers drawn outside the 3D pipeline only the bodies, the fragments,
+// the bullets and the auras are in it: a crowded frame uses 12 KB of 40.
+// 36 KB leaves 25 KB of buffer after the fixed part and SPAN_CAPACITY spans
+// (10.8 KB); the 4 KB went to the 2D line and point arrays. 32 KB was tried
+// (before the 2D paths) and drew every entity as an outline: 21 KB minus
+// the reserve was nothing. The Xiamocon build keeps 64 KB because it has
+// the RAM.
+constexpr size_t ARENA_SIZE = 36 * 1024;
 
 // Triangles a frame may spend on full entity bodies (Renderer::
 // setDetailTriangles). Each body is up to 18 triangles and costs about a

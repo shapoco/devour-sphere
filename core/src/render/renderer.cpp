@@ -335,8 +335,14 @@ void Renderer::putQuadQ(const sim::Vec3 &c, const sim::Vec3 &dir,
 }
 
 void Renderer::putLineLoopQ(const sim::Vec3 *pts, int n, g2::Color c,
-                            const g3::Material &m) {
+                            const g3::Material &m, Layer2D layer) {
   if (n < 2 || n > 8) return;
+  if (lineCount2D_ + n <= MAX_LINES2D) {
+    for (int i = 0; i < n; i++) {
+      addLine2D(pts[i], pts[(i + 1) % n], c, 255, 255, layer);
+    }
+    return;
+  }
   g3::FixedVertex v[8];
   uint16_t idx[8];
   for (int i = 0; i < n; i++) {
@@ -350,8 +356,172 @@ void Renderer::putLineLoopQ(const sim::Vec3 *pts, int n, g2::Color c,
   lineCount_ += n;
 }
 
+// --- 2D lines and points (see renderer.hpp) --------------------------------
+
+void Renderer::addLineScreen(int32_t x0, int32_t y0, int32_t x1, int32_t y1,
+                             g2::Color c, int b0, int b1, Layer2D layer) {
+  if (lineCount2D_ >= MAX_LINES2D) return;
+  if (!clipSegment16(x0, y0, x1, y1, b0, b1)) return;
+  LineSeg &s = lines_[lineCount2D_++];
+  s.x0 = (int16_t)x0;
+  s.y0 = (int16_t)y0;
+  s.x1 = (int16_t)x1;
+  s.y1 = (int16_t)y1;
+  s.b0 = (uint8_t)b0;
+  s.b1 = (uint8_t)b1;
+  s.layer = layer;
+  s.rgb565 = packRgb565(c);
+  lineCount_++;
+}
+
+bool Renderer::addLine2D(const sim::Vec3 &a, const sim::Vec3 &b, g2::Color c,
+                         int b0, int b1, Layer2D layer) {
+  if (lineCount2D_ >= MAX_LINES2D) return false;
+  int32_t x0, y0, x1, y1;
+  if (!projectUnitsQ(a, x0, y0) || !projectUnitsQ(b, x1, y1)) return true;
+  addLineScreen(x0, y0, x1, y1, c, b0, b1, layer);
+  return true;
+}
+
+bool Renderer::addLine2Df(const vec3f &a, const vec3f &b, g2::Color c, int b0,
+                          int b1, Layer2D layer) {
+  if (lineCount2D_ >= MAX_LINES2D) return false;
+  const sim::Vec3 ua = {(int32_t)(a.x * FU), (int32_t)(a.y * FU),
+                        (int32_t)(a.z * FU)};
+  const sim::Vec3 ub = {(int32_t)(b.x * FU), (int32_t)(b.y * FU),
+                        (int32_t)(b.z * FU)};
+  return addLine2D(ua, ub, c, b0, b1, layer);
+}
+
+void Renderer::putLoop2Df(const vec3f *pts, int n, g2::Color c, Layer2D layer,
+                          const g3::Material &fallback) {
+  if (lineCount2D_ + n > MAX_LINES2D) {
+    putLineLoop3(pts, n, c, fallback);
+    return;
+  }
+  for (int i = 0; i < n; i++) {
+    addLine2Df(pts[i], pts[(i + 1) % n], c, 255, 255, layer);
+  }
+}
+
+bool Renderer::addPoint2D(const sim::Vec3 &p, g2::Color c) {
+  if (pointCount2D_ >= MAX_POINTS2D) return false;
+  int32_t sx, sy;
+  if (!projectUnitsQ(p, sx, sy)) return true;
+  const int px = sx >> 4, py = sy >> 4;
+  if (px < 0 || px >= w_ || py < 0 || py >= h_) return true;
+  StarPt &pt = points_[pointCount2D_++];
+  pt.x = (int16_t)px;
+  pt.y = (int16_t)py;
+  pt.c = c;
+  pointCount_++;
+  return true;
+}
+
+// A filled triangle in screen pixels (frame y; oy maps it into the band)
+static void fillTriangle2D(g2::Graphics2D &g, int oy, int ax, int ay, int bx,
+                           int by, int cx, int cy, g2::Color c) {
+  // Sort by y: a top, c bottom
+  if (ay > by) {
+    int t = ax;
+    ax = bx;
+    bx = t;
+    t = ay;
+    ay = by;
+    by = t;
+  }
+  if (by > cy) {
+    int t = bx;
+    bx = cx;
+    cx = t;
+    t = by;
+    by = cy;
+    cy = t;
+  }
+  if (ay > by) {
+    int t = ax;
+    ax = bx;
+    bx = t;
+    t = ay;
+    ay = by;
+    by = t;
+  }
+  if (cy == ay) {
+    int lo = ax < bx ? (ax < cx ? ax : cx) : (bx < cx ? bx : cx);
+    int hi = ax > bx ? (ax > cx ? ax : cx) : (bx > cx ? bx : cx);
+    g.fillRect(lo, ay + oy, hi - lo + 1, 1, c);
+    return;
+  }
+  for (int y = ay; y <= cy; y++) {
+    // The long edge a-c and the short edge (a-b, then b-c), x in 16.16
+    const int xl = ax + (int)(((int64_t)(cx - ax) * (y - ay)) / (cy - ay));
+    int xs;
+    if (y < by) {
+      xs = by == ay ? bx
+                    : ax + (int)(((int64_t)(bx - ax) * (y - ay)) / (by - ay));
+    } else {
+      xs = cy == by ? cx
+                    : bx + (int)(((int64_t)(cx - bx) * (y - by)) / (cy - by));
+    }
+    const int lo = xl < xs ? xl : xs, hi = xl < xs ? xs : xl;
+    g.fillRect(lo, y + oy, hi - lo + 1, 1, c);
+  }
+}
+
+void Renderer::drawMarkers2D(g2::Graphics2D &g, int oy) {
+  for (int i = 0; i < markerCount_; i++) {
+    const Marker2D &mk = markers_[i];
+    const int ms = ui_.markerScale8;
+    g2::vec2i pts[8];
+    int n = 0;
+    if (mk.kind != 0) {
+      n = upgradeIconPolygon(mk.kind, mk.x, mk.y - 10 * ms / 8, pts, ms);
+    } else {
+      int yb = mk.y - 3 * ms / 8, yt = yb - 7 * ms / 8;
+      int hw = 5 * ms / 8;
+      if (hw < 2) hw = 2;
+      pts[0] = {mk.x - hw, yt};
+      pts[1] = {mk.x + hw, yt};
+      pts[2] = {mk.x, yb};
+      n = 3;
+    }
+    if (n < 3) continue;
+    if (n == 3) {
+      fillTriangle2D(g, oy, pts[0].x, pts[0].y, pts[1].x, pts[1].y, pts[2].x,
+                     pts[2].y, mk.color);
+      continue;
+    }
+    // Fan from the center (every icon is star-shaped around it)
+    int cx = 0, cy = 0;
+    for (int k = 0; k < n; k++) cx += pts[k].x, cy += pts[k].y;
+    cx /= n, cy /= n;
+    for (int k = 0; k < n; k++) {
+      const g2::vec2i &p = pts[k], &q = pts[(k + 1) % n];
+      fillTriangle2D(g, oy, cx, cy, p.x, p.y, q.x, q.y, mk.color);
+    }
+  }
+}
+
+// The white outline of a carrier's marker, as 2D lines over everything
+void Renderer::queueMarkerOutlines() {
+  for (int i = 0; i < markerCount_; i++) {
+    const Marker2D &mk = markers_[i];
+    if (mk.kind != 0 || !mk.outline) continue;
+    const int ms = ui_.markerScale8;
+    const int yb = mk.y - 3 * ms / 8, yt = yb - 7 * ms / 8;
+    const int hw = 5 * ms / 8 + 1;
+    const g2::Color c = g2::makeColor(mk.outline, mk.outline, mk.outline);
+    const int32_t x0 = (mk.x - hw) << 4, x1 = (mk.x + hw) << 4;
+    const int32_t y0 = (yt - 1) << 4, y1 = (yb + 1) << 4, xm = mk.x << 4;
+    addLineScreen(x0, y0, x1, y0, c, 255, 255, L2D_OVER);
+    addLineScreen(x1, y0, xm, y1, c, 255, 255, L2D_OVER);
+    addLineScreen(xm, y1, x0, y0, c, 255, 255, L2D_OVER);
+  }
+}
+
 void Renderer::putPointQ(const sim::Vec3 &p, g2::Color c,
                          const g3::Material &m) {
+  if (addPoint2D(p, c)) return;
   const g3::FixedVertex v[1] = {fixedVertex(p, c)};
   static const uint16_t idx[1] = {0};
   g3::VertexBuffer vb = {1, nullptr, nullptr, v};
@@ -632,7 +802,7 @@ void Renderer::drawEntity(const sim::Entity &c, const sim::Vec3 &pos, float px,
                                kc + sim::scaleToLength(perp, s),
                                kc - sim::scaleToLength(dir, s),
                                kc - sim::scaleToLength(perp, s)};
-          putLineLoopQ(pts, 4, outline, palette_[PAL_LINE]);
+          putLineLoopQ(pts, 4, outline, palette_[PAL_LINE], L2D_OVER);
         }
       }
     }
@@ -650,7 +820,7 @@ void Renderer::drawEntity(const sim::Entity &c, const sim::Vec3 &pos, float px,
                          center + sim::scaleToLength(fwd, s),
                          center - sim::scaleToLength(right, s)};
     putLineLoopQ(pts, 4, carrier ? outline : colorForEntity(c),
-                 palette_[PAL_LINE]);
+                 palette_[PAL_LINE], L2D_UNDER);
     if (px >= 4.0f) {
       putKiteQ(pos + sim::scaleToLength(fwd, coreY), fwd, right, coreHalf,
                coreHalf * 5 / 2, palette_[PAL_CORE]);
@@ -1062,68 +1232,12 @@ vec3f Renderer::screenToWorld(const ScreenPlane &sp, float sx, float sy,
   return cam_.eye + viewDir_ * depth + sp.right * vx + sp.up * vy;
 }
 
-// Horizon markers, added onto the frame (as fans on a plane just in front
-// of the camera, drawn after everything else) so that they never hide the
-// enemies flying near the horizon. Enemies: a downward triangle just above
-// the horizon point, with a white outline (fading with the distance) when
-// they carry an upgrade; upgrades: their icon (the HUD shape).
-void Renderer::drawMarkers() {
-  constexpr float DEPTH = 1.9f;  // nearer than the auras and the warning
-  ScreenPlane sp = screenPlane();
-  for (int i = 0; i < markerCount_; i++) {
-    const Marker2D &mk = markers_[i];
-    const int ms = ui_.markerScale8;
-    g2::vec2i pts[8];
-    int n = 0;
-    if (mk.kind != 0) {
-      n = upgradeIconPolygon(mk.kind, mk.x, mk.y - 10 * ms / 8, pts, ms);
-    } else {
-      int yb = mk.y - 3 * ms / 8, yt = yb - 7 * ms / 8;
-      int hw = 5 * ms / 8;
-      if (hw < 2) hw = 2;
-      pts[0] = {mk.x - hw, yt};
-      pts[1] = {mk.x + hw, yt};
-      pts[2] = {mk.x, yb};
-      n = 3;
-    }
-    if (n < 3) continue;
-    // Fan from the center (every icon is star-shaped around it)
-    float cx = 0, cy = 0;
-    for (int k = 0; k < n; k++) cx += pts[k].x, cy += pts[k].y;
-    cx /= n, cy /= n;
-    g3::Vertex verts[10];
-    uint16_t idx[10];
-    verts[0].position = screenToWorld(sp, cx, cy, DEPTH);
-    verts[0].normal = {0, 1, 0};
-    verts[0].uv = {0, 0};
-    verts[0].color = mk.color;
-    idx[0] = 0;
-    for (int k = 0; k <= n; k++) {
-      const g2::vec2i &q = pts[k % n];
-      verts[k + 1].position =
-          screenToWorld(sp, (float)q.x + 0.5f, (float)q.y + 0.5f, DEPTH);
-      verts[k + 1].normal = {0, 1, 0};
-      verts[k + 1].uv = {0, 0};
-      verts[k + 1].color = mk.color;
-      idx[k + 1] = (uint16_t)(k + 1);
-    }
-    g3::VertexBuffer vb = {(uint16_t)(n + 2), verts};
-    g3::Primitive prim = {g3::PrimitiveType::TRIANGLE_FAN, &vb,
-                          (uint16_t)(n + 2), idx, &palette_[PAL_LINE_ADD]};
-    g3d_.putPrimitive(prim);
-    if (mk.kind == 0 && mk.outline) {
-      int yb = mk.y - 3 * ms / 8, yt = yb - 7 * ms / 8;
-      float hw = 5.0f * ms / 8 + 1.0f;
-      const vec3f loop[3] = {
-          screenToWorld(sp, mk.x - hw, yt - 1.0f, DEPTH),
-          screenToWorld(sp, mk.x + hw, yt - 1.0f, DEPTH),
-          screenToWorld(sp, (float)mk.x, yb + 1.0f, DEPTH),
-      };
-      putLineLoop3(loop, 3, g2::makeColor(mk.outline, mk.outline, mk.outline),
-                   palette_[PAL_LINE_ADD]);
-    }
-  }
-}
+// Horizon markers: collected here (Marker2D, screen coordinates) and
+// drawn by renderBand() as 2D fills over the 3D layers, so they never
+// hide the enemies flying near the horizon and cost no 3D primitive.
+// Enemies: a downward triangle just above the horizon point, with a white
+// outline (fading with the distance) when they carry an upgrade;
+// upgrades: their icon (the HUD shape).
 
 void Renderer::buildScene() {
   const sim::Game &g = *game_;
@@ -1261,8 +1375,8 @@ void Renderer::buildScene() {
   g3d_.beginLayer(g3::LayerFlags::NO_DEPTH);
   drawPresenceAuras();
   drawHealthWarning();
-  drawMarkers();
   g3d_.endScene();
+  queueMarkerOutlines();
   frameProfile_.stamp(FP_OVERLAYS);
 }
 
@@ -1317,6 +1431,8 @@ void Renderer::beginFrame(const sim::Game &game, float dt) {
   pointCount_ = 0;
   wireCount_ = 0;
   starCount_ = 0;
+  lineCount2D_ = 0;
+  pointCount2D_ = 0;
   gaugeCount_ = 0;
   markerCount_ = 0;
   entitiesDrawn_ = 0;
@@ -1341,6 +1457,8 @@ void Renderer::renderBand(const g2::Surface &dst, int y, int h, int dstY) {
   g3d_.render(0, (int16_t)y, (int16_t)w_, (int16_t)h, dst, 0, (int16_t)dstY);
   frameProfile_.stamp(FP_BAND_3D);
   int oy = dstY - y;
+  drawMarkers2D(g, oy);
+  drawLines2D(dst, y, h, dstY, L2D_OVER);
   const int gaugeH = ui(3, 2), gaugeB = ui(1, 1);
   for (int i = 0; i < gaugeCount_; i++) {
     const Gauge2D &gg = gauges_[i];

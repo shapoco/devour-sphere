@@ -159,38 +159,61 @@ void Renderer::addWireSegment(const Vec3 &ua, const Vec3 &ub, int level) {
   const int ba = wireBrightness(distA, level),
             bb = wireBrightness(distB, level);
 
+  int ba2 = ba, bb2 = bb;
+  if (!clipSegment16(x0, y0, x1, y1, ba2, bb2)) return;
+  WireSeg &seg = wire_[wireCount_++];
+  seg.x0 = (int16_t)x0;
+  seg.y0 = (int16_t)y0;
+  seg.x1 = (int16_t)x1;
+  seg.y1 = (int16_t)y1;
+  seg.b0 = (uint8_t)ba2;
+  seg.b1 = (uint8_t)bb2;
+  lineCount_++;
+}
+
+bool Renderer::clipSegment16(int32_t &x0, int32_t &y0, int32_t &x1, int32_t &y1,
+                             int &b0, int &b1) const {
   const int32_t dx = x1 - x0, dy = y1 - y0;
   const int32_t W = w_ << 4, H = h_ << 4;
-  int32_t t0 = 0, t1 = 1 << 16;  // Q16
-  if (x0 < 0 || x0 > W || y0 < 0 || y0 > H || x1 < 0 || x1 > W || y1 < 0 ||
-      y1 > H) {
-    // Liang-Barsky. The division is 64-bit, but only segments that touch
-    // the screen edge get here
-    auto clip = [&](int32_t p, int32_t q) {
-      if (p == 0) return q >= 0;
-      const int32_t r = (int32_t)(((int64_t)q << 16) / p);
-      if (p < 0) {
-        if (r > t1) return false;
-        if (r > t0) t0 = r;
-      } else {
-        if (r < t0) return false;
-        if (r < t1) t1 = r;
-      }
-      return true;
-    };
-    if (!clip(-dx, x0) || !clip(dx, W - x0) || !clip(-dy, y0) ||
-        !clip(dy, H - y0)) {
-      return;
-    }
+  if (x0 >= 0 && x0 <= W && y0 >= 0 && y0 <= H && x1 >= 0 && x1 <= W &&
+      y1 >= 0 && y1 <= H) {
+    return true;
   }
-  WireSeg &seg = wire_[wireCount_++];
-  seg.x0 = (int16_t)(x0 + (int32_t)(((int64_t)dx * t0) >> 16));
-  seg.y0 = (int16_t)(y0 + (int32_t)(((int64_t)dy * t0) >> 16));
-  seg.x1 = (int16_t)(x0 + (int32_t)(((int64_t)dx * t1) >> 16));
-  seg.y1 = (int16_t)(y0 + (int32_t)(((int64_t)dy * t1) >> 16));
-  seg.b0 = (uint8_t)(ba + (((bb - ba) * t0) >> 16));
-  seg.b1 = (uint8_t)(ba + (((bb - ba) * t1) >> 16));
-  lineCount_++;
+  // Liang-Barsky. The division is 64-bit, but only segments that touch
+  // the screen edge get here
+  int32_t t0 = 0, t1 = 1 << 16;  // Q16
+  auto clip = [&](int32_t p, int32_t q) {
+    if (p == 0) return q >= 0;
+    const int32_t r = (int32_t)(((int64_t)q << 16) / p);
+    if (p < 0) {
+      if (r > t1) return false;
+      if (r > t0) t0 = r;
+    } else {
+      if (r < t0) return false;
+      if (r < t1) t1 = r;
+    }
+    return true;
+  };
+  if (!clip(-dx, x0) || !clip(dx, W - x0) || !clip(-dy, y0) ||
+      !clip(dy, H - y0)) {
+    return false;
+  }
+  const int32_t ox = x0, oy = y0, ob = b0;
+  x0 = ox + (int32_t)(((int64_t)dx * t0) >> 16);
+  y0 = oy + (int32_t)(((int64_t)dy * t0) >> 16);
+  x1 = ox + (int32_t)(((int64_t)dx * t1) >> 16);
+  y1 = oy + (int32_t)(((int64_t)dy * t1) >> 16);
+  b0 = ob + (((b1 - ob) * t0) >> 16);
+  b1 = ob + (((b1 - ob) * t1) >> 16);
+  return true;
+}
+
+bool Renderer::projectUnitsQ(const Vec3 &p, int32_t &sx, int32_t &sy) const {
+  // Relative to the sphere center in 1/16 units, like the surface points
+  const Vec3 pos = {(p.x + origin_.x) << POS_SHIFT,
+                    (p.y + origin_.y) << POS_SHIFT,
+                    (p.z + origin_.z) << POS_SHIFT};
+  return projectQ(pos, sx, sy);
 }
 
 // Draw a-b as the 2^depth chords the mesh actually has along it, bisecting
@@ -472,9 +495,13 @@ static uint16_t memoryWord(g2::PixelFormat f, g2::Color c) {
 // join exactly; the pixel range that falls into the band is worked out
 // first rather than walked, which matters for a long line crossing many
 // bands. Coordinates are 1/16 pixel, the DDA runs in 1/4096 of that.
-void Renderer::drawWireSegment(const g2::Surface &dst, const WireSeg &s, int y,
-                               int h, int dstY) {
-  int X0 = s.x0, Y0 = s.y0, X1 = s.x1, Y1 = s.y1, B0 = s.b0, B1 = s.b1;
+// The integer DDA of a screen segment (1/16 px, brightness 0..255 at each
+// end): calls plot(px, py, b) for each pixel of the segment that lies in
+// the rows [y, y + h) of the frame. Always counted from the segment's
+// start, so the pieces drawn in adjacent bands join exactly.
+template <typename Plot>
+static void walkSegment(int X0, int Y0, int X1, int Y1, int B0, int B1, int y,
+                        int h, int w, Plot plot) {
   const bool xMajor =
       (X1 - X0 < 0 ? X0 - X1 : X1 - X0) >= (Y1 - Y0 < 0 ? Y0 - Y1 : Y1 - Y0);
   if (!xMajor) {  // walk y: swap the axes and swap back when plotting
@@ -536,22 +563,79 @@ void Renderer::drawWireSegment(const g2::Surface &dst, const WireSeg &s, int y,
     if (kB < kHi) kHi = kB;
     if (kLo > kHi) return;
   }
-  const bool wide = directWord(dst.format);
-  g2::Graphics2D g(dst);
   int minor = minor0 + kLo * dMinor;
   int bright = (B0 << 16) + kLo * dBright;
   for (int k = kLo; k <= kHi; k++, minor += dMinor, bright += dBright) {
     const int major = p0 + k;
     const int m = minor >> 16;  // pixel along the minor axis
     const int px = xMajor ? major : m, py = xMajor ? m : major;
-    if (py >= y && py < y + h && px >= 0 && px < w_) {
+    if (py >= y && py < y + h && px >= 0 && px < w) {
       const int b = bright >> 16;
+      plot(px, py, b < 0 ? 0 : (b > 255 ? 255 : b));
+    }
+  }
+}
+
+void Renderer::drawWireSegment(const g2::Surface &dst, const WireSeg &s, int y,
+                               int h, int dstY) {
+  if (directWord(dst.format)) {
+    walkSegment(s.x0, s.y0, s.x1, s.y1, s.b0, s.b1, y, h, w_,
+                [&](int px, int py, int b) {
+                  uint16_t *row = (uint16_t *)dst.linePtr(py - y + dstY);
+                  row[px] = wireNative_[b >> 3];
+                });
+  } else {
+    g2::Graphics2D g(dst);
+    walkSegment(s.x0, s.y0, s.x1, s.y1, s.b0, s.b1, y, h, w_,
+                [&](int px, int py, int b) {
+                  g.fillRect(px, py - y + dstY, 1, 1,
+                             g2::lerpColor(WIRE_DIM, WIRE_BRIGHT, b));
+                });
+  }
+}
+
+void Renderer::drawLines2D(const g2::Surface &dst, int y, int h, int dstY,
+                           Layer2D layer) {
+  const bool wide = directWord(dst.format);
+  g2::Graphics2D g(dst);
+  const g2::Color black = g2::makeColor(0, 0, 0);
+  for (int i = 0; i < lineCount2D_; i++) {
+    const LineSeg &s = lines_[i];
+    if (s.layer != layer) continue;
+    const int lo = s.y0 < s.y1 ? s.y0 : s.y1;
+    const int hi = s.y0 < s.y1 ? s.y1 : s.y0;
+    if ((hi >> 4) < y || (lo >> 4) >= y + h) continue;
+    const g2::Color color = unpackRgb565(s.rgb565);
+    if (s.b0 == 255 && s.b1 == 255) {
+      // Flat: one native word for the whole segment
       if (wide) {
-        uint16_t *row = (uint16_t *)dst.linePtr(py - y + dstY);
-        row[px] = wireNative_[(b < 0 ? 0 : (b > 255 ? 255 : b)) >> 3];
+        const uint16_t word = memoryWord(dst.format, color);
+        walkSegment(s.x0, s.y0, s.x1, s.y1, 255, 255, y, h, w_,
+                    [&](int px, int py, int) {
+                      uint16_t *row = (uint16_t *)dst.linePtr(py - y + dstY);
+                      row[px] = word;
+                    });
       } else {
-        g.fillRect(px, py - y + dstY, 1, 1,
-                   g2::lerpColor(WIRE_DIM, WIRE_BRIGHT, b));
+        walkSegment(s.x0, s.y0, s.x1, s.y1, 255, 255, y, h, w_,
+                    [&](int px, int py, int) {
+                      g.fillRect(px, py - y + dstY, 1, 1, color);
+                    });
+      }
+    } else {
+      // A gradient towards black (the dash dust): per pixel
+      if (wide) {
+        walkSegment(s.x0, s.y0, s.x1, s.y1, s.b0, s.b1, y, h, w_,
+                    [&](int px, int py, int b) {
+                      uint16_t *row = (uint16_t *)dst.linePtr(py - y + dstY);
+                      row[px] = memoryWord(dst.format,
+                                           g2::lerpColor(black, color, b));
+                    });
+      } else {
+        walkSegment(s.x0, s.y0, s.x1, s.y1, s.b0, s.b1, y, h, w_,
+                    [&](int px, int py, int b) {
+                      g.fillRect(px, py - y + dstY, 1, 1,
+                                 g2::lerpColor(black, color, b));
+                    });
       }
     }
   }
@@ -580,6 +664,16 @@ void Renderer::drawBackdropBand(const g2::Surface &dst, int y, int h,
       g.fillRect(st.x, st.y - y + dstY, 1, 1, st.c);
     }
   }
+  for (int i = 0; i < pointCount2D_; i++) {
+    const StarPt &pt = points_[i];
+    if (pt.y < y || pt.y >= y + h) continue;
+    if (wide) {
+      uint16_t *row = (uint16_t *)dst.linePtr(pt.y - y + dstY);
+      row[pt.x] = memoryWord(dst.format, pt.c);
+    } else {
+      g.fillRect(pt.x, pt.y - y + dstY, 1, 1, pt.c);
+    }
+  }
   for (int i = 0; i < wireCount_; i++) {
     const WireSeg &seg = wire_[i];
     const int lo = seg.y0 < seg.y1 ? seg.y0 : seg.y1;
@@ -587,6 +681,7 @@ void Renderer::drawBackdropBand(const g2::Surface &dst, int y, int h,
     if ((hi >> 4) < y || (lo >> 4) >= y + h) continue;
     drawWireSegment(dst, seg, y, h, dstY);
   }
+  drawLines2D(dst, y, h, dstY, L2D_UNDER);
 }
 
 }  // namespace devoursphere::render

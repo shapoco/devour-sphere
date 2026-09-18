@@ -216,7 +216,7 @@ void Renderer::drawEffects() {
       float c[3], s[3];
       triangleAngles(pk.angle, c, s);
       for (int k = 0; k < 3; k++) pts[k] = (right * c[k] + up * s[k]) * radius;
-      putLineLoop3(pts, 3, color, palette_[PAL_LINE]);
+      putLoop2Df(pts, 3, color, L2D_OVER, palette_[PAL_LINE]);
     }
   }
 
@@ -229,10 +229,12 @@ void Renderer::drawEffects() {
     triangleAngles(d.angle, c, s);
     for (int k = 0; k < 3; k++)
       pts[k] = d.pos + (d.u * c[k] + d.v * s[k]) * size;
-    putLineLoop3(pts, 3, d.color, palette_[PAL_LINE]);
+    putLoop2Df(pts, 3, d.color, L2D_OVER, palette_[PAL_LINE]);
   }
 
-  // Dust: streaks along the player's motion, bright head, fading tail
+  // Dust: streaks along the player's motion, bright head, fading tail. As
+  // 2D lines the fade is towards black rather than additive to transparent;
+  // the sky behind them is black anyway
   const sim::Entity &p = game_->player();
   if (dustCount_ > 0) {
     vec3f fwd = {p.frame.t.x / 1073741824.0f, p.frame.t.y / 1073741824.0f,
@@ -243,7 +245,9 @@ void Renderer::drawEffects() {
     g2::Color tail = g2::makeColor(0, 0, 0);
     for (int i = 0; i < dustCount_; i++) {
       const Dust &d = dust_[i];
-      putLine3(d.pos, d.pos + fwd * len, head, tail, palette_[PAL_LINE_ADD]);
+      if (!addLine2Df(d.pos, d.pos + fwd * len, head, 255, 0, L2D_OVER)) {
+        putLine3(d.pos, d.pos + fwd * len, head, tail, palette_[PAL_LINE_ADD]);
+      }
     }
   }
 }

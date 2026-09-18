@@ -179,6 +179,16 @@ class Renderer {
 #define DEVOURSPHERE_MAX_WIRE 1100
 #endif
   static constexpr int MAX_WIRE = DEVOURSPHERE_MAX_WIRE;  // wireframe segments
+// The 2D line and point arrays (see "2D lines" below): 14 and 8 bytes an
+// entry. A small target may cap them; what does not fit takes the 3D path.
+#ifndef DEVOURSPHERE_MAX_LINES2D
+#define DEVOURSPHERE_MAX_LINES2D 512
+#endif
+#ifndef DEVOURSPHERE_MAX_POINTS2D
+#define DEVOURSPHERE_MAX_POINTS2D 256
+#endif
+  static constexpr int MAX_LINES2D = DEVOURSPHERE_MAX_LINES2D;
+  static constexpr int MAX_POINTS2D = DEVOURSPHERE_MAX_POINTS2D;
   static constexpr int MAX_SPHERE_LEVEL = 7;
   static constexpr int MAX_GAUGES = 64;
   static constexpr int MAX_MARKERS = 40;
@@ -362,6 +372,57 @@ class Renderer {
   bool wireNativeValid_ = false;
   void addWireSegment(const sim::Vec3 &ua, const sim::Vec3 &ub, int level);
   void drawBackdropBand(const g2::Surface &dst, int y, int h, int dstY);
+
+  // 2D lines and points. On a core without an FPU a line or a point costs
+  // about 50 us through ShapoGFX's vertex stage whatever it draws, and a
+  // crowded frame has a hundred of each (the outlines of far entities,
+  // debris, dash dust, far fragments). Like the wireframe they are
+  // projected once here and drawn per band by the integer DDA, either
+  // under the 3D layers (hidden by any body in front: the outlines, the
+  // points) or over them (the effects, the marker outlines). There is no
+  // depth test: a piece of debris behind a body shows through it.
+  enum Layer2D : uint8_t { L2D_UNDER = 0, L2D_OVER = 1 };
+  struct LineSeg {
+    int16_t x0, y0, x1, y1;  // screen, 1/16 pixel, clipped to the screen
+    uint8_t b0, b1;          // brightness at each end, 0..255 (255 = color)
+    uint8_t layer;           // Layer2D
+    uint16_t rgb565;         // the color (14 bytes an entry; RAM is short)
+  };
+  static uint16_t packRgb565(g2::Color c) {
+    return (uint16_t)(((g2::colorR(c) >> 3) << 11) |
+                      ((g2::colorG(c) >> 2) << 5) | (g2::colorB(c) >> 3));
+  }
+  static g2::Color unpackRgb565(uint16_t v) {
+    const int r = (v >> 11) & 31, g = (v >> 5) & 63, b = v & 31;
+    return g2::makeColor((r << 3) | (r >> 2), (g << 2) | (g >> 4),
+                         (b << 3) | (b >> 2));
+  }
+  LineSeg lines_[MAX_LINES2D];
+  int lineCount2D_ = 0;
+  StarPt points_[MAX_POINTS2D];
+  int pointCount2D_ = 0;
+  // Clip a segment (1/16 px) to the screen, interpolating the brightness;
+  // false when nothing is left
+  bool clipSegment16(int32_t &x0, int32_t &y0, int32_t &x1, int32_t &y1,
+                     int &b0, int &b1) const;
+  // A point in world units relative to origin_ -> screen (1/16 px)
+  bool projectUnitsQ(const sim::Vec3 &p, int32_t &sx, int32_t &sy) const;
+  // Each adder returns false only when the array is full (the caller then
+  // takes the 3D path); a line behind the near plane is dropped and true
+  void addLineScreen(int32_t x0, int32_t y0, int32_t x1, int32_t y1,
+                     g2::Color c, int b0, int b1, Layer2D layer);
+  bool addLine2D(const sim::Vec3 &a, const sim::Vec3 &b, g2::Color c, int b0,
+                 int b1, Layer2D layer);
+  bool addLine2Df(const g3::vec3f &a, const g3::vec3f &b, g2::Color c, int b0,
+                  int b1, Layer2D layer);
+  bool addPoint2D(const sim::Vec3 &p, g2::Color c);
+  // A closed loop of float points (effects), 2D when there is room
+  void putLoop2Df(const g3::vec3f *pts, int n, g2::Color c, Layer2D layer,
+                  const g3::Material &fallback);
+  void drawLines2D(const g2::Surface &dst, int y, int h, int dstY,
+                   Layer2D layer);
+  void drawMarkers2D(g2::Graphics2D &g, int oy);
+  void queueMarkerOutlines();
   void drawWireSegment(const g2::Surface &dst, const WireSeg &s, int y, int h,
                        int dstY);
 
@@ -437,7 +498,7 @@ class Renderer {
   void putQuadQ(const sim::Vec3 &c, const sim::Vec3 &dir, const sim::Vec3 &perp,
                 int32_t halfLen, int32_t halfWidth, const g3::Material &m);
   void putLineLoopQ(const sim::Vec3 *pts, int n, g2::Color c,
-                    const g3::Material &m);
+                    const g3::Material &m, Layer2D layer);
   void putPointQ(const sim::Vec3 &p, g2::Color c, const g3::Material &m);
   sim::Vec3 eyeQ_ = {};  // cam_.eye in world units relative to origin_
   void drawEntity(const sim::Entity &c, const sim::Vec3 &pos, float px,
@@ -450,7 +511,6 @@ class Renderer {
   // its size and distance (carriers of upgrades)
   void addEnemyMarker(const sim::Entity &c, bool always);
   void drawHealthWarning();
-  void drawMarkers();
   // Screen-space drawing inside the 3D scene: a plane facing the camera at
   // a given view-space depth, and the world position of a screen pixel on it
   struct ScreenPlane {

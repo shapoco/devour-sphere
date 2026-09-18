@@ -46,6 +46,11 @@ add_compile_definitions(
     # The wireframe's segment array: 240x240 budgets 550 lines (1100 x
     # scale), so the 1100 the reference screen needs would waste 5.4 KB
     DEVOURSPHERE_MAX_WIRE=560
+    # The 2D line and point arrays (outlines, effects, far fragments): a
+    # crowded 240x240 frame has about 100 lines and 30 points; what does
+    # not fit takes the 3D path. 14 and 8 bytes an entry.
+    DEVOURSPHERE_MAX_LINES2D=256
+    DEVOURSPHERE_MAX_POINTS2D=128
     # Off-screen enemies as solid triangles rather than additive glow fans:
     # a fan costs about a millisecond here and a crowd draws twelve
     DEVOURSPHERE_SIMPLE_AURAS=1
