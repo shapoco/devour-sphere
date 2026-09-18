@@ -7,6 +7,9 @@ REPO_ROOT := ../..
 GFX_ROOT := $(REPO_ROOT)/submodule/shapo-gfx
 OUT_DIR := $(REPO_ROOT)/docs/play
 OUT := $(OUT_DIR)/devoursphere.wasm
+# Sound effects: materials/se/*.wav packed into one PCM file (needs ffmpeg)
+SE_DIR := $(REPO_ROOT)/materials/se
+SE_OUT := $(OUT_DIR)/se.bin
 
 SRCS := main.cpp \
         $(wildcard $(REPO_ROOT)/core/src/sim/*.cpp) \
@@ -20,11 +23,16 @@ HDRS := $(wildcard $(REPO_ROOT)/core/include/devoursphere/*.hpp) \
 CXXFLAGS := -O2 -std=c++17 -Wall -Wextra \
             -I $(REPO_ROOT)/core/include -I $(GFX_ROOT)/include
 
-EXPORTS := _ds_init,_ds_set_screen,_ds_get_max_pixels,_ds_debug_start,_ds_debug_auto,_ds_tick,_ds_render,_ds_get_fb,_ds_get_width,_ds_get_height,_ds_get_state,_ds_get_tick_rate,_ds_get_score,_ds_set_high_score,_ds_set_debug,_ds_debug_key
+EXPORTS := _ds_init,_ds_set_screen,_ds_get_max_pixels,_ds_debug_start,_ds_debug_auto,_ds_tick,_ds_render,_ds_get_fb,_ds_get_width,_ds_get_height,_ds_get_state,_ds_get_tick_rate,_ds_get_score,_ds_set_high_score,_ds_set_debug,_ds_debug_key,_ds_get_sounds
 
-.PHONY: all clean serve
+.PHONY: all clean serve se
 
-all: $(OUT)
+all: $(OUT) $(SE_OUT)
+
+se: $(SE_OUT)
+
+$(SE_OUT): $(wildcard $(SE_DIR)/*.wav) pack_se.py
+	python3 pack_se.py -o $@ $(SE_DIR)
 
 $(OUT): $(SRCS) $(HDRS) Makefile
 	$(EMCC) $(CXXFLAGS) $(SRCS) --no-entry -sSTANDALONE_WASM=1 \
@@ -32,7 +40,7 @@ $(OUT): $(SRCS) $(HDRS) Makefile
 		-o $@
 
 clean:
-	rm -f $(OUT)
+	rm -f $(OUT) $(SE_OUT)
 
 # Serve docs/ and open http://localhost:52980/play/
 serve:

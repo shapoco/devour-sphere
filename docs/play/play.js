@@ -5,7 +5,7 @@
 // (RGB565BE) into a <canvas>, and turns keyboard / gamepad / touch input into
 // the button bits of the simulation.
 //
-// startDevourSphere({ wasm: 'devoursphere.wasm' })
+// startDevourSphere({ wasm: 'devoursphere.wasm', se: 'se.bin' })
 //   URL parameters: ?screen=WxH        frame buffer size (default 480x320)
 //                   ?level=N&weapon=W  skips the menus (debug)
 //                   ?seed=N            fixed random seed
@@ -31,6 +31,121 @@ const RGBA_LUT = new Uint32Array(65536);
   }
 }
 
+// Sound effects. The simulation raises one bit per kind after a tick
+// (ds_get_sounds(), the order of devoursphere::sim::SoundKind); the
+// waveforms come from se.bin (impl/wasm/pack_se.py: a table of contents and
+// mono 16-bit PCM, in the same order) and are played through Web Audio,
+// one AudioBufferSourceNode per request, so any number can overlap.
+// The AudioContext can only start from a user gesture: it is created on the
+// first key or pointer event, and requests before that are dropped.
+const SE_NAMES = ['shot_vulcan', 'shot_laser', 'shot_missile', 'hit_enemy',
+  'hit_player', 'enemy_killed_small', 'enemy_killed_big', 'player_killed',
+  'get_fragment', 'get_upgrade', 'menu_select', 'menu_start'];
+// Per-kind gain (the place to balance the material; 1 = as recorded)
+const SE_GAIN = {
+  shot_vulcan: 1, shot_laser: 1, shot_missile: 1,
+  hit_enemy: 1, hit_player: 1,
+  enemy_killed_small: 1, enemy_killed_big: 1, player_killed: 1,
+  get_fragment: 1, get_upgrade: 1,
+  menu_select: 1, menu_start: 1,
+};
+const SOUND_KEY = 'devoursphere.sound';
+
+class SoundPlayer {
+  constructor() {
+    this.ctx = null;
+    this.master = null;
+    this.buffers = null;   // AudioBuffer per kind, once the context exists
+    this.pcm = null;       // { rate, sounds: [Float32Array] } from se.bin
+    this.enabled = true;
+    try { this.enabled = localStorage.getItem(SOUND_KEY) !== '0'; } catch (e) { /* ignore */ }
+    this.unlock = this.unlock.bind(this);
+    for (const ev of ['keydown', 'pointerdown', 'touchend']) {
+      window.addEventListener(ev, this.unlock, { capture: true, passive: true });
+    }
+  }
+
+  // Fetch and parse se.bin (no decoder: the file is PCM already)
+  async load(url) {
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`fetch failed: ${resp.status}`);
+    const data = await resp.arrayBuffer();
+    const dv = new DataView(data);
+    if (data.byteLength < 16 || dv.getUint32(0, false) !== 0x44535345) {  // "DSSE"
+      throw new Error('not a sound pack');
+    }
+    const rate = dv.getUint32(4, true);
+    const count = dv.getUint32(8, true);
+    const total = dv.getUint32(12, true);
+    const pcmStart = 16 + count * 8;
+    const pcm = new Int16Array(data, pcmStart, total);
+    const sounds = [];
+    for (let i = 0; i < count; i++) {
+      const first = dv.getUint32(16 + i * 8, true);
+      const n = dv.getUint32(20 + i * 8, true);
+      const f = new Float32Array(n);
+      for (let k = 0; k < n; k++) f[k] = pcm[first + k] / 32768;
+      sounds.push(f);
+    }
+    this.pcm = { rate, sounds };
+    if (this.ctx) this.makeBuffers();
+  }
+
+  makeBuffers() {
+    const { rate, sounds } = this.pcm;
+    this.buffers = sounds.map((f) => {
+      const b = this.ctx.createBuffer(1, Math.max(f.length, 1), rate);
+      b.copyToChannel(f, 0);
+      return b;
+    });
+  }
+
+  // First user gesture: create (or resume) the context
+  unlock() {
+    if (!this.ctx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      try { this.ctx = new AC(); } catch (e) { return; }
+      this.master = this.ctx.createGain();
+      this.master.connect(this.ctx.destination);
+      if (this.pcm) this.makeBuffers();
+    }
+    if (this.ctx.state === 'suspended') this.ctx.resume().catch(() => {});
+    if (this.ctx.state === 'running') {
+      for (const ev of ['keydown', 'pointerdown', 'touchend']) {
+        window.removeEventListener(ev, this.unlock, { capture: true });
+      }
+    }
+  }
+
+  setEnabled(on) {
+    this.enabled = on;
+    try { localStorage.setItem(SOUND_KEY, on ? '1' : '0'); } catch (e) { /* ignore */ }
+  }
+
+  // Play every kind whose bit is set in `bits`. The context only exists
+  // after a gesture; a source started while it is still resuming plays as
+  // soon as it runs (the first menu sound follows the key that unlocked it)
+  play(bits) {
+    if (!this.enabled || !this.buffers || !this.ctx || this.ctx.state === 'closed') return;
+    for (let i = 0; bits; i++, bits >>>= 1) {
+      if (!(bits & 1) || i >= this.buffers.length) continue;
+      const src = this.ctx.createBufferSource();
+      src.buffer = this.buffers[i];
+      const gain = SE_GAIN[SE_NAMES[i]];
+      if (gain !== undefined && gain !== 1) {
+        const g = this.ctx.createGain();
+        g.gain.value = gain;
+        src.connect(g);
+        g.connect(this.master);
+      } else {
+        src.connect(this.master);
+      }
+      src.start();
+    }
+  }
+}
+
 // "320x240" from ?screen=, or null
 function parseScreenSize(params) {
   const value = params.get('screen');
@@ -43,6 +158,10 @@ async function startDevourSphere(opts) {
   const fpsEl = document.getElementById('fps');
   const canvas = document.getElementById('screen');
   const input = new InputState();
+  const sound = new SoundPlayer();
+  setupSoundToggle(sound);
+  // Loaded alongside the module; a missing pack only means silence
+  sound.load(opts.se || 'se.bin').catch((e) => console.warn(`sound: ${e.message}`));
 
   try {
     const wasiStubs = new Proxy({}, {
@@ -138,6 +257,8 @@ async function startDevourSphere(opts) {
       while (acc >= tickMs && n < 4) {
         pollGamepad(input);
         ex.ds_tick(input.buttons());
+        const bits = ex.ds_get_sounds();
+        if (bits) sound.play(bits);
         acc -= tickMs;
         ticked = true;
         n++;
@@ -352,4 +473,15 @@ function setupButtons() {
   }
   const tt = document.getElementById('touchtoggle');
   if (tt) tt.addEventListener('click', () => document.body.classList.toggle('touch'));
+}
+
+function setupSoundToggle(sound) {
+  const btn = document.getElementById('soundtoggle');
+  if (!btn) return;
+  const show = () => { btn.textContent = sound.enabled ? 'サウンド ON' : 'サウンド OFF'; };
+  show();
+  btn.addEventListener('click', () => {
+    sound.setEnabled(!sound.enabled);
+    show();
+  });
 }

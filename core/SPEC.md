@@ -162,7 +162,7 @@ include/devoursphere/
   sim/fixed.hpp           固定小数点、三角関数、整数平方根、ベクトル、乱数
   sim/config.hpp          定数 (スケール、上限、速度、武器、AI)
   sim/entities.hpp        Entity, Fragment, FloatingFragment, Bullet, Spark, Button
-  sim/game.hpp            Game: 状態機械と tick()
+  sim/game.hpp            Game: 状態機械と tick()、Event / EffectKind / SoundKind
   render/renderer.hpp     Renderer: beginFrame() / renderBand() / endFrame()
                           setControlHints() / pollEffects() はプラットフォームから呼ぶ
 src/sim/                  fixed.cpp entities.cpp game.cpp entity.cpp combat.cpp
@@ -223,7 +223,39 @@ library.json              PlatformIO から `core/` をライブラリとして�
   **tick ごとに `Renderer::pollEffects()` を呼ぶ**こと。エフェクトのイベント
   (`Game::effects()`) は tick ごとにクリアされるので、これを怠るとフレーム内の
   最後の tick 以外の爆発やデブリが出ない。`beginFrame()` も同じ回収を行い、
-  どちらも回収済みの tick は読み飛ばす。
+  どちらも回収済みの tick は読み飛ばす。効果音の要求 (`Game::sounds()`、下記) も同じく
+  tick ごとにクリアされるので、tick ごとに読むこと。
+
+### 効果音
+
+音声の再生の仕組み (同時発音数、波形の形式、出力デバイス) はプラットフォームごとに全く違うので、
+波形データと再生の機構はプラットフォーム側が持ち、sim は「この音を鳴らして」を出すだけにする。
+
+- `Game::sounds()` は最後の tick で要求された音のビットマスク (`SoundKind` の値がビット位置)。
+  tick ごとにクリアされる。`events()` や `effects()` と同じく、プラットフォームは tick の直後に読む。
+  描画には関わらないので render 層は触らない。
+- 同じ tick に同じ種類が何度要求されても 1 ビットなので、同時に敵が複数死んでも音は 1 回。
+- 種類ごとに最短間隔を持てる (`SOUND_MIN_GAP_TICKS`、config.hpp)。今は浮遊フラグメントの
+  取得だけ 0.1 s にしてある。撃破直後にばらまかれた破片を数 tick かけて次々に飲み込むので、
+  そのままだと連打になる。間隔のカウンタは sim の状態の一部だが、乱数や物理には触れないので
+  決定性テストの状態ハッシュには影響しない。
+- 波形の並び (impl/wasm/pack_se.py、docs/play/se.bin) は `SoundKind` の順と一致させる。
+  種類を足すときは `SoundKind`、`SOUND_MIN_GAP_TICKS`、`SOUND_KINDS`、pack_se.py の `SOUNDS`、
+  play.js の `SE_NAMES` をすべて揃える (`static_assert` で個数は縛ってある)。
+
+| SoundKind | 立てる場所 |
+|---|---|
+| `SHOT_VULCAN` / `SHOT_LASER` / `SHOT_MISSILE` | プレイヤーが発射した (武器で分ける) |
+| `HIT_ENEMY` | プレイヤーの弾が敵に当たった (クリティカルを含む) |
+| `HIT_PLAYER` | 敵の弾がプレイヤーに当たった。吸収されている間の毎 tick の `PLAYER_HIT` では鳴らさない |
+| `ENEMY_KILLED_SMALL` / `ENEMY_KILLED_BIG` | プレイヤーが敵を倒した (弾で撃破、または吸収し切った)。撃破の瞬間の敵の大きさが自機より大きければ BIG。他の敵に倒された敵では鳴らさない。吸収は小さい方から大きい方へしか流れないので、吸収し切った敵は常に SMALL |
+| `PLAYER_KILLED` | プレイヤーが死んだ。Extra Core で復活する死でも鳴る |
+| `GET_FRAGMENT` | 浮遊フラグメントを取り込んだ、または回復に使った |
+| `GET_UPGRADE` | アップグレードを取った |
+| `MENU_SELECT` | 武器選択のカーソルが動いた |
+| `MENU_START` | タイトルで A、武器選択で A |
+
+DEAD 画面からの再開、体内フラグメントの合成、スフィアクリアと LAUNCH / ARRIVE には今は音がない。
 
 ### 位置と姿勢
 

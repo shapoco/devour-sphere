@@ -114,6 +114,10 @@ DS_EXPORT void ds_render(float dt) {
 }
 
 DS_EXPORT int ds_get_state() { return (int)game.state(); }
+// Sound effects requested by the last tick, one bit per sim::SoundKind
+// (cleared every tick: read it right after ds_tick()). The waveforms and
+// the playback are the platform's (play.js, docs/play/se.bin)
+DS_EXPORT uint32_t ds_get_sounds() { return game.sounds(); }
 DS_EXPORT uint32_t ds_get_score() { return game.score(); }
 // The high score is stored by the platform (browser: localStorage)
 DS_EXPORT void ds_set_high_score(uint32_t v) { game.setHighScore(v); }
@@ -178,7 +182,12 @@ int main(int argc, char **argv) {
   if (level > 0) ds_debug_start(level, 0);
   ds_debug_auto(autoPlay);
 
-  // Expand the script into ticks
+  // Expand the script into ticks, counting the sound requests per kind
+  static const char *const SOUND_NAMES[sim::SOUND_KINDS] = {
+      "shot_vulcan", "shot_laser",   "shot_missile",       "hit_enemy",
+      "hit_player",  "enemy_killed_small", "enemy_killed_big", "player_killed",
+      "get_fragment", "get_upgrade", "menu_select",        "menu_start"};
+  int soundCounts[sim::SOUND_KINDS] = {};
   int ticks = 0;
   auto t0 = std::chrono::steady_clock::now();
   for (const char *p = script; *p;) {
@@ -188,7 +197,11 @@ int main(int argc, char **argv) {
     if (*p == 'x') buttons = (uint32_t)std::atoi(++p);
     while (*p && *p != ',') p++;
     if (*p == ',') p++;
-    for (int i = 0; i < count; i++) ds_tick(buttons);
+    for (int i = 0; i < count; i++) {
+      ds_tick(buttons);
+      uint32_t s = ds_get_sounds();
+      for (int k = 0; k < sim::SOUND_KINDS; k++) soundCounts[k] += (s >> k) & 1;
+    }
     ticks += count;
   }
   auto t1 = std::chrono::steady_clock::now();
@@ -206,6 +219,11 @@ int main(int argc, char **argv) {
               ds_get_state(), tickMs, renderMs);
   std::printf("lines=%d points=%d entities=%d kites=%d\n", st.lines, st.points,
               st.entitiesDrawn, st.kites);
+  std::printf("sounds:");
+  for (int k = 0; k < sim::SOUND_KINDS; k++) {
+    if (soundCounts[k]) std::printf(" %s=%d", SOUND_NAMES[k], soundCounts[k]);
+  }
+  std::printf("\n");
   std::printf(
       "tris %d in %zu/%zu B (dropped %d), layers %d (dropped %d), "
       "spans peak %d/%d (dropped %d), arena %zu/%zu\n",

@@ -163,9 +163,13 @@ static void testGameplay() {
   g.tick(Button::A);
   CHECK(g.state() == GameState::WEAPON_SELECT);
   CHECK(g.selectedWeapon() == 0);
+  // The menu sounds: one bit per kind, only on the tick of the press
+  CHECK(g.sounds() == (1u << (int)SoundKind::MENU_START));
   g.tick(Button::DOWN);
   CHECK(g.selectedWeapon() == 1);
+  CHECK(g.sounds() == (1u << (int)SoundKind::MENU_SELECT));
   g.tick(0);
+  CHECK(g.sounds() == 0);
   g.tick(Button::UP);
   CHECK(g.selectedWeapon() == 0);
   g.tick(0);
@@ -188,16 +192,38 @@ static void testGameplay() {
   CHECK(g.state() == GameState::PLAYING);
 
   bool sawBullet = false, sawFragment = false;
+  uint32_t sounds = 0;
+  int lastFragmentSound = -1000;
   for (int i = 0; i < 6000; i++) {
     g.tick(scriptedInput(100 + i));
     for (int k = 0; k < MAX_BULLETS; k++) sawBullet |= g.bullets[k].alive;
     for (int k = 0; k < MAX_FLOATING_FRAGMENTS; k++)
       sawFragment |= g.floatingFragments[k].alive;
+    // Every sound comes with its event, and the fragment pickup keeps its
+    // minimum gap
+    sounds |= g.sounds();
+    if (g.sounds() & (1u << (int)SoundKind::GET_FRAGMENT)) {
+      CHECK(g.events() &
+            (Event::PLAYER_ATE_FRAGMENT | Event::PLAYER_HEALED));
+      CHECK(i - lastFragmentSound >=
+            SOUND_MIN_GAP_TICKS[(int)SoundKind::GET_FRAGMENT]);
+      lastFragmentSound = i;
+    }
+    if (g.sounds() & (1u << (int)SoundKind::HIT_PLAYER))
+      CHECK(g.events() & Event::PLAYER_HIT);
+    if (g.sounds() & (1u << (int)SoundKind::PLAYER_KILLED))
+      CHECK(g.events() & Event::PLAYER_DIED);
     if ((i % 500) == 0) checkInvariants(g);
     if (g.state() == GameState::DEAD) break;
   }
   checkInvariants(g);
   CHECK(sawBullet);
+  // The chosen weapon (startGame picks the laser) is the one heard
+  CHECK(sounds & (1u << (int)SoundKind::SHOT_LASER));
+  CHECK(!(sounds & (1u << (int)SoundKind::SHOT_VULCAN)));
+  CHECK(!(sounds & (1u << (int)SoundKind::SHOT_MISSILE)));
+  CHECK(!(sounds & ((1u << (int)SoundKind::MENU_SELECT) |
+                    (1u << (int)SoundKind::MENU_START))));
   CHECK(g.playerRank() >= 1 && g.playerRank() <= MAX_ENTITIES);
 
   // On a high level sphere the enemies fight each other: fragments must
@@ -337,6 +363,7 @@ static void testCombatAndLayout() {
   e.invincible = 0;
   int32_t hp0 = e.hp;
   bool died = false;
+  uint32_t sounds = 0;
   for (int t = 0; t < 12 * TICK_RATE && !died; t++) {
     // keep both entities still by braking (the enemy is not AI driven
     // while its think tick is skipped: force its controls every tick)
@@ -345,8 +372,16 @@ static void testCombatAndLayout() {
     g.entities[enemy].firing = false;
     g.tick(Button::DOWN | Button::A);
     died = !g.entities[enemy].alive;
+    sounds |= g.sounds();
+    if (died) {
+      // An equal-sized enemy shot down by the player: the "small" kill
+      CHECK(g.sounds() & (1u << (int)SoundKind::ENEMY_KILLED_SMALL));
+      CHECK(!(g.sounds() & (1u << (int)SoundKind::ENEMY_KILLED_BIG)));
+    }
   }
   CHECK(g.debugStats().hits > 0);
+  CHECK(sounds & (1u << (int)SoundKind::SHOT_VULCAN));
+  CHECK(sounds & (1u << (int)SoundKind::HIT_ENEMY));
   CHECK(died || g.entities[enemy].hp < hp0 * 3 / 4);
   if (died) CHECK(g.score() > 0);  // a kill scores (ratio depends on growth)
 

@@ -35,6 +35,8 @@ void Game::reset(uint32_t seed) {
   playerClimb_ = 0;
   switchPending_ = false;
   effectCount_ = 0;
+  sounds_ = 0;
+  for (int i = 0; i < SOUND_KINDS; i++) soundGap_[i] = 0;
   aliveEntities_ = 0;
   maxBodyRadius_ = 0;
   maxCoreReach_ = 0;
@@ -427,6 +429,10 @@ void Game::tick(uint8_t buttons) {
   prevButtons_ = buttons;
   events_ = 0;
   effectCount_ = 0;
+  sounds_ = 0;
+  for (int i = 0; i < SOUND_KINDS; i++) {
+    if (soundGap_[i] > 0) soundGap_[i]--;
+  }
   tickCount_++;
   stateTimer_++;
   if (state_ == GameState::PLAYING) sphereTicks_++;
@@ -434,18 +440,24 @@ void Game::tick(uint8_t buttons) {
   // Menu handling
   switch (state_) {
     case GameState::TITLE:
-      if (pressed & Button::A) setState(GameState::WEAPON_SELECT);
+      if (pressed & Button::A) {
+        pushSound(SoundKind::MENU_START);
+        setState(GameState::WEAPON_SELECT);
+      }
       break;
     case GameState::WEAPON_SELECT:
       // Either axis moves the cursor, so the keys match the layout whether
       // the choices sit side by side or stack on a narrow screen
       if (pressed & (Button::LEFT | Button::UP)) {
         selectedWeapon_ = (selectedWeapon_ + WEAPON_COUNT - 1) % WEAPON_COUNT;
+        pushSound(SoundKind::MENU_SELECT);
       }
       if (pressed & (Button::RIGHT | Button::DOWN)) {
         selectedWeapon_ = (selectedWeapon_ + 1) % WEAPON_COUNT;
+        pushSound(SoundKind::MENU_SELECT);
       }
       if (pressed & Button::A) {
+        pushSound(SoundKind::MENU_START);
         sphereLevel_ = 1;
         spheresCleared_ = 0;
         displayScaleLog2_ = 0;
@@ -564,6 +576,15 @@ void Game::pushEffect(EffectKind kind, int entity, const Vec3 &n, int32_t r,
                       int32_t size) {
   if (effectCount_ >= MAX_EFFECTS) return;
   effects_[effectCount_++] = {kind, (int16_t)entity, n, r, size};
+}
+
+// Request a sound for this tick (the platform reads sounds() after the
+// tick); kinds with a minimum gap are dropped while the gap runs
+void Game::pushSound(SoundKind k) {
+  int i = (int)k;
+  if (soundGap_[i] > 0) return;
+  soundGap_[i] = (uint8_t)SOUND_MIN_GAP_TICKS[i];
+  sounds_ |= 1u << i;
 }
 
 // FNV-1a over the raw state (all arrays are zeroed before use, so padding is

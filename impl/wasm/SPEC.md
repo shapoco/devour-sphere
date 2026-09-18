@@ -22,8 +22,10 @@
 impl/wasm/
   SPEC.md          この文書
   main.cpp         C API (WASM エクスポート) とネイティブ確認用の main()
-  Makefile         Emscripten ビルド (docs/play/devoursphere.wasm を生成)
+  Makefile         Emscripten ビルド (docs/play/devoursphere.wasm と se.bin を生成)
   CMakeLists.txt   ネイティブビルド (1 フレームを PPM に書き出す)
+  pack_se.py       materials/se/*.wav を docs/play/se.bin に詰める (ffmpeg が必要)
+materials/se/      効果音の素材 (wav)。出典は materials/se/README.md
 docs/
   style.css        サイト共通スタイル
   index.html       トップページ (play/ へのリンク)
@@ -33,13 +35,15 @@ docs/
     manifest.json  Web アプリマニフェスト (ホーム画面に追加すると全画面で起動)
     icon-*.png     アイコン
     devoursphere.wasm  ビルド成果物 (静的配信のためコミットする)
+    se.bin         効果音のパック (同上)
 ```
 
 ## ビルド
 
 ```sh
 cd impl/wasm
-make            # emcc が必要。docs/play/devoursphere.wasm を生成する
+make            # emcc と ffmpeg が必要。docs/play/devoursphere.wasm と se.bin を生成する
+make se         # 効果音のパック (docs/play/se.bin) だけ作り直す
 make serve      # docs/ を http://localhost:52980/ で配信 (fetch は file:// では動かない)
 ```
 
@@ -62,8 +66,8 @@ cmake --build build
 `script` は「tick 数 x ボタンビット」をコンマで並べた入力列 (例: `5x0,1x16,300x2`。
 数値だけなら入力なしの tick 数)、`auto` を 1 にすると AI がプレイヤーを操作する。
 入力列を実行して 1 フレームを PPM に書き出し、tick と描画の所要時間、
-描画統計 (線分数、三角形数、アリーナ使用量) を表示する。ブラウザなしで見た目と
-負荷を確認するためのもの。
+描画統計 (線分数、三角形数、アリーナ使用量)、入力列の間に要求された効果音の種類ごとの回数を
+表示する。ブラウザなしで見た目と負荷を確認するためのもの。
 
 ## C API (WASM エクスポート)
 
@@ -78,6 +82,7 @@ cmake --build build
 | `ds_tick(buttons)` | 1 tick 進める。`buttons` は sim::Button のビット (LEFT=1, RIGHT=2, UP=4, DOWN=8, A=16) |
 | `ds_render(dt)` | 現在の状態をフレームバッファに描画する。`dt` は前回描画からの秒数 (カメラの補間のみに使う) |
 | `ds_get_state()` | GameState (0 TITLE, 1 WEAPON_SELECT, 2 PLAYING, 3 LAUNCH, 4 DEAD, 5 ARRIVE) |
+| `ds_get_sounds()` | 最後の tick が要求した効果音のビットマスク (sim::SoundKind の順)。tick ごとにクリアされるので `ds_tick()` の直後に読む |
 | `ds_get_score()` | 現在のスコア |
 | `ds_set_high_score(v)` | ハイスコアを渡す (表示用)。JS 側が localStorage の `devoursphere.highscore` に保持し、毎秒スコアと比べて更新する |
 | `ds_debug_start(level, weapon)` | デバッグ用: メニューを飛ばして指定レベルのスフィアで開始 |
@@ -103,6 +108,41 @@ cmake --build build
   そのまま添字にできるように作ってあるので、画素ごとのバイト入れ替えは要らない。
   高解像度では画素あたりの手数がそのまま効くため、チャンネルごとに展開すると間に合わない。
 - 入力はキーボード、ゲームパッド、仮想パッドの OR を tick ごとに渡す。
+- tick ごとに `ds_get_sounds()` を読み、立っているビットの音を鳴らす (下記)。
+
+## 効果音
+
+core/SPEC.md の「効果音」のとおり、sim は tick ごとに「鳴らす音」のビットを出すだけで、
+波形と再生はこちらが持つ。
+
+- 波形は docs/play/se.bin 1 本にまとめる。impl/wasm/pack_se.py が materials/se/*.wav を
+  ffmpeg でモノラル 22.05 kHz 16 bit に変換し、両端の無音 (-50 dB 以下、末尾は 20 ms 残す) を
+  切って連結する。形式は先頭に "DSSE"、サンプルレート、個数、総サンプル数、
+  各音の (先頭サンプル, サンプル数) の表、続けて s16le の PCM (すべてリトルエンディアン)。
+  並びは `sim::SoundKind` の順 (pack_se.py の `SOUNDS` と play.js の `SE_NAMES`)。
+  素材のまま 12 個で 2.5 MB あるものが 340 KB ほどになる。
+- play.js の `SoundPlayer` は se.bin を fetch して PCM から直接 `AudioBuffer` を作る
+  (デコーダを通さないので Safari でも形式の心配がない)。再生要求ごとに `AudioBufferSourceNode`
+  を作るので、同時発音数の制限はなく、バルカンの連射や撃破と破片の取得が重なっても鳴る。
+- ブラウザは `AudioContext` をユーザー操作の中でしか開始させない。最初の keydown /
+  pointerdown / touchend (window のキャプチャ段階) で作って `resume()` し、それまでの要求は捨てる。
+  タイトルで最初に押した A の音は、その keydown で開始した直後の tick で要求されるので鳴る。
+  スマホの TAP TO START のタップも同じ経路で開始する。
+- 種類ごとのゲイン表 `SE_GAIN` (play.js) で音量を揃える。素材の平均音量は撃破・アップグレード・
+  決定の組 (-23 dB 台) と発射・被弾・選択の組 (-29〜-34 dB) で 10 dB 近く違うが、
+  まずは素材のまま (すべて 1) で入れ、遊びながらここで詰める。
+- ツールバーの「サウンド ON / OFF」で切り替え、localStorage の `devoursphere.sound`
+  ('0' でオフ) に保持する。スマホ向けレイアウトではツールバーが隠れるので切り替えはない。
+- se.bin が読めなくてもゲームは動く (コンソールに警告を出して無音)。
+
+### 素材
+
+効果音の素材は「効果音ラボ」(https://soundeffect-lab.info/) で配布されているものを使っている。
+規約上、ゲームに組み込んで配布すること (音源ファイルがむき出しでも、GitHub で公開することも)、
+形式変換や切り詰めなどの改変は許可されており、クレジット表記は任意。
+禁止されているのは素材 (改変したものを含む) を素材として再配布すること。
+「できる限り音源ファイルを隠す措置を」と依頼されているので、公開ページには個々の wav ではなく
+パック 1 本だけを置く。詳細は materials/se/README.md。
 
 URL パラメータ (デバッグ用):
 

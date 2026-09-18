@@ -54,6 +54,7 @@ impl/wasm/           WASM 版 (impl/wasm/SPEC.md)
 impl/xiamocon/       Xiamocon 版 (impl/xiamocon/SPEC.md)
 impl/picosystem/     PicoSystem 版 (impl/picosystem/SPEC.md)
 docs/                公開用の静的サイト (docs/play/ がゲーム)
+materials/se/        効果音の素材 (効果音ラボ、materials/se/README.md)
 submodule/shapo-gfx/ ShapoGFX (git submodule)
 launch_web_server.sh docs/ をローカルで配信する
 make_release.sh      リリース用のバイナリと zip を作る

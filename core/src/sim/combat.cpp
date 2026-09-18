@@ -93,7 +93,12 @@ void Game::fireWeapon(int idx) {
       if (d2 < best) best = d2, b.target = (int16_t)j;
     }
   }
-  if (c.isPlayer) events_ |= Event::PLAYER_FIRED;
+  if (c.isPlayer) {
+    events_ |= Event::PLAYER_FIRED;
+    pushSound(c.weapon == Weapon::VULCAN  ? SoundKind::SHOT_VULCAN
+              : c.weapon == Weapon::LASER ? SoundKind::SHOT_LASER
+                                          : SoundKind::SHOT_MISSILE);
+  }
   stats_.shots++;
 }
 
@@ -215,8 +220,10 @@ void Game::damageEntity(int idx, int32_t dmg, int attacker, bool allowCrit) {
     criticalHit(idx, from);
     if (c.isPlayer) {
       events_ |= Event::PLAYER_HIT;
+      pushSound(SoundKind::HIT_PLAYER);
       pushEffect(EffectKind::PLAYER_HIT, idx, c.frame.n, c.r, dmg * 4);
     } else if (attacker == playerIndex_) {
+      pushSound(SoundKind::HIT_ENEMY);
       pushEffect(EffectKind::ENEMY_HIT, idx, c.frame.n, c.r, dmg * 4);
     }
     return;
@@ -233,8 +240,10 @@ void Game::damageEntity(int idx, int32_t dmg, int attacker, bool allowCrit) {
   c.hp -= dmg;
   if (c.isPlayer) {
     events_ |= Event::PLAYER_HIT;
+    pushSound(SoundKind::HIT_PLAYER);
     pushEffect(EffectKind::PLAYER_HIT, idx, c.frame.n, c.r, dmg);
   } else if (attacker == playerIndex_) {
+    pushSound(SoundKind::HIT_ENEMY);
     pushEffect(EffectKind::ENEMY_HIT, idx, c.frame.n, c.r, dmg);
   }
   // Enemies that keep getting hit break off, out of the shooter's line of
@@ -275,13 +284,22 @@ void Game::damageEntity(int idx, int32_t dmg, int attacker, bool allowCrit) {
       pct = clampI64(SCORE_RATIO_MIN_PCT, SCORE_RATIO_MAX_PCT, pct);
       addScore((int64_t)SCORE_KILL_BASE * 256 * pct * pct / 10000);
     }
-    killEntity(idx);
+    killEntity(idx, attacker);
   }
 }
 
-void Game::killEntity(int idx) {
+void Game::killEntity(int idx, int killer) {
   Entity &c = entities[idx];
   if (!c.alive) return;
+  // The sound: the player's own death, or a kill by the player (the size
+  // is compared as it stands at this moment)
+  if (c.isPlayer) {
+    pushSound(SoundKind::PLAYER_KILLED);
+  } else if (killer == playerIndex_) {
+    pushSound(c.size > entities[playerIndex_].size
+                  ? SoundKind::ENEMY_KILLED_BIG
+                  : SoundKind::ENEMY_KILLED_SMALL);
+  }
   // Death effect when it happens within the player's surroundings
   {
     const Entity &p = entities[playerIndex_];
@@ -337,7 +355,7 @@ void Game::transferSize(int from, int to) {
     if (S.hp <= 0) {
       // Drained dry: devoured (the body bursts into fragments)
       if (B.isPlayer) addScore((int64_t)SCORE_DEVOUR_BASE * 256);
-      killEntity(from);
+      killEntity(from, to);
       stats_.absorbs++;
       return;
     }
@@ -371,6 +389,10 @@ void Game::transferSize(int from, int to) {
     S.hp = 0;
     stats_.absorbs++;
     if (S.isPlayer) events_ |= Event::PLAYER_DIED;
+    // Devoured whole: size only flows to the bigger one, so an enemy
+    // devoured by the player was always the smaller
+    if (S.isPlayer) pushSound(SoundKind::PLAYER_KILLED);
+    else if (B.isPlayer) pushSound(SoundKind::ENEMY_KILLED_SMALL);
     if (B.isPlayer) addScore((int64_t)SCORE_DEVOUR_BASE * 256);
     return;
   }
@@ -558,7 +580,10 @@ void Game::handleEating() {
         healByFragment(c, fp.sizeLog2);
         fp.alive = false;
         stats_.fragmentsHealed++;
-        if (c.isPlayer) events_ |= Event::PLAYER_HEALED;
+        if (c.isPlayer) {
+          events_ |= Event::PLAYER_HEALED;
+          pushSound(SoundKind::GET_FRAGMENT);
+        }
         continue;
       }
       Vec3 rel = worldPos(fp.n, fp.r) - center;
@@ -569,6 +594,7 @@ void Game::handleEating() {
       stats_.fragmentsEaten++;
       if (c.isPlayer) {
         events_ |= Event::PLAYER_ATE_FRAGMENT;
+        pushSound(SoundKind::GET_FRAGMENT);
         addScore((int64_t)SCORE_FRAGMENT_BASE * 256);
       }
     }

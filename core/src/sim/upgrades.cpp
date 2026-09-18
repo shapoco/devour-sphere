@@ -82,6 +82,7 @@ void Game::takeUpgrade(UpgradeKind k) {
   if (bonus) addScore((int64_t)SCORE_UPGRADE_BONUS_BASE * 256);
   lastUpgradeKind_ = k;
   events_ |= Event::PLAYER_UPGRADED;
+  pushSound(SoundKind::GET_UPGRADE);
 }
 
 // Drift, and pick up by the player (enemies cannot take upgrades, and the

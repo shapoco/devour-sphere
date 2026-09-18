@@ -35,6 +35,29 @@ constexpr uint32_t PLAYER_UPGRADED = 1 << 8;   // took an upgrade
 constexpr uint32_t PLAYER_RESPAWNED = 1 << 9;  // lost a core and came back
 }  // namespace Event
 
+// Sound effects requested during the last tick (cleared every tick), one bit
+// per kind in Game::sounds(). The simulation only says what to play; the
+// waveforms and the playback belong to the platform (impl/wasm/ for the
+// browser). A kind is raised at most once per tick, and the kinds listed in
+// SOUND_MIN_GAP_TICKS keep a minimum gap so that bursts (a shower of
+// fragments after a kill) do not machine-gun
+enum class SoundKind : uint8_t {
+  SHOT_VULCAN,         // the player fired
+  SHOT_LASER,
+  SHOT_MISSILE,
+  HIT_ENEMY,           // the player's bullet hit an enemy
+  HIT_PLAYER,          // an enemy bullet hit the player
+  ENEMY_KILLED_SMALL,  // the player killed an enemy no bigger than itself
+  ENEMY_KILLED_BIG,    // the player killed a bigger enemy
+  PLAYER_KILLED,       // the player was shot down (game over or a lost core)
+  GET_FRAGMENT,        // the player took a floating fragment (food or heal)
+  GET_UPGRADE,         // the player took an upgrade
+  MENU_SELECT,         // the menu cursor moved
+  MENU_START,          // a menu choice was confirmed
+  COUNT
+};
+static_assert((int)SoundKind::COUNT == SOUND_KINDS, "SOUND_MIN_GAP_TICKS");
+
 // Positions of things worth an effect during the last tick (cleared every
 // tick); the renderer turns them into debris
 enum class EffectKind : uint8_t {
@@ -93,6 +116,7 @@ class Game {
   GameState state() const { return state_; }
   uint32_t tickCount() const { return tickCount_; }
   uint32_t events() const { return events_; }
+  uint32_t sounds() const { return sounds_; }  // SoundKind bits, last tick
   int sphereLevel() const { return sphereLevel_; }
   int spheresCleared() const { return spheresCleared_; }
   int selectedWeapon() const { return selectedWeapon_; }
@@ -181,6 +205,9 @@ class Game {
   GameState state_ = GameState::TITLE;
   uint32_t tickCount_ = 0;
   uint32_t events_ = 0;
+  uint32_t sounds_ = 0;
+  uint8_t soundGap_[SOUND_KINDS] = {};  // ticks until the kind may play again
+  void pushSound(SoundKind k);
   int stateTimer_ = 0;
   int sphereLevel_ = 1;
   int spheresCleared_ = 0;
@@ -268,7 +295,7 @@ class Game {
   void handleEating();
   void handleEntityCollisions();
   void damageEntity(int idx, int32_t dmg, int attacker, bool allowCrit = true);
-  void killEntity(int idx);
+  void killEntity(int idx, int killer);  // killer: entity index or -1
   void transferSize(int from, int to);
   void setEntitySize(Entity &e, uint32_t size);
   void pushFragment(Entity &e, int sizeLog2, int32_t lx, int32_t ly);

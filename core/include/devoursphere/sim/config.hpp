@@ -128,6 +128,18 @@ constexpr int ABSORB_GUARD_TICKS =
 
 // --- Weapons ----------------------------------------------------------------
 enum class Weapon : uint8_t { VULCAN = 0, LASER = 1, MISSILE = 2 };
+
+// Sound effects: minimum gap between two requests of the same kind, indexed
+// by SoundKind (game.hpp). Only the fragment pickup needs one: a kill scatters
+// fragments that the player then swallows over a few ticks
+constexpr int SOUND_KINDS = 12;
+constexpr int16_t SOUND_MIN_GAP_TICKS[SOUND_KINDS] = {
+    0, 0, 0,                  // SHOT_VULCAN, SHOT_LASER, SHOT_MISSILE
+    0, 0,                     // HIT_ENEMY, HIT_PLAYER
+    0, 0, 0,                  // ENEMY_KILLED_SMALL, ENEMY_KILLED_BIG, PLAYER_KILLED
+    (int16_t)ticks30(3),      // GET_FRAGMENT (0.1 s)
+    0, 0, 0,                  // GET_UPGRADE, MENU_SELECT, MENU_START
+};
 constexpr int WEAPON_COUNT = 3;
 
 struct WeaponSpec {
