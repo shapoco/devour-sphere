@@ -731,25 +731,37 @@ void Renderer::updateCamera(float dt) {
   }
 
   // The frame pitched along the flight path (identical to the frame on the
-  // surface), for the camera, the player's body and the dash dust
+  // surface), for the player's body and the dash dust
+  const vec3f right = g3::normalize(g3::cross(fwd, up));
   vec3f fwdP = fwd, upP = up;
   if (camPitch_ != 0) {
-    vec3f right = g3::normalize(g3::cross(fwd, up));
     fwdP = rotateAroundAxis(fwd, right, camPitch_);
     upP = rotateAroundAxis(up, right, camPitch_);
   }
   flightFwd_ = fwdP;
   flightUp_ = upP;
   playerPitchBrad_ = (uint16_t)(int32_t)(camPitch_ * (65536.0f / (2 * PI)));
+  // The camera's own basis follows that pitch behind and in front of the
+  // player (looking along the flight path, the sphere beyond the body) but
+  // stays level with the surface beside it, so that when the body noses
+  // over at the sphere switch the body turns on the screen and the stars
+  // hold still, instead of the whole world rolling by 150 degrees
+  const float cosOrbit = fastCos(camOrbit_);
+  const float camPitch = camPitch_ * cosOrbit * cosOrbit;
+  vec3f fwdC = fwd, upC = up;
+  if (camPitch != 0) {
+    fwdC = rotateAroundAxis(fwd, right, camPitch);
+    upC = rotateAroundAxis(up, right, camPitch);
+  }
   // ... and circled by the camera
-  vec3f fwdO = camOrbit_ != 0 ? rotateAroundAxis(fwdP, upP, camOrbit_) : fwdP;
+  vec3f fwdO = camOrbit_ != 0 ? rotateAroundAxis(fwdC, upC, camOrbit_) : fwdC;
 
-  vec3f eye = fwdO * (-camDist_) + upP * camHeight_;
+  vec3f eye = fwdO * (-camDist_) + upC * camHeight_;
   // Look at a point ahead of (and normally slightly below) the player so
   // that the sphere surface fills the lower part of the screen
-  vec3f target = fwdP * camAhead_ - upP * (camHeight_ * camDown_);
+  vec3f target = fwdC * camAhead_ - upC * (camHeight_ * camDown_);
   vec3f dir = g3::normalize(target - eye);
-  vec3f upR = rotateAroundAxis(upP, dir, camRoll_);
+  vec3f upR = rotateAroundAxis(upC, dir, camRoll_);
   cam_.eye = eye;
   cam_.target = target;
   cam_.up = upR;

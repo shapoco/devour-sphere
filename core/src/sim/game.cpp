@@ -401,8 +401,12 @@ void Game::tick(uint8_t buttons) {
   if (state_ == GameState::PLAYING && p.alive && !autoPlayer_) {
     updatePlayerControls(buttons);
   } else if (state_ == GameState::LAUNCH || state_ == GameState::ARRIVE) {
+    // Dashing through the flight; the dash ramps down over the last second
+    // of the arrival so that the player lands at cruising speed and the
+    // camera does not start in its dash position
     p.turn = 0;
-    p.dashing = true;
+    p.dashing = !(state_ == GameState::ARRIVE &&
+                  stateTimer_ >= ARRIVE_TICKS - DASH_RAMP_DOWN_TICKS);
     p.braking = false;
     p.firing = false;
   }

@@ -242,6 +242,16 @@ void Renderer::drawEffects() {
     vec3f fwd = {p.frame.t.x / 1073741824.0f, p.frame.t.y / 1073741824.0f,
                  p.frame.t.z / 1073741824.0f};
     float speedFUs = p.speed * (float)sim::TICK_RATE / FU;
+    if (game_->playerClimb() != 0) {
+      // In flight the motion has a radial part too: streak along the
+      // actual velocity (on the surface this is the tangent exactly)
+      vec3f up = {p.frame.n.x / 1073741824.0f, p.frame.n.y / 1073741824.0f,
+                  p.frame.n.z / 1073741824.0f};
+      float climbFUs = game_->playerClimb() * (float)sim::TICK_RATE / FU;
+      vec3f vel = fwd * speedFUs + up * climbFUs;
+      speedFUs = g3::length(vel);
+      fwd = vel * (1.0f / speedFUs);
+    }
     float len = speedFUs * 0.18f + 1.0f;
     g2::Color head = g2::makeColor(150, 190, 255);
     g2::Color tail = g2::makeColor(0, 0, 0);
