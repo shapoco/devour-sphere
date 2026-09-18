@@ -103,7 +103,7 @@ target_include_directories(${APP_NAME} PRIVATE
 )
 target_compile_features(${APP_NAME} PRIVATE cxx_std_17)
 target_compile_options(${APP_NAME} PRIVATE -Wall -Wextra)
-# The Y-toggled timing overlay; set to 0 to compile it out entirely.
+# The timing overlay (X cycles off / FPS / full); 0 compiles it out entirely.
 target_compile_definitions(${APP_NAME} PRIVATE DS_PROFILE=1)
 # No -O2 here: the pico SDK defaults CMAKE_BUILD_TYPE to Release (-O3).
 

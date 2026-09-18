@@ -57,7 +57,16 @@ void Profiler::endFrame(uint64_t nowUs,
     frames_ = 0;
     windowUs_ = nowUs;
   }
-  if (!on_) return;
+  if (mode_ == Mode::OFF) return;
+  {
+    char *p = fpsLine_, *end = fpsLine_ + COLS;
+    p = putStr(p, end, "FPS ");
+    p = putUint(p, end, fps100_ / 100);
+    p = putStr(p, end, ".");
+    p = putUint(p, end, fps100_ % 100 / 10);
+    *p = '\0';
+  }
+  if (mode_ != Mode::FULL) return;
 
   // core1's critical path: building the scene plus getting the bands out
   const uint32_t cpuUs = beginUs + rasterUs + dmaWaitUs + cmdUs;
@@ -99,21 +108,10 @@ void Profiler::endFrame(uint64_t nowUs,
       case 6:  // Stack high water marks. Both stacks are 4096 bytes and sit
                // next to each other in SCRATCH_X / SCRATCH_Y, so neither can
                // be grown and either reaching the limit is a bug.
-        // The cost of one line / kite / point / fan through ShapoGFX
-        // (Renderer::benchPrimitives(), microseconds; 0 when the platform
-        // does not run it), then a whole screen of band transfers with
-        // nothing else running, measured once at start up. The SPI clock
-        // says the transfer should be 14.75 ms; more than that is command
-        // overhead or a starved DMA.
-        p = putStr(p, end, "L");
-        p = putUint(p, end, benchUs[0]);
-        p = putStr(p, end, " K");
-        p = putUint(p, end, benchUs[1]);
-        p = putStr(p, end, " P");
-        p = putUint(p, end, benchUs[2]);
-        p = putStr(p, end, " F");
-        p = putUint(p, end, benchUs[3]);
-        p = putStr(p, end, " X");
+        // A whole screen of band transfers with nothing else running,
+        // measured once at start up. The SPI clock says this should be
+        // 14.75 ms; more than that is command overhead or a starved DMA.
+        p = putStr(p, end, "XFR ");
         p = putMs(p, end, xferUs);
         break;
       case 7:
@@ -151,7 +149,7 @@ void Profiler::endFrame(uint64_t nowUs,
 }
 
 void Profiler::drawOverlay(const g2::Surface &band, int bandY) {
-  if (!on_) return;
+  if (mode_ == Mode::OFF) return;
   g2::Graphics2D g(band);
   g.setClipRect(0, 0, band.width, band.height);
   // Monospace, so the columns do not dance as the digits change
@@ -160,6 +158,14 @@ void Profiler::drawOverlay(const g2::Surface &band, int bandY) {
   // clipped away, so a line crossing the boundary is drawn in both bands and
   // comes out seamless.
   const int oy = -bandY;
+  if (mode_ == Mode::FPS) {
+    const int w = g.measureText("FPS 00.0") + 2 * PAD;
+    g.fillRect(PANEL_X, PANEL_Y + oy, w, LINE_ADV + 2 * PAD,
+               g2::makeColor(0, 0, 0, 190));
+    g.setTextColor(g2::makeColor(150, 255, 170));
+    g.drawString(PANEL_X + PAD, PANEL_Y + oy + PAD, fpsLine_);
+    return;
+  }
   int extras = 0;
   while (extras < EXTRA_LINES && extra[extras][0]) extras++;
   const int w = g.measureText("00000000000000000000") + 2 * PAD;

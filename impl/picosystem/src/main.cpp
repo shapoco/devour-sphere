@@ -46,9 +46,9 @@ uint64_t g_lastUs = 0;
 uint32_t g_accUs = 0;
 
 // --- Buttons -------------------------------------------------------------
-// Active low with the internal pull-ups, as the SDK wires them. Y is not a
-// game button here: it toggles the timing overlay, the job FUNC does on
-// Xiamocon.
+// Active low with the internal pull-ups, as the SDK wires them. X is not a
+// game button here: it cycles the timing overlay (off, frame rate, whole
+// panel), the job FUNC does on Xiamocon.
 constexpr uint BTN_PINS[] = {
     PICOSYSTEM_SW_UP_PIN,    PICOSYSTEM_SW_DOWN_PIN, PICOSYSTEM_SW_LEFT_PIN,
     PICOSYSTEM_SW_RIGHT_PIN, PICOSYSTEM_SW_A_PIN,    PICOSYSTEM_SW_B_PIN,
@@ -76,7 +76,7 @@ uint8_t mapButtons(uint32_t gpio) {
   if (down(gpio, PICOSYSTEM_SW_UP_PIN)) out |= sim::Button::UP;
   if (down(gpio, PICOSYSTEM_SW_DOWN_PIN)) out |= sim::Button::DOWN;
   if (down(gpio, PICOSYSTEM_SW_A_PIN) || down(gpio, PICOSYSTEM_SW_B_PIN) ||
-      down(gpio, PICOSYSTEM_SW_X_PIN)) {
+      down(gpio, PICOSYSTEM_SW_Y_PIN)) {
     out |= sim::Button::A;
   }
   return out;
@@ -208,11 +208,10 @@ void phaseLine(char *line, const char *head, const char *labels,
 // The tick profile is per tick (the batch total divided by its ticks); the
 // frame profile is per frame. Both are drawn one frame late, like everything
 // on the overlay. Letters: see ../SPEC.md "デバッグ表示".
-uint32_t g_overlayUs = 0;     // drawing the overlay itself, per frame
-bool g_benchPending = false;  // run Renderer::benchPrimitives() next frame
+uint32_t g_overlayUs = 0;  // drawing the overlay itself, per frame
 
 void updatePhaseLines(int ticks) {
-  if (!g_prof.on()) {
+  if (!g_prof.full()) {
     for (auto &l : g_prof.extra) l[0] = '\0';
     return;
   }
@@ -245,7 +244,7 @@ void updatePhaseLines(int ticks) {
 // Game belongs to this core.
 uint32_t clockUs() { return (uint32_t)time_us_64(); }
 void updateProfileClock() {
-  devoursphere::profileClockUs = g_prof.on() ? clockUs : nullptr;
+  devoursphere::profileClockUs = g_prof.full() ? clockUs : nullptr;
 }
 
 // --- Frames ---------------------------------------------------------------
@@ -327,10 +326,9 @@ void frame() {
   // from the held state
   const uint32_t gpio = gpio_get_all();
   const uint8_t buttons = mapButtons(gpio);
-  if (down(gpio, PICOSYSTEM_SW_Y_PIN) &&
-      !down(g_prevGpio, PICOSYSTEM_SW_Y_PIN)) {
+  if (down(gpio, PICOSYSTEM_SW_X_PIN) &&
+      !down(g_prevGpio, PICOSYSTEM_SW_X_PIN)) {
     g_prof.toggle();
-    g_benchPending = g_prof.on();
   }
   g_prevGpio = gpio;
 
@@ -362,12 +360,6 @@ void frame() {
     updatePhaseLines(ran);  // the batch just collected, and the last frame
     g_game.resetTickProfile();
     updateProfileClock();
-    if (g_benchPending) {
-      // Once per switch-on of the overlay, here because the clock is
-      // installed and the Game is ours (nothing of the bench reaches it)
-      g_renderer.benchPrimitives(g_prof.benchUs);
-      g_benchPending = false;
-    }
     drawFrame(ran);
   }
 
@@ -431,7 +423,7 @@ int main() {
 
   g_game.reset(ds::randomSeed());
   g_renderer.setControlHints(render::ControlHints{
-      "MOVE: D-PAD    A/B/X: FIRE",
+      "MOVE: D-PAD    A/B/Y: FIRE",
       "D-PAD: MOVE   A: FIRE",
       render::ControlHints{}.dash,
       render::ControlHints{}.dashAlt,

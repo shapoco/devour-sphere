@@ -1,7 +1,8 @@
 #ifndef DS_PROFILER_HPP
 #define DS_PROFILER_HPP
 
-// On-screen timing for the device, toggled at run time with FUNC.
+// On-screen timing for the device, cycled at run time (FUNC on Xiamocon,
+// X on PicoSystem): off -> the frame rate alone -> the whole panel.
 //
 // There is no serial console on this board (the SDK never enables USB stdio
 // and never calls stdio_init_all), and turning it on would add USB interrupt
@@ -35,16 +36,19 @@ namespace g2 = shapoco::gfx2d;
 class Profiler {
  public:
 #if DS_PROFILE
-  void toggle() { on_ = !on_; }
-  bool on() const { return on_; }
+  enum class Mode : uint8_t { OFF, FPS, FULL };
+  void toggle() {
+    mode_ = mode_ == Mode::OFF ? Mode::FPS
+                               : (mode_ == Mode::FPS ? Mode::FULL : Mode::OFF);
+  }
+  bool on() const { return mode_ != Mode::OFF; }     // anything drawn
+  bool full() const { return mode_ == Mode::FULL; }  // the whole panel
 
   // Microsecond counters of the frame being built. app.cpp fills the first
   // two, BandWriter the last two.
   uint32_t tickUs = 0, beginUs = 0, rasterUs = 0, dmaWaitUs = 0, cmdUs = 0;
   uint32_t core1WaitUs = 0;  // core0 idle, waiting for core1 to finish
   uint32_t xferUs = 0;       // a whole screen, measured once at start up
-  uint32_t benchUs[4] =
-      {};  // Renderer::benchPrimitives(), when a platform runs it
   int ticks = 0;
 
   // Format what was just measured for the next frame to draw
@@ -56,25 +60,26 @@ class Profiler {
 
   // Up to five lines a platform may add below the standard ones (the
   // PicoSystem front end shows the tick and frame phase breakdown). An
-  // empty line is not drawn.
+  // empty line is not drawn; none is drawn in the FPS mode.
   static constexpr int COLS = 21;
   static constexpr int EXTRA_LINES = 5;
   char extra[EXTRA_LINES][COLS + 1] = {};
 
  private:
   static constexpr int LINES = 8;
-  bool on_ = false;
+  Mode mode_ = Mode::OFF;
   char lines_[LINES][COLS + 1] = {};
-  uint64_t windowUs_ = 0;  // start of the frame rate window
+  char fpsLine_[COLS + 1] = {};  // the FPS mode's one line
+  uint64_t windowUs_ = 0;        // start of the frame rate window
   uint32_t frames_ = 0;
   uint32_t fps100_ = 0;
 #else
   void toggle() {}
   bool on() const { return false; }
+  bool full() const { return false; }
   uint32_t tickUs = 0, beginUs = 0, rasterUs = 0, dmaWaitUs = 0, cmdUs = 0;
   uint32_t core1WaitUs = 0;
   uint32_t xferUs = 0;
-  uint32_t benchUs[4] = {};
   int ticks = 0;
   void endFrame(uint64_t, const devoursphere::render::RenderStats &) {}
   void drawOverlay(const g2::Surface &, int) {}

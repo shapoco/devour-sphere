@@ -225,12 +225,6 @@ class Renderer {
   // Draw the rows [y, y + h) of the frame into dst starting at row dstY
   void renderBand(const g2::Surface &dst, int y, int h, int dstY = 0);
   void endFrame();
-  // What one primitive costs through ShapoGFX's vertex stage and setup on
-  // this core: the microseconds of a line, a flat kite (2 triangles), a
-  // point and a vertex-colored 3-point fan (a marker), each averaged over
-  // 100 in a throwaway scene built with the last frame's camera. Needs
-  // profileClockUs and a frame drawn before; for a platform's overlay.
-  void benchPrimitives(uint32_t us[4]);
 
   RenderStats stats() const;
 
