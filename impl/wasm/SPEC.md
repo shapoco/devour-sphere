@@ -81,6 +81,8 @@ cmake --build build
 | `ds_get_score()` | 現在のスコア |
 | `ds_set_high_score(v)` | ハイスコアを渡す (表示用)。JS 側が localStorage の `devoursphere.highscore` に保持し、毎秒スコアと比べて更新する |
 | `ds_debug_start(level, weapon)` | デバッグ用: メニューを飛ばして指定レベルのスフィアで開始 |
+| `ds_set_debug(on)` | デバッグモード: HUD に「DEBUG MODE」が出続け、`ds_debug_key` が効くようになる |
+| `ds_debug_key(n)` | デバッグモードのチート。1 Shield / 2 Overdrive / 3 Thruster / 4 Extra Core を 1 つ取る、5 自機の大きさ 2 倍、6 半分、7 体力 -25%、8 体力 +25% (最大値比) |
 | `ds_debug_auto(on)` | デバッグ用: AI にプレイヤーを操作させる |
 
 フレームバッファ (最大画素数分) と 3D レンダラのアリーナ (256KB) は main.cpp の静的配列。
@@ -108,6 +110,7 @@ URL パラメータ (デバッグ用):
 |---|---|
 | `?screen=WxH` | フレームバッファの大きさ (既定 480x320) |
 | `?level=N&weapon=W` | メニューを飛ばしてレベル N、武器 W (0 バルカン, 1 レーザー, 2 ミサイル) で開始 |
+| `?debug` | デバッグモード (下記) |
 | `?seed=N` | 乱数シードを固定 |
 | `?auto=1` | AI がプレイヤーを操作する (デモ) |
 
@@ -171,3 +174,10 @@ core/render の `Renderer::renderBand()` は任意の行範囲を任意のサー
 Xiamocon 版 (impl/xiamocon/) ではフレームバッファを持たずに 2 本の帯バッファを交互に使い、
 帯単位で描画してディスプレイへ DMA 転送する構成に置き換えている。
 シミュレーションは固定小数点で決定的なので、どちらの版でも同じ入力列から同じ結果になる。
+
+## デバッグモード
+
+URL に `?debug` を付けて開くとデバッグモードに入る (`ds_set_debug(1)`)。数字キーがチートになる
+(`ds_debug_key`、キーの割り当ては上の表)。HUD の上中央に半透明の「DEBUG MODE」が出続けるので、
+チートした状態のスクリーンショットはそれと分かる。LAUNCH の演出などを確認するときは
+5 を何度か押して自機を最大まで育て、4 秒待てば飛び立つ。

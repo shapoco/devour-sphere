@@ -76,6 +76,26 @@ DS_EXPORT void ds_debug_start(int level, int weapon) {
 // Debug: let the AI drive the player (attract-mode style demo)
 DS_EXPORT void ds_debug_auto(int on) { game.debugAutoPlayer(on != 0); }
 
+// Debug mode (play.js enters it with ?debug in the URL): the HUD shows
+// DEBUG MODE from here on, and the number keys cheat
+DS_EXPORT void ds_set_debug(int on) { game.setDebugMode(on != 0); }
+// 1 Shield  2 Overdrive  3 Thruster  4 Extra Core  5 size x2  6 size x0.5
+// 7 health -25%  8 health +25%
+DS_EXPORT void ds_debug_key(int key) {
+  if (!game.debugMode()) return;
+  switch (key) {
+    case 1: game.debugTakeUpgrade(sim::UpgradeKind::SHIELD); break;
+    case 2: game.debugTakeUpgrade(sim::UpgradeKind::OVERDRIVE); break;
+    case 3: game.debugTakeUpgrade(sim::UpgradeKind::THRUSTER); break;
+    case 4: game.debugTakeUpgrade(sim::UpgradeKind::EXTRA_CORE); break;
+    case 5: game.debugScaleSize(true); break;
+    case 6: game.debugScaleSize(false); break;
+    case 7: game.debugHeal(-25); break;
+    case 8: game.debugHeal(25); break;
+    default: break;
+  }
+}
+
 // One simulation tick (30 per second) with the button bits of sim::Button
 DS_EXPORT void ds_tick(uint32_t buttons) {
   game.tick((uint8_t)buttons);

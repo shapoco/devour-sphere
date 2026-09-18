@@ -79,6 +79,15 @@ class Game {
   void debugStartSphere(int level, int weapon);
   // Debug: let the AI drive the player while playing (for balancing runs)
   void debugAutoPlayer(bool on) { autoPlayer_ = on; }
+  // Debug mode (the WASM front end enters it from the URL): cheats for
+  // reaching any part of the game quickly. Any of them, or setDebugMode(),
+  // makes the HUD show DEBUG MODE over the score for the rest of the run
+  // (reset() does not clear it), so a screenshot of a cheated game says so.
+  void setDebugMode(bool on) { debugMode_ = on; }
+  bool debugMode() const { return debugMode_; }
+  void debugTakeUpgrade(UpgradeKind k);
+  void debugScaleSize(bool bigger);  // player size x2 / x0.5
+  void debugHeal(int pct);           // player health +- pct of the maximum
 
   // --- Read-only access for the renderer ------------------------------------
   GameState state() const { return state_; }
@@ -203,8 +212,13 @@ class Game {
   // ARRIVE from a launch switches the sphere at ARRIVE_SWITCH_TICKS; the
   // first sphere of a game has nothing to leave and does not
   bool switchPending_ = false;
+  bool debugMode_ = false;
   void beginArrival();
   void switchSphere();
+  // The descent of the arrival: the target radius at a tick of ARRIVE and
+  // the profile's slope there (units per tick, positive)
+  int32_t descentTarget(int timer) const;
+  int32_t descentSlope(int timer) const;
   int32_t enemyDamagePct() const;
   int sphereTicks_ = 0;
   uint32_t highScore_ = 0;

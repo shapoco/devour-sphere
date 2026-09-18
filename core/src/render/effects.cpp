@@ -253,6 +253,9 @@ void Renderer::drawEffects() {
       fwd = vel * (1.0f / speedFUs);
     }
     float len = speedFUs * 0.18f + 1.0f;
+    // A small player diving at 300 FU/s would draw streaks several times
+    // its camera distance long; on the surface the cap never applies
+    if (len > camDist_ * 1.5f) len = camDist_ * 1.5f;
     g2::Color head = g2::makeColor(150, 190, 255);
     g2::Color tail = g2::makeColor(0, 0, 0);
     for (int i = 0; i < dustCount_; i++) {

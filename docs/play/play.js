@@ -71,6 +71,12 @@ async function startDevourSphere(opts) {
                         parseInt(params.get('weapon') || '0', 10) || 0);
     }
     if (params.get('auto') === '1') ex.ds_debug_auto(1);
+    // ?debug: DEBUG MODE on the HUD, and the number keys cheat (see
+    // ds_debug_key in impl/wasm/main.cpp for the key map)
+    if (params.has('debug')) {
+      ex.ds_set_debug(1);
+      input.onDebugKey = (n) => ex.ds_debug_key(n);
+    }
 
     // High score: kept in the browser
     const HS_KEY = 'devoursphere.highscore';
@@ -170,6 +176,7 @@ async function startDevourSphere(opts) {
 class InputState {
   constructor() {
     this.keys = 0;      // keyboard
+    this.onDebugKey = null;  // set in debug mode: number key -> cheat
     this.touch = 0;     // virtual pad
     this.pad = 0;       // gamepad
   }
@@ -187,6 +194,11 @@ const KEY_MAP = {
 
 function setupKeyboard(input) {
   window.addEventListener('keydown', (e) => {
+    const digit = /^Digit([0-9])$/.exec(e.code);
+    if (digit && input.onDebugKey && !e.repeat) {
+      input.onDebugKey(parseInt(digit[1], 10));
+      return;
+    }
     const b = KEY_MAP[e.code];
     if (!b) return;
     input.keys |= b;

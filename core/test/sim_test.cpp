@@ -292,7 +292,7 @@ static void testGameplay() {
   CHECK(q.state() == GameState::ARRIVE);
   CHECK(q.stateTimer() == ARRIVE_SWITCH_TICKS);
   CHECK(q.sphereLevel() == 2);
-  CHECK(q.player().r == SPHERE_RADIUS + ALTITUDE + ARRIVE_ALTITUDE);
+  CHECK(q.player().r > SPHERE_RADIUS + ALTITUDE + ARRIVE_ALTITUDE);
   CHECK(q.player().invincible == 0);  // frozen instead, until it lands
   while (q.state() == GameState::ARRIVE) q.tick(0);
   CHECK(q.state() == GameState::PLAYING);

@@ -336,13 +336,8 @@ void Game::moveEntity(Entity &c) {
   int32_t rTarget = SPHERE_RADIUS + altitudeForSize(c.size);
   int approach = ALT_APPROACH_SHIFT;
   if (flying) {
-    if (state_ == GameState::ARRIVE && !switchPending_ &&
-        stateTimer_ <= ARRIVE_SWITCH_TICKS) {
-      // The first sphere: level flight at the arrival altitude until the
-      // descent starts
-      rTarget = SPHERE_RADIUS + ALTITUDE + ARRIVE_ALTITUDE;
-    } else if (state_ == GameState::LAUNCH ||
-               stateTimer_ <= ARRIVE_SWITCH_TICKS) {
+    if (state_ == GameState::LAUNCH ||
+        (switchPending_ && stateTimer_ <= ARRIVE_SWITCH_TICKS)) {
       // Slow, accelerating ascent, continued past the launch until the
       // sphere is switched
       int64_t t = stateTimer_;
@@ -353,13 +348,8 @@ void Game::moveEntity(Entity &c) {
     } else {
       // Decelerating descent to the cruising altitude, reached a second
       // before the state ends so that the body levels out before the
-      // player takes over
-      int64_t left = ARRIVE_TICKS - TICK_RATE - stateTimer_;
-      if (left < 0) left = 0;
-      int64_t span = ARRIVE_TICKS - TICK_RATE - ARRIVE_SWITCH_TICKS;
-      rTarget =
-          SPHERE_RADIUS + ALTITUDE +
-          (int32_t)((int64_t)ARRIVE_ALTITUDE * left * left / (span * span));
+      // player takes over (the first sphere of a game dives from the start)
+      rTarget = descentTarget(stateTimer_);
     }
     approach = 3;
   }

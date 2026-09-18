@@ -289,9 +289,11 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
       const int gx = margin, gy = oy + margin;
       const int gw = ui_.gaugeW, gh = ui_.gaugeH, gb = ui(1, 1);
       g.drawRect(gx - gb, gy - gb, gw + 2 * gb, gh + 2 * gb, HUD_DIM, gb);
-      int fill = hud.playerHpMax > 0
-                     ? (int)((int64_t)hud.playerHp * gw / hud.playerHpMax)
-                     : 0;
+      int fill =
+          hud.playerHpMax > 0  // rounded up: never empty while alive
+              ? (int)(((int64_t)hud.playerHp * gw + hud.playerHpMax - 1) /
+                      hud.playerHpMax)
+              : 0;
       if (fill < 0) fill = 0;
       g2::Color hpColor = fill > gw / 2
                               ? g2::makeColor(90, 230, 140)
@@ -309,6 +311,13 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
         g.drawString((w_ - tw) / 2 + sh, gy + sh, buf);
         g.setTextColor(HUD_TEXT);
         g.drawString((w_ - tw) / 2, gy, buf);
+      }
+      if (hud.debugMode) {
+        // Cheats were used: say so over the score, large and translucent,
+        // so that a screenshot cannot pass for a real one
+        setHudFont(g, HudFont::LARGE);
+        drawCenteredFit(g, gy - ui(2, 1), "DEBUG MODE", "DEBUG",
+                        g2::makeColor(255, 70, 70, 150));
       }
 
       // Rank, under the gauge (same size as the score)

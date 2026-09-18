@@ -106,6 +106,7 @@ struct HudState {
   int cores = 0;
   int upgradeLevel[sim::UPGRADE_KINDS] = {};
   sim::GameState state = sim::GameState::TITLE;
+  bool debugMode = false;
 };
 
 // Font roles of the HUD (the fonts themselves live in hud.cpp)

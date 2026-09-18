@@ -574,7 +574,10 @@ void Renderer::updateCamera(float dt) {
   const sim::Game &g = *game_;
   const sim::Entity &p = g.player();
   sim::Vec3 newOrigin = sim::scaleToLength(p.frame.n, p.r);
-  if (originValid_) {
+  // A sphere switch moves the origin to another world (the player flew
+  // straight on, see Game::switchSphere()): the effects stay put then
+  const bool newSphere = g.sphereSeed() != sphereSeedSeen_;
+  if (originValid_ && !newSphere) {
     // Effects are stored relative to the origin: keep them where they are
     sim::Vec3 d = origin_ - newOrigin;
     shiftEffects({d.x * (1.0f / FU), d.y * (1.0f / FU), d.z * (1.0f / FU)});
@@ -678,10 +681,12 @@ void Renderer::updateCamera(float dt) {
     wantPitch = std::atan2((float)g.playerClimb(), (float)p.speed);
   }
 
-  if (!camValid_ || g.sphereSeed() != sphereSeedSeen_) {
+  if (!camValid_ || newSphere) {
     // A new sphere: the player has been rescaled, so the distances snap
     // to its new size (the sphere is off screen at that moment and the
-    // player keeps its size on screen); the orbit and the pitch carry on
+    // player keeps its size on screen). The pitch snaps too: the frame
+    // was turned so that the new pitch gives the old flight direction,
+    // and easing from the old pitch would swing the body round
     sphereSeedSeen_ = g.sphereSeed();
     sphereCountValid_ = false;  // the level is searched afresh (see sphere.cpp)
     camDist_ = wantDist;
@@ -693,12 +698,12 @@ void Renderer::updateCamera(float dt) {
       camFov_ = wantFov;
       camRoll_ = wantRoll;
     }
+    camPitch_ = wantPitch;
     if (!camValid_ || (st == sim::GameState::ARRIVE &&
                        g.stateTimer() < sim::ARRIVE_SWITCH_TICKS)) {
       // ... and the first sphere of a game starts with the camera in front
       // of the player straight away (the menus do not use the orbit)
       camOrbit_ = wantOrbit;
-      camPitch_ = wantPitch;
     }
     camValid_ = true;
   } else {
@@ -731,37 +736,27 @@ void Renderer::updateCamera(float dt) {
   }
 
   // The frame pitched along the flight path (identical to the frame on the
-  // surface), for the player's body and the dash dust
-  const vec3f right = g3::normalize(g3::cross(fwd, up));
+  // surface), for the camera, the player's body and the dash dust. The
+  // flight path is continuous through a sphere switch (the frame is turned
+  // under it), so this basis is too.
   vec3f fwdP = fwd, upP = up;
   if (camPitch_ != 0) {
+    const vec3f right = g3::normalize(g3::cross(fwd, up));
     fwdP = rotateAroundAxis(fwd, right, camPitch_);
     upP = rotateAroundAxis(up, right, camPitch_);
   }
   flightFwd_ = fwdP;
   flightUp_ = upP;
   playerPitchBrad_ = (uint16_t)(int32_t)(camPitch_ * (65536.0f / (2 * PI)));
-  // The camera's own basis follows that pitch behind and in front of the
-  // player (looking along the flight path, the sphere beyond the body) but
-  // stays level with the surface beside it, so that when the body noses
-  // over at the sphere switch the body turns on the screen and the stars
-  // hold still, instead of the whole world rolling by 150 degrees
-  const float cosOrbit = fastCos(camOrbit_);
-  const float camPitch = camPitch_ * cosOrbit * cosOrbit;
-  vec3f fwdC = fwd, upC = up;
-  if (camPitch != 0) {
-    fwdC = rotateAroundAxis(fwd, right, camPitch);
-    upC = rotateAroundAxis(up, right, camPitch);
-  }
   // ... and circled by the camera
-  vec3f fwdO = camOrbit_ != 0 ? rotateAroundAxis(fwdC, upC, camOrbit_) : fwdC;
+  vec3f fwdO = camOrbit_ != 0 ? rotateAroundAxis(fwdP, upP, camOrbit_) : fwdP;
 
-  vec3f eye = fwdO * (-camDist_) + upC * camHeight_;
+  vec3f eye = fwdO * (-camDist_) + upP * camHeight_;
   // Look at a point ahead of (and normally slightly below) the player so
   // that the sphere surface fills the lower part of the screen
-  vec3f target = fwdC * camAhead_ - upC * (camHeight_ * camDown_);
+  vec3f target = fwdP * camAhead_ - upP * (camHeight_ * camDown_);
   vec3f dir = g3::normalize(target - eye);
-  vec3f upR = rotateAroundAxis(upC, dir, camRoll_);
+  vec3f upR = rotateAroundAxis(upP, dir, camRoll_);
   cam_.eye = eye;
   cam_.target = target;
   cam_.up = upR;
@@ -1452,7 +1447,11 @@ void Renderer::buildScene() {
           gg.x = (int16_t)(sx - w / 2);
           gg.y = (int16_t)(sy - ui(6, 2));
           gg.w = (int16_t)w;
-          int ratio = c.hpMax > 0 ? (int)((int64_t)c.hp * 255 / c.hpMax) : 0;
+          // Rounded up: an enemy with a sliver of health left still shows
+          // a sliver of gauge rather than an empty one that keeps flying
+          int ratio = c.hpMax > 0
+                          ? (int)(((int64_t)c.hp * 255 + c.hpMax - 1) / c.hpMax)
+                          : 0;
           gg.ratio = (uint8_t)(ratio < 0 ? 0 : (ratio > 255 ? 255 : ratio));
         }
       }
@@ -1523,6 +1522,7 @@ void Renderer::beginFrame(const sim::Game &game, float dt) {
   for (int k = 0; k < sim::UPGRADE_KINDS; k++)
     hud_.upgradeLevel[k] = game.upgradeLevel((sim::UpgradeKind)(k + 1));
   hud_.state = game.state();
+  hud_.debugMode = game.debugMode();
   time_ += dt;
   updateScoreDisplay(dt);
   lineCount_ = 0;
@@ -1563,7 +1563,7 @@ void Renderer::renderBand(const g2::Surface &dst, int y, int h, int dstY) {
     if (gg.y + gaugeH <= y || gg.y >= y + h) continue;
     g.fillRect(gg.x - gaugeB, gg.y + oy - gaugeB, gg.w + 2 * gaugeB,
                gaugeH + 2 * gaugeB, g2::makeColor(0, 0, 0, 170));
-    int fill = gg.w * gg.ratio / 255;
+    int fill = (gg.w * gg.ratio + 254) / 255;  // rounded up
     g2::Color c = gg.ratio > 128 ? g2::makeColor(90, 230, 140)
                                  : (gg.ratio > 50 ? g2::makeColor(240, 200, 60)
                                                   : g2::makeColor(240, 70, 60));

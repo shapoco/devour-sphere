@@ -61,25 +61,91 @@ void Game::setState(GameState s) {
   stateTimer_ = 0;
 }
 
-// The first sphere of a game: the whole arrival flight, but there is no
-// sphere to leave, so nothing is switched; the player holds the arrival
-// altitude until the descent starts at the switch tick
+// The descent of the arrival: (time left)^2, reaching the cruising altitude
+// a second before the state ends. Continued backwards before the switch
+// tick it starts higher, which is where the first sphere of a game begins.
+int32_t Game::descentTarget(int timer) const {
+  int64_t left = ARRIVE_TICKS - TICK_RATE - timer;
+  if (left < 0) left = 0;
+  const int64_t span = ARRIVE_TICKS - TICK_RATE - ARRIVE_SWITCH_TICKS;
+  return SPHERE_RADIUS + ALTITUDE +
+         (int32_t)((int64_t)ARRIVE_ALTITUDE * left * left / (span * span));
+}
+int32_t Game::descentSlope(int timer) const {
+  int64_t left = ARRIVE_TICKS - TICK_RATE - timer;
+  if (left < 0) left = 0;
+  const int64_t span = ARRIVE_TICKS - TICK_RATE - ARRIVE_SWITCH_TICKS;
+  return (int32_t)(2 * (int64_t)ARRIVE_ALTITUDE * left / (span * span));
+}
+
+// The first sphere of a game: the whole arrival flight, diving from the
+// start, but there is no sphere to leave, so nothing is switched
 void Game::beginArrival() {
   Entity &p = entities[playerIndex_];
   p.invincible = 0;  // frozen instead; the protection starts on landing
-  p.r = SPHERE_RADIUS + ALTITUDE + ARRIVE_ALTITUDE;
+  // The altitude filter (1/8 per tick) is given its steady-state lead, so
+  // the descent runs at the profile's slope from the first tick
+  p.r = descentTarget(0) + (descentSlope(0) << 3);
   switchPending_ = false;
 }
 
 // Midway through the arrival: the old sphere is behind the player and off
-// screen, the new one is ahead. The player shrinks back to a small entity
-// and starts its descent.
+// screen. The player shrinks back to a small entity, and the next sphere
+// is put where the player is already heading: its frame is turned around
+// its right axis so that the descent (speed along t, the profile's slope
+// down n) is the very velocity it had while climbing. Seen from the
+// player nothing changes: it flies straight on, and the new sphere is
+// ahead where the old one was behind.
 void Game::switchSphere() {
+  Entity &p = entities[playerIndex_];
   switchPending_ = false;
   spheresCleared_++;
   sphereLevel_++;
-  rescalePlayerForNextSphere();
+  // The velocity before (scaled up: normalizeQ30 keeps the precision of
+  // a long vector)
+  const Vec3 vOld = normalizeQ30(scaleToLength(p.frame.t, p.speed << 8) +
+                                 scaleToLength(p.frame.n, playerClimb_ << 8));
+  rescalePlayerForNextSphere();  // p.speed is the new cruising speed now
+  const int32_t slope = descentSlope(stateTimer_);
+  const uint32_t mag =
+      isqrt32((uint32_t)((int64_t)p.speed * p.speed + (int64_t)slope * slope));
+  const int32_t c = (int32_t)(((int64_t)p.speed << Q30_SHIFT) / mag);
+  const int32_t s = (int32_t)(((int64_t)(-slope) << Q30_SHIFT) / mag);
+  // w is vOld turned a quarter turn towards n (nose up); the new frame has
+  // t' cos + n' sin = vOld for the descent angle (cos, sin) = (c, s)
+  const Vec3 right = crossQ30(p.frame.t, p.frame.n);
+  const Vec3 w = crossQ30(right, vOld);
+  p.frame.n = normalizeQ30(scaleQ30(vOld, s) + scaleQ30(w, c));
+  p.frame.t = orthonormalizeQ30(scaleQ30(vOld, c) - scaleQ30(w, s), p.frame.n);
   startSphere(true);
+  playerClimb_ = -slope;  // what the renderer pitches the body by this tick
+}
+
+void Game::debugTakeUpgrade(UpgradeKind k) {
+  debugMode_ = true;
+  takeUpgrade(k);
+}
+
+void Game::debugScaleSize(bool bigger) {
+  debugMode_ = true;
+  Entity &p = entities[playerIndex_];
+  if (!p.alive) return;
+  uint32_t size = bigger ? p.size * 2 : p.size / 2;
+  if (size < 1) size = 1;
+  if (size > (1u << MAX_SIZE_LOG2)) size = 1u << MAX_SIZE_LOG2;
+  setEntitySize(p, size);
+  syncFragments(p, 0, 0);
+  updateLayout(p);
+}
+
+void Game::debugHeal(int pct) {
+  debugMode_ = true;
+  Entity &p = entities[playerIndex_];
+  if (!p.alive) return;
+  int32_t hp = p.hp + (int32_t)((int64_t)p.hpMax * pct / 100);
+  if (hp < 1) hp = 1;
+  if (hp > p.hpMax) hp = p.hpMax;
+  p.hp = hp;
 }
 
 int Game::findFreeEntity() const {
@@ -115,7 +181,7 @@ void Game::startSphere(bool keepPlayer) {
     p.alive = true;
     p.invincible = 0;
     p.hp = p.hpMax;
-    p.r = SPHERE_RADIUS + ALTITUDE + ARRIVE_ALTITUDE;
+    p.r = descentTarget(stateTimer_) + (descentSlope(stateTimer_) << 3);
   } else {
     spawnPlayer();
   }
