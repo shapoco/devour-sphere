@@ -284,6 +284,14 @@ class Renderer {
   bool sphereDryRun_ = false;  // count edges instead of emitting them
   int sphereCount_ = 0;        // edges of the last pass (drives the level)
   bool sphereCountValid_ = false;
+  // The player off the surface (LAUNCH / ARRIVE): the sphere is seen from
+  // afar, so the mesh keeps a floor of FLIGHT_MIN_LEVEL, the fine regions
+  // around the player shrink with the altitude, the fade starts at the
+  // altitude, and the line budget is the whole array
+  bool inFlight_ = false;
+  bool sphereFloored_ = false;  // the floor was applied last frame
+  float altExcess_ = 0;         // FU above the cruising altitude (>= 0)
+  int32_t wireFadeOffset_ = 0;  // 1/16 units subtracted from the fade distance
 
   // Per-frame bookkeeping
   // How deeply the mesh is subdivided along each of a face's three edges

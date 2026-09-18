@@ -27,6 +27,9 @@ static constexpr float FADE_NEAR = 60.0f, FADE_FAR = 900.0f;  // FU
 // the on-screen density and the line count stay about the same as the
 // player grows
 static constexpr int BASE_LEVEL = 4;  // edges of ~34 FU at 11 FU
+// Coarsest level while the player is in flight: the far sphere at level 2
+// still reads as a polygon (a 24-gon limb), level 3 as a circle
+static constexpr int FLIGHT_MIN_LEVEL = 3;
 static constexpr float LEVEL5_RADIUS = 6.0f, LEVEL6_RADIUS = 2.5f;  // x nominal
 static constexpr float NOMINAL_DIST0 = 11.0f;
 // How much one more subdivision level multiplies the visible edge count by
@@ -79,10 +82,14 @@ static inline Vec3 sum3(const Vec3 &a, const Vec3 &b, const Vec3 &c) {
 // the eye. The color is the ramp WIRE_DIM..WIRE_BRIGHT at that brightness.
 static constexpr g2::Color WIRE_DIM = g2::makeColor(6, 14, 40);
 static constexpr g2::Color WIRE_BRIGHT = g2::makeColor(70, 130, 235);
-// `dist` in 1/16 world units
-static int wireBrightness(int32_t dist, int level) {
+// `dist` in 1/16 world units, `offset` (same units) is where the fade
+// starts: the altitude of a flying player, so that the far sphere keeps its
+// brightness and only fades with the depth beyond its nearest point
+static int wireBrightness(int32_t dist, int32_t offset, int level) {
   constexpr int32_t NEAR = (int32_t)(FADE_NEAR * FU * 16),
                     FAR = (int32_t)(FADE_FAR * FU * 16);
+  dist -= offset;
+  if (dist < 0) dist = 0;
   int32_t t200 = ((FAR - dist) / 64) * 200 / ((FAR - NEAR) / 64);  // 32-bit
   if (t200 < 0) t200 = 0;
   if (t200 > 200) t200 = 200;
@@ -156,8 +163,8 @@ void Renderer::addWireSegment(const Vec3 &ua, const Vec3 &ub, int level) {
       (int32_t)sim::isqrt32((uint32_t)(sim::length2_64(da) >> 16)) << 8;
   const int32_t distB =
       (int32_t)sim::isqrt32((uint32_t)(sim::length2_64(db) >> 16)) << 8;
-  const int ba = wireBrightness(distA, level),
-            bb = wireBrightness(distB, level);
+  const int ba = wireBrightness(distA, wireFadeOffset_, level),
+            bb = wireBrightness(distB, wireFadeOffset_, level);
 
   int ba2 = ba, bb2 = bb;
   if (!clipSegment16(x0, y0, x1, y1, ba2, bb2)) return;
@@ -293,7 +300,20 @@ int Renderer::wantLevel(const Vec3 &center, int level) const {
 // The per-traversal constants: the two cos thresholds of wantLevel() per
 // level, for the current shift (the rest of CameraQ is per frame)
 void Renderer::sphereConstants() {
-  const float unit = camNominal_ / (float)(1 << sphereShift_);  // radii, FU
+  // The fine regions around the player's point shrink to nothing over the
+  // first BOOST_FADE_FU of a climb (they would be a fine patch far below a
+  // flying player, and on a large player's mesh they cost more lines than
+  // the whole far sphere); on the surface the factor is 1
+  constexpr float BOOST_FADE_FU = 3.0f * sim::ALTITUDE / FU;
+  float boost = 1.0f - altExcess_ / BOOST_FADE_FU;
+  if (boost <= 0) {
+    for (int level = 0; level <= MAX_SPHERE_LEVEL; level++) {
+      camQ_.cosLevel6[level] = camQ_.cosLevel5[level] = INT32_MAX;  // never
+    }
+    return;
+  }
+  const float unit =
+      camNominal_ / (float)(1 << sphereShift_) * boost;  // radii, FU
   for (int level = 0; level <= MAX_SPHERE_LEVEL; level++) {
     const float faceAngle = 0.6524f / (float)(1 << level);  // angular radius
     float a6 = faceAngle + LEVEL6_RADIUS * unit / SPHERE_R;
@@ -442,7 +462,30 @@ void Renderer::buildSphere() {
   float scale = camNominal_ / NOMINAL_DIST0;
   int base = 0;
   while (scale >= 2.0f && base < BASE_LEVEL) scale *= 0.5f, base++;
-  const int wireLimit = ui_.wireLines - 80 * ui_.scale8 / 8;
+  // In flight the base is floored at FLIGHT_MIN_LEVEL. The frame the floor
+  // engages (or lets go) the extra reduction takes up the difference, so the
+  // level drawn does not jump: the budget then relaxes it, one level at a
+  // time, as the fine regions around the player shrink with the altitude
+  if (inFlight_) {
+    int floored = base;
+    if (floored > BASE_LEVEL - FLIGHT_MIN_LEVEL) {
+      floored = BASE_LEVEL - FLIGHT_MIN_LEVEL;
+    }
+    if (!sphereFloored_) sphereExtra_ += base - floored;
+    base = floored;
+  } else if (sphereFloored_) {
+    int floored = base;
+    if (floored > BASE_LEVEL - FLIGHT_MIN_LEVEL) {
+      floored = BASE_LEVEL - FLIGHT_MIN_LEVEL;
+    }
+    sphereExtra_ -= base - floored;
+    if (sphereExtra_ < 0) sphereExtra_ = 0;
+  }
+  sphereFloored_ = inFlight_;
+  // The whole array in flight (there is little else to draw), the screen's
+  // share of it on the surface
+  const int wireLimit =
+      (inFlight_ ? MAX_WIRE : ui_.wireLines) - 80 * ui_.scale8 / 8;
   const int wireRelax = wireLimit * 6 / 10;  // hysteresis
   int shift;
   if (sphereCountValid_) {

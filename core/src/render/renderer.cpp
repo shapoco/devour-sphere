@@ -598,6 +598,10 @@ void Renderer::updateCamera(float dt) {
   float wantAhead = bodyR * 0.5f + 1.0f;  // look target ahead of the player
   float wantDown = 0.12f;                 // ... and below (x camera height)
   sim::GameState st = g.state();
+  inFlight_ = st == sim::GameState::LAUNCH;
+  altExcess_ = (p.r - sim::SPHERE_RADIUS - sim::ALTITUDE) * (1.0f / FU);
+  if (altExcess_ < 0) altExcess_ = 0;
+  wireFadeOffset_ = (int32_t)(altExcess_ * (FU * 16));
   if (st == sim::GameState::PLAYING) {
     float dash = p.dashLevel / 256.0f;
     if (dash > 0) {
