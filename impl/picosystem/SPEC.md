@@ -53,6 +53,8 @@ cmake -S . -B build -DPICO_SDK_PATH=~/pico/pico-sdk
 cmake --build build -j                  # build/devoursphere.uf2
 ```
 
+`build.sh` は上の 2 行をまとめたもの (PICO_SDK_PATH は環境変数か既存の build/ のキャッシュに任せる)。
+
 - pico-sdk 2.x は picotool を要求する。手元にビルド済みのものがあれば
   `-Dpicotool_DIR=<picotoolConfig.cmake のあるディレクトリ>` で指す
   (無ければ SDK が GitHub から取得してビルドする)。
