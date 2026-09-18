@@ -336,7 +336,13 @@ void Game::moveEntity(Entity &c) {
   int32_t rTarget = SPHERE_RADIUS + altitudeForSize(c.size);
   int approach = ALT_APPROACH_SHIFT;
   if (flying) {
-    if (state_ == GameState::LAUNCH || stateTimer_ <= ARRIVE_SWITCH_TICKS) {
+    if (state_ == GameState::ARRIVE && !switchPending_ &&
+        stateTimer_ <= ARRIVE_SWITCH_TICKS) {
+      // The first sphere: level flight at the arrival altitude until the
+      // descent starts
+      rTarget = SPHERE_RADIUS + ALTITUDE + ARRIVE_ALTITUDE;
+    } else if (state_ == GameState::LAUNCH ||
+               stateTimer_ <= ARRIVE_SWITCH_TICKS) {
       // Slow, accelerating ascent, continued past the launch until the
       // sphere is switched
       int64_t t = stateTimer_;

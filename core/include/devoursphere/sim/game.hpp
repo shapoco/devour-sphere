@@ -200,6 +200,9 @@ class Game {
     return state_ == GameState::LAUNCH || state_ == GameState::ARRIVE;
   }
   int32_t playerClimb_ = 0;
+  // ARRIVE from a launch switches the sphere at ARRIVE_SWITCH_TICKS; the
+  // first sphere of a game has nothing to leave and does not
+  bool switchPending_ = false;
   void beginArrival();
   void switchSphere();
   int32_t enemyDamagePct() const;

@@ -32,8 +32,12 @@ static constexpr int BASE_LEVEL = 4;  // edges of ~34 FU at 11 FU
 static constexpr int FLIGHT_MIN_LEVEL = 3;
 static constexpr float LEVEL5_RADIUS = 6.0f, LEVEL6_RADIUS = 2.5f;  // x nominal
 static constexpr float NOMINAL_DIST0 = 11.0f;
-// How much one more subdivision level multiplies the visible edge count by
+// The least one more subdivision level multiplies the visible edge count
+// by: below this share of the budget it is worth counting the finer mesh
 static constexpr int SPHERE_LEVEL_FANOUT = 3;
+// Frames between tries to go finer once a try was refused (a try costs a
+// traversal of the finer mesh)
+static constexpr int SPHERE_RELAX_WAIT = 30;
 // Budget of the line array for the wireframe (UiMetrics::wireLines: 1100 on
 // the reference screen, less on a smaller one). The edges are counted in a
 // dry run first; when they exceed the limit every level is lowered by one
@@ -482,12 +486,19 @@ void Renderer::buildSphere() {
     if (sphereExtra_ < 0) sphereExtra_ = 0;
   }
   sphereFloored_ = inFlight_;
-  // The whole array in flight (there is little else to draw), the screen's
-  // share of it on the surface
-  const int wireLimit =
-      (inFlight_ ? MAX_WIRE : ui_.wireLines) - 80 * ui_.scale8 / 8;
+  // The whole array high up in flight (there is little else to draw), the
+  // screen's share of it on the surface; blended over the first 100 FU of
+  // altitude so that the landing does not change the budget in one step
+  int wireLines = ui_.wireLines;
+  if (inFlight_ && MAX_WIRE > wireLines) {
+    float high = altExcess_ * (1.0f / 100.0f);
+    if (high > 1) high = 1;
+    wireLines += (int)((MAX_WIRE - wireLines) * high);
+  }
+  const int wireLimit = wireLines - 80 * ui_.scale8 / 8;
   const int wireRelax = wireLimit * 6 / 10;  // hysteresis
   int shift;
+  if (sphereRelaxWait_ > 0) sphereRelaxWait_--;
   if (sphereCountValid_) {
     // Steer the level from what the previous frame actually emitted rather
     // than by trial traversals: counting the edges costs as much as drawing
@@ -496,11 +507,23 @@ void Renderer::buildSphere() {
     // that is briefly too fine cannot overflow the buffer.
     if (sphereCount_ > wireLimit) {
       sphereExtra_ += (sphereCount_ > 2 * wireLimit) ? 2 : 1;
+      sphereRelaxWait_ = SPHERE_RELAX_WAIT;
     } else if (sphereCount_ * SPHERE_LEVEL_FANOUT < wireRelax &&
-               sphereExtra_ > 0) {
-      // Only go finer when the next level down would still fit: one level
-      // multiplies the edge count by roughly this much
-      sphereExtra_--;
+               sphereExtra_ > 0 && sphereRelaxWait_ == 0) {
+      // Going finer is only worth considering when the count is small,
+      // but a finer level can cost far more than the fanout (the regions
+      // around the player double their radius as well as their level, up
+      // to 16x), so it is counted first and taken only when it fits with
+      // room to grow. A refusal waits before counting again, so a mesh
+      // that sits at the boundary does not flip every frame.
+      shift = base + sphereExtra_ - 1;
+      if (shift < base) shift = base;
+      const int finer = countSphereLines(shift, order);
+      if (finer <= wireRelax) {
+        sphereExtra_--;
+      } else {
+        sphereRelaxWait_ = SPHERE_RELAX_WAIT;
+      }
     }
     shift = base + sphereExtra_;
     if (shift < base) shift = base;

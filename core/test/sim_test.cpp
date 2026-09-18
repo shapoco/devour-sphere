@@ -100,13 +100,13 @@ static void startGame(Game &g) {
 // ... and through the flight onto the sphere
 static void enterPlay(Game &g) {
   startGame(g);
-  // The first sphere starts at the switch point of the arrival (no sphere
-  // to leave), so the flight is shorter
+  // The first sphere flies the whole arrival, but nothing is switched
   int flown = 0;
   while (g.state() == GameState::ARRIVE) g.tick(0), flown++;
   CHECK(g.state() == GameState::PLAYING);
   CHECK(g.sphereLevel() == 1);
-  CHECK(flown == ARRIVE_TICKS - ARRIVE_SWITCH_TICKS - 1);
+  CHECK(g.spheresCleared() == 0);
+  CHECK(flown == ARRIVE_TICKS);
   CHECK(g.selectedWeapon() == 1);
 }
 

@@ -33,6 +33,7 @@ void Game::reset(uint32_t seed) {
   lastUpgradeKind_ = UpgradeKind::NONE;
   respawnDelay_ = 0;
   playerClimb_ = 0;
+  switchPending_ = false;
   effectCount_ = 0;
   aliveEntities_ = 0;
   maxBodyRadius_ = 0;
@@ -60,21 +61,21 @@ void Game::setState(GameState s) {
   stateTimer_ = 0;
 }
 
-// The first sphere of a game: there is no sphere to leave, so the arrival
-// starts just past its switch point (camera beside the player, the sphere
-// already there). Past it, because the transitions of this same tick would
-// otherwise switch the sphere once more.
+// The first sphere of a game: the whole arrival flight, but there is no
+// sphere to leave, so nothing is switched; the player holds the arrival
+// altitude until the descent starts at the switch tick
 void Game::beginArrival() {
   Entity &p = entities[playerIndex_];
   p.invincible = 0;  // frozen instead; the protection starts on landing
   p.r = SPHERE_RADIUS + ALTITUDE + ARRIVE_ALTITUDE;
-  stateTimer_ = ARRIVE_SWITCH_TICKS + 1;
+  switchPending_ = false;
 }
 
 // Midway through the arrival: the old sphere is behind the player and off
 // screen, the new one is ahead. The player shrinks back to a small entity
 // and starts its descent.
 void Game::switchSphere() {
+  switchPending_ = false;
   spheresCleared_++;
   sphereLevel_++;
   rescalePlayerForNextSphere();
@@ -324,10 +325,13 @@ void Game::checkTransitions() {
       }
       break;
     case GameState::LAUNCH:
-      if (stateTimer_ >= LAUNCH_TICKS) setState(GameState::ARRIVE);
+      if (stateTimer_ >= LAUNCH_TICKS) {
+        setState(GameState::ARRIVE);
+        switchPending_ = true;
+      }
       break;
     case GameState::ARRIVE:
-      if (stateTimer_ == ARRIVE_SWITCH_TICKS) {
+      if (stateTimer_ == ARRIVE_SWITCH_TICKS && switchPending_) {
         switchSphere();
       } else if (stateTimer_ >= ARRIVE_TICKS) {
         // Landed: the spawn protection starts now
@@ -502,7 +506,7 @@ uint32_t Game::stateHash() const {
       (uint32_t)state_,       tickCount_,         (uint32_t)stateTimer_,
       (uint32_t)sphereLevel_, rng_.state(),       (uint32_t)playerIndex_,
       displayScaleLog2_,      (uint32_t)scoreQ8_, (uint32_t)(scoreQ8_ >> 32),
-      (uint32_t)sphereTicks_, (uint32_t)cores_};
+      (uint32_t)sphereTicks_, (uint32_t)cores_,   (uint32_t)switchPending_};
   h = fnv(h, scalars, sizeof(scalars));
   return h;
 }

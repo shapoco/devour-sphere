@@ -640,10 +640,12 @@ void Renderer::updateCamera(float dt) {
       orbit = PI * u;
       low = u;
     } else {
-      // Beside the player exactly at the switch tick, then behind it
+      // On round the other side: beside the player exactly at the switch
+      // tick, then behind it, so that the launch and the arrival together
+      // circle the player once
       const float t0 = 2.0f * sim::ARRIVE_SWITCH_TICKS;
       float u = smooth01(g.stateTimer() / t0);
-      orbit = PI * (1 - u);
+      orbit = PI * (1 + u);
       // Once behind, rise a little to see the body from above during the
       // dive, then up to the play angle for the landing
       const float t1 = sim::ARRIVE_TICKS - 1.5f * sim::TICK_RATE;
@@ -681,6 +683,7 @@ void Renderer::updateCamera(float dt) {
     // to its new size (the sphere is off screen at that moment and the
     // player keeps its size on screen); the orbit and the pitch carry on
     sphereSeedSeen_ = g.sphereSeed();
+    sphereCountValid_ = false;  // the level is searched afresh (see sphere.cpp)
     camDist_ = wantDist;
     camNominal_ = nominalDist;
     camHeight_ = wantHeight;
@@ -689,6 +692,11 @@ void Renderer::updateCamera(float dt) {
     if (!camValid_) {
       camFov_ = wantFov;
       camRoll_ = wantRoll;
+    }
+    if (!camValid_ || (st == sim::GameState::ARRIVE &&
+                       g.stateTimer() < sim::ARRIVE_SWITCH_TICKS)) {
+      // ... and the first sphere of a game starts with the camera in front
+      // of the player straight away (the menus do not use the orbit)
       camOrbit_ = wantOrbit;
       camPitch_ = wantPitch;
     }
@@ -706,8 +714,16 @@ void Renderer::updateCamera(float dt) {
     camDown_ += (wantDown - camDown_) * k;
     // The orbit follows its (already smoothed) script closely; the pitch
     // is what makes the player nose over when the sphere is switched
+    // (the orbit is an angle: ease along the shorter way round, and keep
+    // it wrapped so that coming full circle ends at zero)
+    auto wrapAngle = [](float a) {
+      while (a > PI) a -= 2 * PI;
+      while (a <= -PI) a += 2 * PI;
+      return a;
+    };
     float kOrbit = 1.0f - std::exp(-dt * 8.0f);
-    camOrbit_ += (wantOrbit - camOrbit_) * kOrbit;
+    camOrbit_ =
+        wrapAngle(camOrbit_ + wrapAngle(wantOrbit - camOrbit_) * kOrbit);
     float kPitch = 1.0f - std::exp(-dt * 4.0f);
     camPitch_ += (wantPitch - camPitch_) * kPitch;
     if (std::fabs(camOrbit_) < 1e-4f) camOrbit_ = 0;

@@ -291,6 +291,7 @@ class Renderer {
   bool sphereDryRun_ = false;  // count edges instead of emitting them
   int sphereCount_ = 0;        // edges of the last pass (drives the level)
   bool sphereCountValid_ = false;
+  int sphereRelaxWait_ = 0;  // frames before the next try to go finer
   // The player off the surface (LAUNCH / ARRIVE): the sphere is seen from
   // afar, so the mesh keeps a floor of FLIGHT_MIN_LEVEL, the fine regions
   // around the player shrink with the altitude, the fade starts at the
