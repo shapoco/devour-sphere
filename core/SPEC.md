@@ -665,14 +665,19 @@ ShapoGFX の固定小数点パイプラインはこれを変換なしにその�
   スピンは sim の `sinQ30` / `cosQ30`。
 - 係数は分数にした (1.4 → 7/5、2.5 → 5/2、2.2 → 11/5、0.3 base + 0.08 FU → base * 3 / 10 + FU * 8 / 100 など)。
   float 版とホストで比べると 420 フレーム中 画素の 0.013% が違う (辺の丸め)。
-- 画面上での大きさの判定 (`px`) と視線方向による除外は従来どおり float だが、位置は
-  上の units から作る (`toLocal()` と同じ値)。
+- 可視判定も整数: 視線方向の手前かどうかは units の相対位置と `camQ_.fwd` の内積、
+  「画面上で n 画素以上か」は `(s * focal16)^2 >= (px16 * d^2)` の比較で、平方根も除算も使わない
+  (`atLeastPx()`)。エンティティだけは詳細度とゲージの閾値に画面上の半径 `px` が要るので
+  `isqrt64` 1 回と除算 1 回で作る。`Vis::d` は units の整数。
+- エフェクト (破片、取得の閃光) と浮遊アップグレードの図形は float のままだが、`sinf` / `cosf` は
+  使わない (src/render/trig.hpp、下記)。破片は生成時に三角形の面の基底 `u` / `v` を決めておき、
+  毎フレームは sin / cos 1 組と 120 度回転の恒等式で 3 頂点を出す (`triangleAngles()`)。
 
 ### render 層の三角関数と地平線判定
 
 render 層のエフェクト・マーカー・オーラは float だが、`sinf` / `cosf` は使わない (FPU の無いコアではライブラリ呼び出しで
-1 回数千サイクル)。`fastSin()` / `fastCos()` が sim の sin 表 (1025 点、線形補間、誤差 ~1e-6) を
-float に変換して返す。浮遊フラグメント・弾・エンティティの「地平線の向こう側か」の判定は、
+1 回数千サイクル)。src/render/trig.hpp の `fastSin()` / `fastCos()` が sim の sin 表
+(1025 点、線形補間、誤差 ~1e-6) を float に変換して返す。renderer.cpp、effects.cpp、upgrades.cpp が使う。浮遊フラグメント・弾・エンティティの「地平線の向こう側か」の判定は、
 float に変換する前に Q30 の内積 (`camQ_.unit`、`camQ_.cosHorizon`) で行い、
 向こう側のものには float の計算を一切しない。
 
@@ -692,6 +697,8 @@ FPU の無い RP2040 ではそれだけで走査の残り全部より重かっ�
 `devoursphere::profileClockUs` (include/devoursphere/profile.hpp) にマイクロ秒の時計を入れると、
 `Game::tick()` と `Renderer::beginFrame()` がフェーズごとの所要時間を積算する
 (`Game::tickProfile()` / `Renderer::frameProfile()`、それぞれ `TickPhase` / `FramePhase` のスロット。
+`beginFrame()` はカメラ、エフェクト更新、星とワイヤーフレーム、エンティティ、浮遊フラグメント、弾、
+エフェクト描画、画面上のオーバーレイ、深度ソートの 9 スロット。
 `renderBand()` も 3D と 2D の 2 スロットに積算する)。
 時計が無いときのコストはフェーズごとの null 判定 1 回なので常にコンパイルされる。
 値は sim が決して読まないので決定性には関係ない。PicoSystem 版がオーバーレイに出す。

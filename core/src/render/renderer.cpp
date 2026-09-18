@@ -5,6 +5,8 @@
 
 #include "devoursphere/render/renderer.hpp"
 
+#include "trig.hpp"
+
 namespace devoursphere::render {
 
 using g3::vec3f;
@@ -184,15 +186,6 @@ static constexpr int32_t HORIZON_Q02 = (int32_t)(0.02f * (1 << 30));
 // error ~1e-6). libm's sinf / cosf are pure software on a core without an
 // FPU and cost a few thousand cycles each; these cost a multiply and a
 // lookup.
-static inline uint16_t radToBrad(float rad) {
-  return (uint16_t)(int32_t)(rad * (65536.0f / (2.0f * PI)));
-}
-static inline float fastSin(float rad) {
-  return sim::sinQ30(radToBrad(rad)) * (1.0f / (float)(1 << 30));
-}
-static inline float fastCos(float rad) {
-  return sim::cosQ30(radToBrad(rad)) * (1.0f / (float)(1 << 30));
-}
 
 static vec3f rotateAroundAxis(const vec3f &v, const vec3f &axis, float angle) {
   float c = fastCos(angle), s = fastSin(angle);
@@ -253,6 +246,27 @@ void Renderer::putPoint3(const vec3f &p, g2::Color c, const g3::Material &m) {
 }
 
 // --- Integer geometry ------------------------------------------------------
+// Visibility of a thing at `rel` (units from the eye): how far along the
+// view direction it is, its distance, and whether it is at least a given
+// size on the screen -- without a root or a division.
+static inline int32_t dotUnits(const sim::Vec3 &v, const sim::Vec3 &q) {
+  return (
+      int32_t)(((int64_t)v.x * q.x + (int64_t)v.y * q.y + (int64_t)v.z * q.z) >>
+               30);
+}
+static inline int64_t dist2Units(const sim::Vec3 &v) {
+  constexpr int64_t MIN = (int64_t)(FU / 10) * (FU / 10);  // 0.1 FU floor
+  const int64_t d2 =
+      (int64_t)v.x * v.x + (int64_t)v.y * v.y + (int64_t)v.z * v.z;
+  return d2 < MIN ? MIN : d2;
+}
+// s * focal / d >= px  <=>  (s * focal16)^2 >= (px16 * d)^2, with px16 the
+// threshold in 1/16 pixels
+static inline bool atLeastPx(int32_t sUnits, int64_t d2, int32_t focal16,
+                             int32_t px16) {
+  const int64_t sf = (int64_t)sUnits * focal16;
+  return sf * sf >= d2 * px16 * px16;
+}
 // The body kites, the floating fragments and the bullets are built from the
 // simulation's own integers -- positions in world units relative to the
 // render origin, directions as Q30 unit vectors -- and handed to ShapoGFX as
@@ -661,14 +675,10 @@ void Renderer::drawFloatingFragments() {
     if (sim::dotQ30(fp.n, camQ_.unit) < camQ_.cosHorizon - HORIZON_Q01)
       continue;
     const sim::Vec3 posQ = sim::scaleToLength(fp.n, fp.r) - origin_;
-    const vec3f pos = {posQ.x * (1.0f / FU), posQ.y * (1.0f / FU),
-                       posQ.z * (1.0f / FU)};
-    vec3f rel = pos - cam_.eye;
-    float d = g3::length(rel);
-    if (g3::dot(rel, viewDir_) < -2.0f) continue;
+    const sim::Vec3 rel = posQ - eyeQ_;
+    if (dotUnits(rel, camQ_.fwd) < -2 * FU) continue;
     const int32_t sUnits = sim::fragmentHalfSize(fp.sizeLog2);
-    float px = (sUnits / (float)FU) * focalPx_ / (d > 0.1f ? d : 0.1f);
-    if (px < 1.0f) {
+    if (!atLeastPx(sUnits, dist2Units(rel), camQ_.focal16, 16)) {  // < 1 px
       putPointQ(posQ, edible ? pointColor : whitePoint, palette_[PAL_LINE]);
       continue;
     }
@@ -708,10 +718,7 @@ void Renderer::drawBullets() {
     if (sim::dotQ30(b.frame.n, camQ_.unit) < camQ_.cosHorizon - HORIZON_Q01)
       continue;
     const sim::Vec3 posQ = sim::scaleToLength(b.frame.n, b.r) - origin_;
-    const vec3f pos = {posQ.x * (1.0f / FU), posQ.y * (1.0f / FU),
-                       posQ.z * (1.0f / FU)};
-    vec3f rel = pos - cam_.eye;
-    if (g3::dot(rel, viewDir_) < -2.0f) continue;
+    if (dotUnits(posQ - eyeQ_, camQ_.fwd) < -2 * FU) continue;
     const sim::Vec3 fwd = b.frame.t;
     const sim::Vec3 right = sim::crossQ30(fwd, b.frame.n);
     const int32_t base = sim::fragmentHalfSize(sim::log2Floor(b.ownerSize));
@@ -1157,18 +1164,18 @@ void Renderer::buildScene() {
       }
       continue;
     }
-    float bodyR = c.bodyRadius / (float)FU;
     const sim::Vec3 posQ = sim::scaleToLength(c.frame.n, c.r) - origin_;
-    const vec3f pos = {posQ.x * (1.0f / FU), posQ.y * (1.0f / FU),
-                       posQ.z * (1.0f / FU)};
-    vec3f rel = pos - cam_.eye;
-    float d = g3::length(rel);
-    if (g3::dot(rel, viewDir_) < -bodyR) continue;
-    float px = bodyR * focalPx_ / (d > 0.1f ? d : 0.1f);
-    if (px < 0.8f) {
+    const sim::Vec3 rel = posQ - eyeQ_;
+    if (dotUnits(rel, camQ_.fwd) < -c.bodyRadius) continue;
+    const int64_t d2 = dist2Units(rel);
+    if (!atLeastPx(c.bodyRadius, d2, camQ_.focal16, 13)) {  // under 0.8 px
       putPointQ(posQ, colorForEntity(c), palette_[PAL_LINE]);
       continue;
     }
+    // The body's radius on the screen, for the detail and gauge thresholds
+    const int32_t d = (int32_t)sim::isqrt64((uint64_t)d2);
+    const float px =
+        (float)((int64_t)c.bodyRadius * camQ_.focal16 / d) * (1.0f / 16);
     // insertion sort by distance
     int k = n++;
     while (k > 0 && vis_[k - 1].d > d) {
@@ -1204,13 +1211,13 @@ void Renderer::buildScene() {
     bool full = vis_[k].px >= 6.0f && triBudget >= fullTris;
     triBudget -= full ? fullTris : 6;
     const sim::Vec3 posQ = sim::scaleToLength(c.frame.n, c.r) - origin_;
-    const vec3f pos = {posQ.x * (1.0f / FU), posQ.y * (1.0f / FU),
-                       posQ.z * (1.0f / FU)};
     bool blink =
         c.invincible > 0 && ((g.tickCount() / (sim::TICK_RATE / 8)) & 1);
     drawEntity(c, posQ, vis_[k].px, full, blink);
     // Health gauge over enemies
     if (!c.isPlayer && vis_[k].px >= 2.5f && gaugeCount_ < MAX_GAUGES) {
+      const vec3f pos = {posQ.x * (1.0f / FU), posQ.y * (1.0f / FU),
+                         posQ.z * (1.0f / FU)};
       float bodyR = c.bodyRadius / (float)FU;
       vec3f up = q30ToF(c.frame.n);
       float sx, sy;
@@ -1232,8 +1239,11 @@ void Renderer::buildScene() {
 
   frameProfile_.stamp(FP_ENTITIES);
   drawFloatingFragments();
+  frameProfile_.stamp(FP_FRAGMENTS);
   drawBullets();
+  frameProfile_.stamp(FP_BULLETS);
   drawEffects();
+  frameProfile_.stamp(FP_EFFECTS_DRAW);
   // Screen-space overlays: fans and quads on planes 1.9 to 2.0 units in
   // front of the camera, all additive, already in back-to-front order and
   // nearer than anything in the world. Drawing them after drawEffects()
@@ -1243,7 +1253,7 @@ void Renderer::buildScene() {
   drawHealthWarning();
   drawMarkers();
   g3d_.endScene();
-  frameProfile_.stamp(FP_SCENE_REST);
+  frameProfile_.stamp(FP_OVERLAYS);
 }
 
 // ---------------------------------------------------------------------------

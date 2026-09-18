@@ -4,6 +4,8 @@
 
 #include "devoursphere/render/renderer.hpp"
 
+#include "trig.hpp"
+
 namespace devoursphere::render {
 
 using g3::vec3f;
@@ -56,7 +58,7 @@ void Renderer::putSolid(const vec3f *verts, int nv, const uint16_t *idx, int ni,
 }
 
 static vec3f rotateAxis(const vec3f &v, const vec3f &axis, float angle) {
-  float c = std::cos(angle), s = std::sin(angle);
+  float c = fastCos(angle), s = fastSin(angle);
   return v * c + g3::cross(axis, v) * s + axis * (g3::dot(axis, v) * (1 - c));
 }
 
@@ -78,8 +80,7 @@ void Renderer::drawFloatingUpgrades() {
       float len = g3::length(d);
       if (len < 1e-5f) continue;
       d = d * (1.0f / len);
-      vec3f hp =
-          camUnit_ * std::cos(horizonAngle_) + d * std::sin(horizonAngle_);
+      vec3f hp = camUnit_ * fastCos(horizonAngle_) + d * fastSin(horizonAngle_);
       vec3f world = sphereCenter_ + hp * ((float)sim::SPHERE_RADIUS / FU);
       float sx, sy;
       if (!project(world, sx, sy)) continue;
@@ -129,7 +130,7 @@ void Renderer::drawFloatingUpgrades() {
         for (int k = 0; k < 3; k++) {
           float t = k * (2 * PI / 3);
           v[k + 1] = pos - upT * (s * 0.45f) +
-                     (a * std::cos(t) + bT * std::sin(t)) * (s * 1.1f);
+                     (a * fastCos(t) + bT * fastSin(t)) * (s * 1.1f);
         }
         static const uint16_t idx[12] = {0, 1, 2, 0, 2, 3, 0, 3, 1, 1, 3, 2};
         putSolid(v, 4, idx, 12, palette_[PAL_UP_OVERDRIVE]);
@@ -142,7 +143,7 @@ void Renderer::drawFloatingUpgrades() {
         for (int k = 0; k < 3; k++) {
           float t = k * (2 * PI / 3) + PI / 2;
           v[k + 1] = pos - a * (s * 0.8f) +
-                     (upT * std::cos(t) + bT * std::sin(t)) * (s * 0.7f);
+                     (upT * fastCos(t) + bT * fastSin(t)) * (s * 0.7f);
         }
         static const uint16_t idx[12] = {0, 1, 2, 0, 2, 3, 0, 3, 1, 1, 3, 2};
         putSolid(v, 4, idx, 12, palette_[PAL_UP_THRUSTER]);
@@ -156,10 +157,10 @@ void Renderer::drawFloatingUpgrades() {
         for (int k = 0; k < 3; k++) {
           float t = k * (2 * PI / 3);
           v[k + 1] = pos - upT * (s * 0.47f) +
-                     (a * std::cos(t) + bT * std::sin(t)) * (s * 1.3f);
-          v[k + 5] = pos + upT * (s * 0.47f) +
-                     (a * std::cos(t + PI / 3) + bT * std::sin(t + PI / 3)) *
-                         (s * 1.3f);
+                     (a * fastCos(t) + bT * fastSin(t)) * (s * 1.3f);
+          v[k + 5] =
+              pos + upT * (s * 0.47f) +
+              (a * fastCos(t + PI / 3) + bT * fastSin(t + PI / 3)) * (s * 1.3f);
         }
         static const uint16_t idx[24] = {0, 1, 2, 0, 2, 3, 0, 3, 1, 1, 3, 2,
                                          4, 6, 5, 4, 7, 6, 4, 5, 7, 5, 6, 7};

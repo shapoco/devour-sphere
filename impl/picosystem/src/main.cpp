@@ -223,15 +223,20 @@ void updatePhaseLines(int ticks) {
       tp[sim::Game::TP_EATING],
       tp[sim::Game::TP_COLLISIONS] + tp[sim::Game::TP_ORDERS] +
           tp[sim::Game::TP_OTHER]};
+  const uint32_t rest[4] = {fp[render::FP_FRAGMENTS], fp[render::FP_BULLETS],
+                            fp[render::FP_EFFECTS_DRAW],
+                            fp[render::FP_OVERLAYS]};
   const uint32_t scene[4] = {
-      fp[render::FP_SPHERE], fp[render::FP_ENTITIES], fp[render::FP_SCENE_REST],
+      fp[render::FP_SPHERE], fp[render::FP_ENTITIES],
+      rest[0] + rest[1] + rest[2] + rest[3],
       fp[render::FP_CAMERA] + fp[render::FP_EFFECTS] + fp[render::FP_SORT]};
   const uint32_t bands[3] = {fp[render::FP_BAND_3D], fp[render::FP_BAND_2D],
                              g_overlayUs};
   phaseLine(g_prof.extra[0], "", "AMLF", tp, 4, div);  // per tick
   phaseLine(g_prof.extra[1], "", "BFKX", tickRest, 4, div);
   phaseLine(g_prof.extra[2], "", "SOHX", scene, 4, 0);  // beginFrame
-  phaseLine(g_prof.extra[3], "", "DUV", bands, 3, 0);   // the bands
+  phaseLine(g_prof.extra[3], "", "FBEM", rest, 4, 0);   // H's parts
+  phaseLine(g_prof.extra[4], "", "DUV", bands, 3, 0);   // the bands
 }
 
 // The phase clock costs a timer read per phase and entity, so it is only

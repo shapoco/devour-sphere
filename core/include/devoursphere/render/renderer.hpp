@@ -113,9 +113,10 @@ enum class HudFont : uint8_t { SMALL, MEDIUM, LARGE, TITLE };
 
 // A piece of debris: a small spinning wireframe triangle that shrinks away
 struct Debris {
-  g3::vec3f pos, vel, axis;  // FU relative to the render origin
-  float angle, spin;         // radians, radians per second
-  float size, life, life0;   // FU, seconds
+  g3::vec3f pos, vel;  // FU relative to the render origin
+  g3::vec3f u, v;      // the triangle's plane: two perpendicular unit vectors
+  float angle, spin;   // radians, radians per second
+  float size, life, life0;  // FU, seconds
   g2::Color color;
 };
 
@@ -151,16 +152,20 @@ struct RenderStats {
 // Where beginFrame() spends its time (see devoursphere/profile.hpp). Slots:
 //   0 camera   1 effects (collect + update)
 //   2 stars and the sphere wireframe   3 entities (markers, sorting, bodies)
-//   4 the rest of the scene (floating fragments, bullets, effects, overlays)
-//   5 ShapoGFX beginRender (the depth sort)
+//   4 floating fragments   5 bullets   6 effects (pickups, debris, dust)
+//   7 the screen-space overlays (auras, health warning, markers)
+//   8 ShapoGFX beginRender (the depth sort)
 // and where renderBand() spends its, summed over the bands of a frame:
-//   6 the 3D rasterizer   7 the 2D work (clear, gauges, HUD)
+//   9 the 3D rasterizer   10 the 2D work (clear, gauges, HUD)
 enum FramePhase {
   FP_CAMERA = 0,
   FP_EFFECTS,
   FP_SPHERE,
   FP_ENTITIES,
-  FP_SCENE_REST,
+  FP_FRAGMENTS,
+  FP_BULLETS,
+  FP_EFFECTS_DRAW,
+  FP_OVERLAYS,
   FP_SORT,
   FP_BAND_3D,
   FP_BAND_2D,
@@ -314,7 +319,8 @@ class Renderer {
   // gets on RP2350 (the stacks live in SCRATCH_X / SCRATCH_Y and cannot be
   // grown), and buildScene() would overflow it.
   struct Vis {
-    float d, px;
+    int32_t d;  // eye distance, units
+    float px;   // body radius on screen, pixels
     int16_t idx;
   };
   Vis vis_[sim::MAX_ENTITIES];

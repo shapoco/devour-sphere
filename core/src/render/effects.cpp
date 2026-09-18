@@ -5,6 +5,8 @@
 
 #include "devoursphere/render/renderer.hpp"
 
+#include "trig.hpp"
+
 namespace devoursphere::render {
 
 using g3::vec3f;
@@ -40,7 +42,12 @@ void Renderer::spawnDebris(const vec3f &pos, int count, float size,
     d.vel = dir * ((6.0f + 10.0f * frand()) * (0.5f + size));
     vec3f axis = {frand() * 2 - 1, frand() * 2 - 1, frand() * 2 - 1};
     if (g3::length(axis) < 0.01f) axis = {0, 0, 1};
-    d.axis = g3::normalize(axis);
+    axis = g3::normalize(axis);
+    // The plane of the triangle, fixed here so that drawing it is a sine
+    // and cosine pair and nine multiplies
+    vec3f helper = std::fabs(axis.x) < 0.9f ? vec3f{1, 0, 0} : vec3f{0, 1, 0};
+    d.u = g3::normalize(g3::cross(axis, helper));
+    d.v = g3::cross(axis, d.u);
     d.angle = frand() * 2 * PI;
     d.spin = (6.0f + 10.0f * frand()) * (frand() < 0.5f ? -1.0f : 1.0f);
     d.size = size * (0.6f + 0.8f * frand());
@@ -206,10 +213,9 @@ void Renderer::drawEffects() {
       float t = 1.0f - pk.age / pk.duration;  // 1 -> 0
       float radius = bodyR * (0.5f + 5.0f * t) * pk.scale;
       vec3f pts[3];
-      for (int k = 0; k < 3; k++) {
-        float a = pk.angle + k * (2 * PI / 3);
-        pts[k] = (right * std::cos(a) + up * std::sin(a)) * radius;
-      }
+      float c[3], s[3];
+      triangleAngles(pk.angle, c, s);
+      for (int k = 0; k < 3; k++) pts[k] = (right * c[k] + up * s[k]) * radius;
       putLineLoop3(pts, 3, color, palette_[PAL_LINE]);
     }
   }
@@ -217,15 +223,12 @@ void Renderer::drawEffects() {
   // Debris: wireframe triangles
   for (int i = 0; i < debrisCount_; i++) {
     const Debris &d = debris_[i];
-    float s = d.size * (d.life / d.life0);
-    vec3f helper = std::fabs(d.axis.x) < 0.9f ? vec3f{1, 0, 0} : vec3f{0, 1, 0};
-    vec3f u = g3::normalize(g3::cross(d.axis, helper));
-    vec3f v = g3::cross(d.axis, u);
+    float size = d.size * (d.life / d.life0);
     vec3f pts[3];
-    for (int k = 0; k < 3; k++) {
-      float a = d.angle + k * (2 * PI / 3);
-      pts[k] = d.pos + (u * std::cos(a) + v * std::sin(a)) * s;
-    }
+    float c[3], s[3];
+    triangleAngles(d.angle, c, s);
+    for (int k = 0; k < 3; k++)
+      pts[k] = d.pos + (d.u * c[k] + d.v * s[k]) * size;
     putLineLoop3(pts, 3, d.color, palette_[PAL_LINE]);
   }
 
