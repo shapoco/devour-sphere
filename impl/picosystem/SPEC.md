@@ -34,14 +34,15 @@ impl/picosystem/
     ds_config.hpp      帯の高さ、アリーナサイズ、tick 周期、クロックなどの定数
     ds_platform.hpp    乱数シードとスタック計測の宣言
     display.hpp        ST7789 ドライバ
-    audio.hpp          効果音 (init / request)
   src/
     main.cpp           クロック、ボタン、フレームループ、帯バッファ、2 コアの分担
     display.cpp        ST7789 の初期化、帯の窓設定、DMA 転送
     platform.cpp       乱数シードとスタック計測
-    audio.cpp          ピエゾの PWM + DMA 再生、優先度
     se_data.S          効果音のパック (ビルド時に生成される build/se_pwm.bin) を .incbin でフラッシュに置く
 ```
+
+効果音の再生 (`pwm_audio.hpp` / `pwm_audio.cpp`) は計測オーバーレイと同じく Xiamocon 版のものを
+そのディレクトリから直接コンパイルして共有する (ボードごとの違いは `audio::Config` で渡す)。
 
 計測オーバーレイ (`profiler.hpp` / `profiler.cpp`) は Xiamocon 版のものを
 そのディレクトリから直接コンパイルして共有する。そのために両者は
@@ -151,6 +152,7 @@ PWM スライス 5 チャネル B) を次の構成で鳴らす。
   0.2µs で、45µs のサンプル間隔に対して問題にならない。
 - **無音時はデューティ 0** (ピンは Low、スイッチングなし)。鳴り終わりは末尾のランプで 0 に戻る。
   音の途中で別の音に切り替わるときは、レベルが中央付近にあるので先頭のランプを飛ばして始める。
+- **ミュート中は `audio::setMuted()` で再生中の音も止める** (core が `sounds()` を 0 にするので新しい音は来ない)。
 - **1 音、優先度付き。** `audio::request(bits)` は tick の直後に sim を回すコア (core1) から呼ばれ、
   同じ tick に複数の要求があれば最も優先度の高い 1 つを選ぶ。再生中の音より優先度が低い要求は、
   再生中の音が `HOLD_US` (400ms) を過ぎるまで捨てる。それを過ぎればどの音でも取って代わる
@@ -203,9 +205,12 @@ pack_se.py の PWM 用オプションを CMake の変数で渡す:
 | ダッシュ | UP |
 | ブレーキ | DOWN |
 | A (攻撃・決定) | A / B / Y のどれでも |
-| 計測オーバーレイの切り替え (非表示 → FPS のみ → 全部) | X (押した瞬間) |
+| ポーズ / 再開 | X |
+| ミュート切り替え | タイトル / ポーズ画面で DOWN (core が処理する) |
+| 計測オーバーレイの切り替え (非表示 → FPS のみ → 全部) | タイトル / ポーズ画面で UP (押した瞬間) |
 
-Xiamocon には FUNC があるが PicoSystem には無いので、X を計測表示に充てている。
+UP がタイトル / ポーズ画面かどうかは `Renderer::hud()` のスナップショットで判定する
+(`Game` はそのとき core1 のものかもしれない)。sim はその画面では UP を無視する。
 
 ## クロック
 
@@ -235,7 +240,7 @@ core1 は依頼が無い間 `tight_loop_contents()` で回る。
 ## デバッグ表示
 
 シリアルは繋いでいない (`pico_enable_stdio_*` は両方 0)。
-X を押すたびに 非表示 → FPS のみ → 全部 と切り替わり、Xiamocon 版と同じ計測パネルが左上に出る
+タイトル / ポーズ画面で UP を押すたびに 非表示 → FPS のみ → 全部 と切り替わり、Xiamocon 版と同じ計測パネルが左上に出る
 (行の意味は impl/xiamocon/SPEC.md「デバッグ表示」)。
 全部表示のときはさらに 5 行、tick・`beginFrame()`・帯の内訳が付く
 (core/ の `devoursphere::profileClockUs` に時計を渡すと `Game` と `Renderer` が

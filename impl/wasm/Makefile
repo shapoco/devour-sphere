@@ -24,7 +24,7 @@ HDRS := $(wildcard $(REPO_ROOT)/core/include/devoursphere/*.hpp) \
 CXXFLAGS := -O2 -std=c++17 -Wall -Wextra \
             -I $(REPO_ROOT)/core/include -I $(GFX_ROOT)/include
 
-EXPORTS := _ds_init,_ds_set_screen,_ds_get_max_pixels,_ds_debug_start,_ds_debug_auto,_ds_tick,_ds_render,_ds_get_fb,_ds_get_width,_ds_get_height,_ds_get_state,_ds_get_tick_rate,_ds_get_score,_ds_set_high_score,_ds_set_debug,_ds_debug_key,_ds_get_sounds
+EXPORTS := _ds_init,_ds_set_screen,_ds_get_max_pixels,_ds_debug_start,_ds_debug_auto,_ds_tick,_ds_render,_ds_get_fb,_ds_get_width,_ds_get_height,_ds_get_state,_ds_get_tick_rate,_ds_get_score,_ds_set_high_score,_ds_set_debug,_ds_debug_key,_ds_get_sounds,_ds_set_muted,_ds_get_muted,_ds_get_paused
 
 .PHONY: all clean serve se
 

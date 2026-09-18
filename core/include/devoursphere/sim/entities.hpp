@@ -14,7 +14,8 @@ constexpr uint8_t LEFT = 1 << 0;
 constexpr uint8_t RIGHT = 1 << 1;
 constexpr uint8_t UP = 1 << 2;    // dash
 constexpr uint8_t DOWN = 1 << 3;  // brake
-constexpr uint8_t A = 1 << 4;     // fire / confirm
+constexpr uint8_t A = 1 << 4;      // fire / confirm
+constexpr uint8_t PAUSE = 1 << 5;  // pause / resume (PLAYING, LAUNCH, ARRIVE)
 }  // namespace Button
 
 // Kite half-size (units) of a fragment of size 2^sizeLog2 (area grows with

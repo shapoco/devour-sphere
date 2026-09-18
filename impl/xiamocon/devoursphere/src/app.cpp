@@ -15,8 +15,12 @@
 #include "ds_config.hpp"
 #include "ds_platform.hpp"
 #include "profiler.hpp"
+#include "pwm_audio.hpp"
 #include "xmc/input.hpp"
+#include "xmc/ioex.hpp"
 #include "xmc/multicore.hpp"
+#include "xmc/pins.hpp"
+#include "xmc/speaker.hpp"
 #include "xmc/system.hpp"
 #include "xmc/timer.hpp"
 #include "xmc/xmc_common.hpp"
@@ -96,6 +100,8 @@ bool core1Task() {
     // The events of a tick are cleared by the next one, so each tick has to
     // be polled or the frame would only show the last one's explosions
     g_renderer.pollEffects(*g_game);
+    audio::setMuted(g_game->muted());
+    audio::request(g_game->sounds());
   }
   g_simTickUs = (uint32_t)xmc::getTimeUs() - t0;
   g_simRan = g_simWanted;
@@ -105,8 +111,8 @@ bool core1Task() {
 
 #endif  // DS_SIM_ON_CORE1
 
-// The buttons Xiamocon has, in the five bits the simulation takes. All four
-// face buttons fire, so the thumb does not have to find a particular one.
+// The buttons Xiamocon has, in the bits the simulation takes. A, B and Y
+// fire, so the thumb does not have to find a particular one; X pauses.
 uint8_t mapButtons(xmc::input::Button b) {
   using B = xmc::input::Button;
   auto down = [&](B m) { return (b & m) != B::NONE; };
@@ -115,10 +121,37 @@ uint8_t mapButtons(xmc::input::Button b) {
   if (down(B::RIGHT)) out |= sim::Button::RIGHT;
   if (down(B::UP)) out |= sim::Button::UP;
   if (down(B::DOWN)) out |= sim::Button::DOWN;
-  if (down(B::A) || down(B::B) || down(B::X) || down(B::Y)) {
-    out |= sim::Button::A;
-  }
+  if (down(B::A) || down(B::B) || down(B::Y)) out |= sim::Button::A;
+  if (down(B::X)) out |= sim::Button::PAUSE;
   return out;
+}
+
+// --- The amplifier's mute ----------------------------------------------------
+// The SDK's own audio is off (speakerEnabled = false), so its mute pin on the
+// IO expander (an I2C write: core0 only) is ours. Muted through the boot,
+// unmuted a moment later unless the game is muted; the ESP32S3 build has no
+// sound, so there it stays muted.
+#if defined(ESP32)
+constexpr bool HAS_AUDIO = false;
+#else
+constexpr bool HAS_AUDIO = true;
+#endif
+constexpr uint32_t AMP_UNMUTE_DELAY_US = 300 * 1000;
+bool g_ampMuted = true;
+uint64_t g_bootUs = 0;
+
+void initAmp() {
+  xmc::ioex::write(xmc::ioex::Pin::SPEAKER_MUTE, true);
+  xmc::ioex::setDir(xmc::ioex::Pin::SPEAKER_MUTE, true);
+  g_ampMuted = true;
+  g_bootUs = xmc::getTimeUs();
+}
+
+void serviceAmp(bool gameMuted, uint64_t nowUs) {
+  bool want = !HAS_AUDIO || gameMuted || nowUs - g_bootUs < AMP_UNMUTE_DELAY_US;
+  if (want == g_ampMuted) return;
+  g_ampMuted = want;
+  xmc::speaker::setMuted(want);
 }
 
 // How many ticks the clock owes us, taken out of the accumulator
@@ -177,12 +210,20 @@ void xmcAppSetup(void) {
   }
   g_game->reset(ds::randomSeed());
   g_renderer.setControlHints(render::ControlHints{
-      "MOVE: D-PAD    A/B/X/Y: FIRE",
-      "D-PAD: MOVE   A: FIRE",
+      "MOVE: D-PAD    A/B/Y: FIRE    X: PAUSE",
+      "D-PAD: MOVE   A: FIRE   X: PAUSE",
       // The dash line already describes this device correctly
       render::ControlHints{}.dash,
       render::ControlHints{}.dashAlt,
+      "X: RESUME    DOWN: SOUND    UP / FUNC: STATS",
+      "X: RESUME   DOWN: SOUND",
   });
+  initAmp();
+  // Before core1, which is the one that plays. The speaker sits behind a
+  // buffer, a low-pass and an amplifier: the PWM runs fast (the pack's wrap
+  // at the system clock), a DMA timer paces the samples, and the output
+  // rests at the middle level (the amplifier is AC coupled).
+  audio::init(audio::Config{XMC_PIN_AUDIO_OUT, audio::Pacing::DMA_TIMER, true});
   g_renderer.init(ds::SCREEN_W, ds::SCREEN_H, g_arena, sizeof(g_arena),
                   ds::SPAN_CAPACITY);
   if (!g_bands.init()) {
@@ -226,9 +267,16 @@ void xmcAppLoop(void) {
   // this time round libLoop(); calling it again would consume the press and
   // release edges the simulation derives from the held state.
   const uint8_t buttons = mapButtons(xmc::input::getState());
-  // FUNC only means something to the SDK while the board is booting, so it is
-  // free to use here.
-  if (xmc::input::wasPressed(xmc::input::Button::FUNC)) g_prof.toggle();
+  // The timing overlay: FUNC (only the SDK's while the board boots, free
+  // here), or UP on the title or the pause screen. The HUD's snapshot says
+  // which screen: the Game itself may be core1's right now.
+  const render::HudState &hud = g_renderer.hud();
+  if (xmc::input::wasPressed(xmc::input::Button::FUNC) ||
+      (xmc::input::wasPressed(xmc::input::Button::UP) &&
+       (hud.state == sim::GameState::TITLE || hud.paused))) {
+    g_prof.toggle();
+  }
+  serviceAmp(hud.muted, nowUs);
 
 #if DS_SIM_ON_CORE1
   // If core1 is still ticking, come back on the next libLoop() rather than
@@ -277,6 +325,8 @@ void xmcAppLoop(void) {
   for (int i = 0; i < ticks; i++) {
     g_game->tick(buttons);
     g_renderer.pollEffects(*g_game);
+    audio::setMuted(g_game->muted());
+    audio::request(g_game->sounds());
   }
   g_prof.tickUs = (uint32_t)xmc::getTimeUs() - tick0;
   g_prof.ticks = ticks;

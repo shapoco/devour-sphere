@@ -181,6 +181,59 @@ static void testGameplay() {
   g.tick(Button::RIGHT);
   CHECK(g.selectedWeapon() == 0);
 
+  // Mute: DOWN on the title toggles it, sounds() is silent meanwhile, and
+  // the toggle is heard when it turns the sound back on
+  g.reset(777);
+  g.tick(0);
+  g.tick(Button::DOWN);
+  CHECK(g.muted());
+  CHECK(g.sounds() == 0);
+  g.tick(0);
+  g.tick(Button::A);
+  CHECK(g.state() == GameState::WEAPON_SELECT);
+  CHECK(g.sounds() == 0);  // MENU_START, masked
+  g.reset(777);            // the setting survives a reset
+  CHECK(g.muted());
+  g.tick(0);
+  g.tick(Button::DOWN);
+  CHECK(!g.muted());
+  CHECK(g.sounds() == (1u << (int)SoundKind::MENU_SELECT));
+
+  // Pause: a run with a pause in the middle ends in the same state as one
+  // without (nothing moves while paused, PAUSE does nothing on the menus)
+  {
+    Game a, b;
+    a.reset(4242);
+    b.reset(4242);
+    a.tick(0);
+    a.tick(Button::PAUSE);
+    CHECK(!a.paused());  // not on the title
+    a.reset(4242);
+    enterPlay(a);
+    enterPlay(b);
+    for (int i = 0; i < 50; i++) a.tick(scriptedInput(300 + i));
+    for (int i = 0; i < 50; i++) b.tick(scriptedInput(300 + i));
+    const uint32_t hashAtPause = b.stateHash();
+    b.tick(Button::PAUSE);
+    CHECK(b.paused());
+    CHECK(b.sounds() == (1u << (int)SoundKind::MENU_SELECT));
+    for (int i = 0; i < 40; i++) {
+      // Held buttons do nothing; the mute toggles twice and is back
+      b.tick(i < 20 ? (Button::A | Button::UP) : 0);
+      if (i == 5 || i == 15) b.tick(Button::DOWN);
+      CHECK(b.paused());
+      CHECK(b.stateHash() == hashAtPause);
+    }
+    CHECK(!b.muted());
+    b.tick(Button::PAUSE);
+    CHECK(!b.paused());
+    CHECK(b.stateHash() == hashAtPause);
+    for (int i = 50; i < 100; i++) a.tick(scriptedInput(300 + i));
+    for (int i = 50; i < 100; i++) b.tick(scriptedInput(300 + i));
+    CHECK(a.stateHash() == b.stateHash());
+    CHECK(a.tickCount() == b.tickCount());
+  }
+
   g.reset(777);
   startGame(g);
   const Entity &p = g.player();

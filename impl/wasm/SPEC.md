@@ -79,10 +79,12 @@ cmake --build build
 | `ds_get_max_pixels()` | フレームバッファが保持できる最大画素数 (1280x720) |
 | `ds_get_fb()` | RGB565BE フレームバッファ (width x height x 2 バイト) の先頭アドレス |
 | `ds_get_tick_rate()` | 1 秒あたりのシミュレーション tick 数 (60) |
-| `ds_tick(buttons)` | 1 tick 進める。`buttons` は sim::Button のビット (LEFT=1, RIGHT=2, UP=4, DOWN=8, A=16) |
+| `ds_tick(buttons)` | 1 tick 進める。`buttons` は sim::Button のビット (LEFT=1, RIGHT=2, UP=4, DOWN=8, A=16, PAUSE=32) |
 | `ds_render(dt)` | 現在の状態をフレームバッファに描画する。`dt` は前回描画からの秒数 (カメラの補間のみに使う) |
 | `ds_get_state()` | GameState (0 TITLE, 1 WEAPON_SELECT, 2 PLAYING, 3 LAUNCH, 4 DEAD, 5 ARRIVE) |
-| `ds_get_sounds()` | 最後の tick が要求した効果音のビットマスク (sim::SoundKind の順)。tick ごとにクリアされるので `ds_tick()` の直後に読む |
+| `ds_get_sounds()` | 最後の tick が要求した効果音のビットマスク (sim::SoundKind の順)。tick ごとにクリアされるので `ds_tick()` の直後に読む。ミュート中は 0 |
+| `ds_set_muted(on)`, `ds_get_muted()` | ミュート (ゲームの設定。タイトル / ポーズ画面の ↓ でも切り替わる)。JS 側が localStorage の `devoursphere.sound` ('0' でオフ) に保持し、毎秒読んで変化を保存する |
+| `ds_get_paused()` | ポーズ中なら 1 |
 | `ds_get_score()` | 現在のスコア |
 | `ds_set_high_score(v)` | ハイスコアを渡す (表示用)。JS 側が localStorage の `devoursphere.highscore` に保持し、毎秒スコアと比べて更新する |
 | `ds_debug_start(level, weapon)` | デバッグ用: メニューを飛ばして指定レベルのスフィアで開始 |
@@ -131,8 +133,11 @@ core/SPEC.md の「効果音」のとおり、sim は tick ごとに「鳴らす
 - 種類ごとのゲイン表 `SE_GAIN` (play.js) で音量を揃える。素材の平均音量は撃破・アップグレード・
   決定の組 (-23 dB 台) と発射・被弾・選択の組 (-29〜-34 dB) で 10 dB 近く違うが、
   まずは素材のまま (すべて 1) で入れ、遊びながらここで詰める。
-- ツールバーの「サウンド ON / OFF」で切り替え、localStorage の `devoursphere.sound`
-  ('0' でオフ) に保持する。スマホ向けレイアウトではツールバーが隠れるので切り替えはない。
+- ミュートはゲーム側の設定 (`ds_set_muted` / `ds_get_muted`、core/SPEC.md「ポーズとミュート」) で、
+  ミュート中は `ds_get_sounds()` が 0 を返す。ツールバーの「サウンド ON / OFF」とタイトル /
+  ポーズ画面の ↓ のどちらでも切り替わり、JS は毎秒 `ds_get_muted()` を見て localStorage の
+  `devoursphere.sound` ('0' でオフ) に保存し、起動時に戻す。スマホ向けレイアウトでは
+  ツールバーが隠れるが、仮想パッドの ↓ で切り替えられる。
 - se.bin が読めなくてもゲームは動く (コンソールに警告を出して無音)。
 
 ### 素材
@@ -162,6 +167,8 @@ URL パラメータ (デバッグ用):
 | ダッシュ | ↑ / W | 左スティック上、十字キー上 | 方向ディスクの上 |
 | ブレーキ | ↓ / S | 左スティック下、十字キー下 | 方向ディスクの下 |
 | A (攻撃・決定) | スペース / I J K L / Enter | ボタン 0～3, 7 | A ボタン |
+| ポーズ / 再開 | Esc / P | Start (ボタン 9) | (無し) |
+| ミュート切り替え | タイトル / ポーズ画面で ↓ (ツールバーの「サウンド」ボタンでも) | 同左 | 同左 |
 
 - キーは `KeyboardEvent.code` で判定し、ゲームに使うキーは `preventDefault()` する
   (スペースや矢印でページがスクロールしない)。ウィンドウがフォーカスを失ったら全キーを離す。

@@ -24,6 +24,7 @@ void Game::reset(uint32_t seed) {
   selectedWeapon_ = 0;
   displayScaleLog2_ = 0;
   prevButtons_ = 0xFF;  // buttons held during reset do not count as presses
+  paused_ = false;      // muted_ is a setting and stays
   stats_ = {};
   // Everything a game leaves behind, so that a Game reset in place behaves
   // exactly like a fresh one (the high score is the one thing meant to
@@ -432,6 +433,27 @@ void Game::tick(uint8_t buttons) {
   events_ = 0;
   effectCount_ = 0;
   sounds_ = 0;
+  // Paused: only the pause menu runs. Nothing else moves, not even the
+  // sound gaps or the tick count, so that resuming continues the very same
+  // game (a run with a pause in it hashes like one without)
+  if (paused_) {
+    if (pressed & Button::PAUSE) {
+      paused_ = false;
+      pushSound(SoundKind::MENU_SELECT);
+    } else if (pressed & Button::DOWN) {
+      toggleMute();
+    }
+    tickProfile_.stamp(TP_OTHER);
+    return;
+  }
+  if ((pressed & Button::PAUSE) &&
+      (state_ == GameState::PLAYING || state_ == GameState::LAUNCH ||
+       state_ == GameState::ARRIVE)) {
+    paused_ = true;
+    pushSound(SoundKind::MENU_SELECT);
+    tickProfile_.stamp(TP_OTHER);
+    return;
+  }
   for (int i = 0; i < SOUND_KINDS; i++) {
     if (soundGap_[i] > 0) soundGap_[i]--;
   }
@@ -445,6 +467,8 @@ void Game::tick(uint8_t buttons) {
       if (pressed & Button::A) {
         pushSound(SoundKind::MENU_START);
         setState(GameState::WEAPON_SELECT);
+      } else if (pressed & Button::DOWN) {
+        toggleMute();
       }
       break;
     case GameState::WEAPON_SELECT:
@@ -579,6 +603,12 @@ void Game::pushEffect(EffectKind kind, int entity, const Vec3 &n, int32_t r,
                       int32_t size) {
   if (effectCount_ >= MAX_EFFECTS) return;
   effects_[effectCount_++] = {kind, (int16_t)entity, n, r, size};
+}
+
+// The mute toggle: heard when it turns the sound back on
+void Game::toggleMute() {
+  muted_ = !muted_;
+  if (!muted_) pushSound(SoundKind::MENU_SELECT);
 }
 
 // Request a sound for this tick (the platform reads sounds() after the

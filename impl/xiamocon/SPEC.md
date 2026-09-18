@@ -15,7 +15,9 @@ SDK からは表示転送・DMA・入力・電源管理といった足回りだ�
   (core/SPEC.md の HUD 参照)、正方形でも破綻しない。
 - フレームバッファを 1 枚も持たず、40 行の帯を 2 枚交互に使って描画・転送する。
 - シミュレーションは 60Hz 固定、描画は追いつける範囲で行う (可変フレームレート)。
-- 音は無し。ハイスコアのフラッシュ保存も無し (電源を切るまでは保持する)。
+- 効果音は RP2350 のみ。SDK のオーディオは使わず、フラッシュの PCM を DMA で PWM に流す (後述)。
+  ESP32S3 は無音 (アンプはミュートしたまま)。
+- ハイスコアのフラッシュ保存は無し (電源を切るまでは保持する)。
 - ターゲットは XIAO RP2350 と XIAO ESP32S3 の両方。ソースは共通で、違いは下記の数点のみ。
 
 ## ファイル構成
@@ -31,13 +33,20 @@ impl/xiamocon/
       ds_platform.hpp  2 つのターゲットで異なる部分の宣言
       band_writer.hpp
       profiler.hpp
+      pwm_audio.hpp    効果音 (init / request / setMuted。PicoSystem 版と共有)
+    asm/
+      se_data.S        効果音のパック (ビルド時に生成される .cmake/se_pwm.bin) を .incbin でフラッシュに置く。
+                       src/ の外にあるのは PlatformIO (ESP32S3) に拾わせないため
     src/
       app.cpp          xmcApp* エントリ、静的領域、フレームループ、入力変換
       band_writer.cpp  帯の ping-pong と DMA 転送
       ds_platform.cpp  乱数シードとスタック計測 (ターゲットごとの実装)
       profiler.cpp     計測とオーバーレイ (PicoSystem 版 impl/picosystem/ と共有。
                        そのため ds_config.hpp / ds_platform.hpp を <...> でインクルードする)
+      pwm_audio.cpp    PWM + DMA の 1 音再生と優先度 (PicoSystem 版と共有。ESP32S3 では空実装)
 ```
+
+RP2350 のビルドには効果音のパック生成のため **ffmpeg と python3 が要る**。
 
 ディレクトリ名が `devoursphere` でなければならないのは、`xmc run` が
 `.cmake/<カレントディレクトリ名>.uf2` を探して書き込むため。
@@ -563,18 +572,45 @@ PSRAM 上の tick は 10.05ms で、RP2350 (SRAM, 250MHz) の 7.4ms に対して
 | 左右旋回 | LEFT / RIGHT |
 | ダッシュ | UP |
 | ブレーキ | DOWN |
-| A (攻撃・決定) | A / B / X / Y のどれでも |
+| A (攻撃・決定) | A / B / Y のどれでも |
+| ポーズ / 再開 | X |
+| ミュート切り替え | タイトル / ポーズ画面で DOWN (core が処理する) |
+| 計測オーバーレイの切り替え | FUNC、またはタイトル / ポーズ画面で UP |
 
+- UP がタイトル / ポーズ画面かどうかは `Renderer::hud()` のスナップショットで判定する
+  (`Game` はそのとき core1 のものかもしれない)。
 - `input::service()` は自分で呼ばない。`libLoop()` の `system::service()` が
   毎回呼んでおり、二重に呼ぶと `wasPressed` / `wasReleased` のエッジが壊れる。
 - 入力はフレームの先頭で `input::getState()` を 1 回だけ読む。
 - FUNC は起動時のみ SDK が特別扱いする (押しながら起動すると内蔵の診断アプリになる)。
   実行中は自由に使える。
 
+## 効果音 (RP2350)
+
+core/SPEC.md「効果音」のとおり、sim は tick ごとに「鳴らす音」のビットを出すだけで、波形と再生は
+ここが持つ。再生器 `pwm_audio.cpp` は PicoSystem 版と共通で (impl/picosystem/SPEC.md「効果音」に
+仕組みと優先度表)、ボードによる違いは `audio::Config` で渡す。
+
+- **SDK のオーディオは使わない。** SDK は PIO の PDM (3 MHz 超) を CPU のデルタシグマ変調で埋める方式で、
+  `speakerEnabled = false` にしてあるので PIO も DMA も IRQ も SDK 側は使っていない。
+  アンプ (LM4890) のミュート端子は IO エキスパンダにあり、`xmc::speaker::setMuted()` で core0 から
+  I2C 越しに叩く。起動時はミュートのまま `setDir` で出力にし、300 ms 後に (ゲームがミュートでなければ)
+  解除する。ゲームのミュート (`hud().muted`) の変化はフレームループが追う。
+- **出力は GP1** (`XMC_PIN_AUDIO_OUT`、PWM スライス 0 チャネル B)。回路は
+  GP1 → 74VHC1G126 → 2.2 kΩ + 10 nF (fc ≒ 7.2 kHz) → ボリューム → 1 µF → LM4890 (22 kΩ / 22 kΩ、1 nF)。
+  ローパスが 2 段とも約 7 kHz なので、PicoSystem のように 22 kHz のキャリアにすると約 -20 dB しか
+  落ちずにアンプへ届く。**wrap 1023 (250 MHz で 244 kHz、10 ビット)** にして約 -60 dB まで落とし、
+  サンプルは **DMA ペーシングタイマ** (sysclk × 1/11338 ≒ 22,050 Hz) で送る。
+- **無音時は中央レベル** (AC 結合なのでアンプには何も届かない)。パックにはランプを付けない (`--ramp 0`)。
+  ハイパス・ピーク揃え・ゲインも使わず素材のまま (音量はボリュームつまみ)。
+- パックは CMake のカスタムコマンドが `.cmake/se_pwm.bin` に生成し、asm/se_data.S が `.rodata` に置く
+  (約 600 KB。フラッシュ 929 KB / 4 MB)。RAM は数十バイト。
+- 実機での音質 (PWM の残留、GP1 のスイッチングの回り込み) は未確認 (2026-09-18 時点)。
+
 ## デバッグ表示
 
-実行中に FUNC を押すたびに 非表示 → FPS のみ → 全部 と切り替わり、直前のフレームの計測値を
-画面左上に重ねて表示する。FPS のみのときは `FPS 41.3` の 1 行だけ。
+実行中に FUNC (またはタイトル / ポーズ画面で UP) を押すたびに 非表示 → FPS のみ → 全部 と切り替わり、
+直前のフレームの計測値を画面左上に重ねて表示する。FPS のみのときは `FPS 41.3` の 1 行だけ。
 
 ```
 FPS 41.3  TCK 1.24x1      フレームレート / tick の所要時間 x 進めた tick 数 (core0)

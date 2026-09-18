@@ -13,7 +13,7 @@
 
 'use strict';
 
-const BTN_LEFT = 1, BTN_RIGHT = 2, BTN_UP = 4, BTN_DOWN = 8, BTN_A = 16;
+const BTN_LEFT = 1, BTN_RIGHT = 2, BTN_UP = 4, BTN_DOWN = 8, BTN_A = 16, BTN_PAUSE = 32;
 
 // RGB565BE -> RGBA8888 lookup. The frame buffer is read as native (little
 // endian) 16-bit words, so the table is indexed by the byte-swapped value and
@@ -38,6 +38,9 @@ const RGBA_LUT = new Uint32Array(65536);
 // one AudioBufferSourceNode per request, so any number can overlap.
 // The AudioContext can only start from a user gesture: it is created on the
 // first key or pointer event, and requests before that are dropped.
+// The mute lives in the game (ds_set_muted / ds_get_muted: DOWN on the title
+// or the pause screen toggles it, and the toolbar button); muted, the game
+// raises no sound bits. This page keeps it in localStorage.
 const SE_NAMES = ['shot_vulcan', 'shot_laser', 'shot_missile', 'hit_enemy',
   'hit_player', 'enemy_killed_small', 'enemy_killed_big', 'player_killed',
   'get_fragment', 'get_upgrade', 'menu_select', 'menu_start', 'launch', 'arrive'];
@@ -58,8 +61,6 @@ class SoundPlayer {
     this.master = null;
     this.buffers = null;   // AudioBuffer per kind, once the context exists
     this.pcm = null;       // { rate, sounds: [Float32Array] } from se.bin
-    this.enabled = true;
-    try { this.enabled = localStorage.getItem(SOUND_KEY) !== '0'; } catch (e) { /* ignore */ }
     this.unlock = this.unlock.bind(this);
     for (const ev of ['keydown', 'pointerdown', 'touchend']) {
       window.addEventListener(ev, this.unlock, { capture: true, passive: true });
@@ -119,16 +120,11 @@ class SoundPlayer {
     }
   }
 
-  setEnabled(on) {
-    this.enabled = on;
-    try { localStorage.setItem(SOUND_KEY, on ? '1' : '0'); } catch (e) { /* ignore */ }
-  }
-
   // Play every kind whose bit is set in `bits`. The context only exists
   // after a gesture; a source started while it is still resuming plays as
   // soon as it runs (the first menu sound follows the key that unlocked it)
   play(bits) {
-    if (!this.enabled || !this.buffers || !this.ctx || this.ctx.state === 'closed') return;
+    if (!this.buffers || !this.ctx || this.ctx.state === 'closed') return;
     for (let i = 0; bits; i++, bits >>>= 1) {
       if (!(bits & 1) || i >= this.buffers.length) continue;
       const src = this.ctx.createBufferSource();
@@ -160,7 +156,6 @@ async function startDevourSphere(opts) {
   const canvas = document.getElementById('screen');
   const input = new InputState();
   const sound = new SoundPlayer();
-  setupSoundToggle(sound);
   // Loaded alongside the module; a missing pack only means silence
   sound.load(opts.se || 'se.bin').catch((e) => console.warn(`sound: ${e.message}`));
 
@@ -203,6 +198,20 @@ async function startDevourSphere(opts) {
     let highScore = 0;
     try { highScore = parseInt(localStorage.getItem(HS_KEY) || '0', 10) >>> 0; } catch (e) { /* ignore */ }
     ex.ds_set_high_score(highScore);
+    // The mute: restored from localStorage, kept there when the game
+    // toggles it (DOWN on the title / pause screen) or the button does
+    let muted = false;
+    try { muted = localStorage.getItem(SOUND_KEY) === '0'; } catch (e) { /* ignore */ }
+    ex.ds_set_muted(muted ? 1 : 0);
+    const soundBtn = setupSoundToggle(() => ex.ds_get_muted() !== 0,
+                                      (m) => ex.ds_set_muted(m ? 1 : 0));
+    function keepMute() {
+      const now = ex.ds_get_muted() !== 0;
+      if (now === muted) return;
+      muted = now;
+      try { localStorage.setItem(SOUND_KEY, muted ? '0' : '1'); } catch (e) { /* ignore */ }
+      if (soundBtn) soundBtn.refresh();
+    }
     function updateHighScore() {
       const score = ex.ds_get_score() >>> 0;
       if (score > highScore) {
@@ -273,6 +282,7 @@ async function startDevourSphere(opts) {
       }
       if (now - fpsTime >= 1000) {
         updateHighScore();
+        keepMute();
         if (fpsEl) fpsEl.textContent = `${(frames * 1000 / (now - fpsTime)).toFixed(0)} fps`;
         frames = 0;
         fpsTime = now;
@@ -312,6 +322,7 @@ const KEY_MAP = {
   ArrowDown: BTN_DOWN, KeyS: BTN_DOWN,
   Space: BTN_A, KeyI: BTN_A, KeyJ: BTN_A, KeyK: BTN_A, KeyL: BTN_A,
   Enter: BTN_A,
+  Escape: BTN_PAUSE, KeyP: BTN_PAUSE,
 };
 
 function setupKeyboard(input) {
@@ -352,6 +363,7 @@ function pollGamepad(input) {
     if (pressed(12)) bits |= BTN_UP;
     if (pressed(13)) bits |= BTN_DOWN;
     if (pressed(0) || pressed(1) || pressed(2) || pressed(3) || pressed(7)) bits |= BTN_A;
+    if (pressed(9)) bits |= BTN_PAUSE;  // Start
   }
   input.pad = bits;
 }
@@ -476,13 +488,16 @@ function setupButtons() {
   if (tt) tt.addEventListener('click', () => document.body.classList.toggle('touch'));
 }
 
-function setupSoundToggle(sound) {
+// The toolbar's sound button: reads and writes the game's mute through the
+// two callbacks; refresh() relabels it when the game toggled the mute itself
+function setupSoundToggle(isMuted, setMuted) {
   const btn = document.getElementById('soundtoggle');
-  if (!btn) return;
-  const show = () => { btn.textContent = sound.enabled ? 'サウンド ON' : 'サウンド OFF'; };
-  show();
+  if (!btn) return null;
+  const refresh = () => { btn.textContent = isMuted() ? 'サウンド OFF' : 'サウンド ON'; };
+  refresh();
   btn.addEventListener('click', () => {
-    sound.setEnabled(!sound.enabled);
-    show();
+    setMuted(!isMuted());
+    refresh();
   });
+  return { refresh };
 }

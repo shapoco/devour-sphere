@@ -88,6 +88,9 @@ struct ControlHints {
   const char *moveAlt = "ARROWS: MOVE   SPACE: FIRE";
   const char *dash = "UP: DASH   DOWN: BRAKE";
   const char *dashAlt = "UP / DOWN: DASH / BRAKE";
+  // The pause screen (what resumes, and DOWN for the mute)
+  const char *pause = "ESC / P: RESUME    DOWN: SOUND ON / OFF";
+  const char *pauseAlt = "ESC: RESUME   DOWN: SOUND";
 };
 
 // What the HUD needs from the simulation, taken once per frame by
@@ -107,6 +110,8 @@ struct HudState {
   int upgradeLevel[sim::UPGRADE_KINDS] = {};
   sim::GameState state = sim::GameState::TITLE;
   bool debugMode = false;
+  bool paused = false;
+  bool muted = false;
 };
 
 // Font roles of the HUD (the fonts themselves live in hud.cpp)
@@ -220,6 +225,9 @@ class Renderer {
   // catches up on would be lost otherwise. beginFrame() does the same for the
   // tick it is given, and both skip a tick that was already collected.
   void pollEffects(const sim::Game &game);
+  // The HUD's snapshot of the simulation, as of the last beginFrame(). A
+  // platform whose other core ticks the game reads the state from here
+  const HudState &hud() const { return hud_; }
 
   // dt: seconds since the previous frame (camera smoothing and effects)
   void beginFrame(const sim::Game &game, float dt);

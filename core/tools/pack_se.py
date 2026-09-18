@@ -153,7 +153,7 @@ def main():
     if args.pwm is not None:
         if not 1 <= args.pwm <= 65534:
             sys.exit("--pwm: WRAP must be 1..65534")
-        ramp = max(1, round(args.rate * args.ramp / 1000))
+        ramp = max(0, round(args.rate * args.ramp / 1000))  # 0: no ramps
         pcms = [to_pwm(pcm, args.pwm, ramp) for pcm in pcms]
 
     toc = []

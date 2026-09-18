@@ -96,7 +96,8 @@ DS_EXPORT void ds_debug_key(int key) {
   }
 }
 
-// One simulation tick (30 per second) with the button bits of sim::Button
+// One simulation tick with the button bits of sim::Button (LEFT=1, RIGHT=2,
+// UP=4, DOWN=8, A=16, PAUSE=32)
 DS_EXPORT void ds_tick(uint32_t buttons) {
   game.tick((uint8_t)buttons);
   // This front end renders after every tick, so ds_render() would pick the
@@ -118,6 +119,11 @@ DS_EXPORT int ds_get_state() { return (int)game.state(); }
 // (cleared every tick: read it right after ds_tick()). The waveforms and
 // the playback are the platform's (play.js, docs/play/se.bin)
 DS_EXPORT uint32_t ds_get_sounds() { return game.sounds(); }
+// The mute is a setting of the game (DOWN on the title or the pause screen
+// toggles it too); the platform keeps it across sessions
+DS_EXPORT void ds_set_muted(int on) { game.setMuted(on != 0); }
+DS_EXPORT int ds_get_muted() { return game.muted() ? 1 : 0; }
+DS_EXPORT int ds_get_paused() { return game.paused() ? 1 : 0; }
 DS_EXPORT uint32_t ds_get_score() { return game.score(); }
 // The high score is stored by the platform (browser: localStorage)
 DS_EXPORT void ds_set_high_score(uint32_t v) { game.setHighScore(v); }

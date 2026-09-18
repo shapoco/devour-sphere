@@ -1519,6 +1519,8 @@ void Renderer::updateScoreDisplay(float dt) {
 void Renderer::beginFrame(const sim::Game &game, float dt) {
   frameProfile_.begin();
   game_ = &game;
+  // Paused: the camera, the debris, the dust and the score roll-up stop too
+  if (game.paused()) dt = 0;
   // Everything the HUD reads, taken here so that renderBand() never touches
   // the simulation (see HudState)
   const sim::Entity &p = game.player();
@@ -1540,6 +1542,8 @@ void Renderer::beginFrame(const sim::Game &game, float dt) {
     hud_.upgradeLevel[k] = game.upgradeLevel((sim::UpgradeKind)(k + 1));
   hud_.state = game.state();
   hud_.debugMode = game.debugMode();
+  hud_.paused = game.paused();
+  hud_.muted = game.muted();
   time_ += dt;
   updateScoreDisplay(dt);
   lineCount_ = 0;

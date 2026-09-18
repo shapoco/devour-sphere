@@ -118,7 +118,16 @@ class Game {
   GameState state() const { return state_; }
   uint32_t tickCount() const { return tickCount_; }
   uint32_t events() const { return events_; }
-  uint32_t sounds() const { return sounds_; }  // SoundKind bits, last tick
+  // SoundKind bits of the last tick; nothing while muted
+  uint32_t sounds() const { return muted_ ? 0 : sounds_; }
+  // Paused (Button::PAUSE during PLAYING / LAUNCH / ARRIVE): the ticks do
+  // nothing but read the pause menu (PAUSE resumes, DOWN toggles the mute),
+  // so the game goes on exactly as if it had not been paused
+  bool paused() const { return paused_; }
+  // Mute: DOWN on the title or the pause screen, or the platform's own
+  // control. A setting, so it survives reset()
+  bool muted() const { return muted_; }
+  void setMuted(bool m) { muted_ = m; }
   int sphereLevel() const { return sphereLevel_; }
   int spheresCleared() const { return spheresCleared_; }
   int selectedWeapon() const { return selectedWeapon_; }
@@ -210,6 +219,9 @@ class Game {
   uint32_t sounds_ = 0;
   uint8_t soundGap_[SOUND_KINDS] = {};  // ticks until the kind may play again
   void pushSound(SoundKind k);
+  bool paused_ = false;
+  bool muted_ = false;
+  void toggleMute();
   int stateTimer_ = 0;
   int sphereLevel_ = 1;
   int spheresCleared_ = 0;

@@ -206,6 +206,10 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
         std::snprintf(alt, sizeof(alt), "HI %u", (unsigned)hud.highScore);
         drawCenteredFit(g, oy + uiY(236), buf, alt, HUD_DIM);
       }
+      if (hud.muted) {
+        drawCenteredFit(g, oy + uiY(252), "SOUND OFF", nullptr,
+                        g2::makeColor(255, 120, 120));
+      }
       int lineH = g.lineAdvance() + ui(6, 2);
       drawCenteredFit(g, oy + h_ - margin - 2 * lineH, hints_.move,
                       hints_.moveAlt, HUD_DIM);
@@ -410,6 +414,19 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
         drawCenteredFit(g, oy + uiY(240),
                         "devour the fragments, become the largest",
                         "devour the fragments", HUD_DIM);
+      }
+      if (hud.paused) {
+        // Over whatever the state shows: the scene stands still behind it
+        setHudFont(g, HudFont::LARGE);
+        drawCenteredFit(g, oy + uiY(100), "PAUSED", nullptr, HUD_TEXT);
+        setHudFont(g, HudFont::SMALL);
+        if (hud.muted) {
+          drawCenteredFit(g, oy + uiY(135), "SOUND OFF", nullptr,
+                          g2::makeColor(255, 120, 120));
+        }
+        int lineH = g.lineAdvance() + ui(6, 2);
+        drawCenteredFit(g, oy + h_ - margin - lineH, hints_.pause,
+                        hints_.pauseAlt, HUD_DIM);
       }
       break;
     }

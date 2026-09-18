@@ -16,13 +16,13 @@
 #include <pico/multicore.h>
 #include <pico/stdlib.h>
 
-#include "audio.hpp"
 #include "devoursphere/devoursphere.hpp"
 #include "devoursphere/profile.hpp"
 #include "display.hpp"
 #include "ds_config.hpp"
 #include "ds_platform.hpp"
 #include "profiler.hpp"
+#include "pwm_audio.hpp"
 
 namespace sim = devoursphere::sim;
 namespace render = devoursphere::render;
@@ -47,9 +47,9 @@ uint64_t g_lastUs = 0;
 uint32_t g_accUs = 0;
 
 // --- Buttons -------------------------------------------------------------
-// Active low with the internal pull-ups, as the SDK wires them. X is not a
-// game button here: it cycles the timing overlay (off, frame rate, whole
-// panel), the job FUNC does on Xiamocon.
+// Active low with the internal pull-ups, as the SDK wires them. A, B and Y
+// fire, X pauses, and UP on the title or the pause screen cycles the timing
+// overlay (off, frame rate, whole panel).
 constexpr uint BTN_PINS[] = {
     PICOSYSTEM_SW_UP_PIN,    PICOSYSTEM_SW_DOWN_PIN, PICOSYSTEM_SW_LEFT_PIN,
     PICOSYSTEM_SW_RIGHT_PIN, PICOSYSTEM_SW_A_PIN,    PICOSYSTEM_SW_B_PIN,
@@ -76,6 +76,7 @@ uint8_t mapButtons(uint32_t gpio) {
   if (down(gpio, PICOSYSTEM_SW_RIGHT_PIN)) out |= sim::Button::RIGHT;
   if (down(gpio, PICOSYSTEM_SW_UP_PIN)) out |= sim::Button::UP;
   if (down(gpio, PICOSYSTEM_SW_DOWN_PIN)) out |= sim::Button::DOWN;
+  if (down(gpio, PICOSYSTEM_SW_X_PIN)) out |= sim::Button::PAUSE;
   if (down(gpio, PICOSYSTEM_SW_A_PIN) || down(gpio, PICOSYSTEM_SW_B_PIN) ||
       down(gpio, PICOSYSTEM_SW_Y_PIN)) {
     out |= sim::Button::A;
@@ -142,6 +143,7 @@ void core1Main() {
       // The events of a tick are cleared by the next one, so each tick has
       // to be polled or the frame would only show the last one's explosions
       g_renderer.pollEffects(g_game);
+      audio::setMuted(g_game.muted());
       audio::request(g_game.sounds());
     }
     g_simTickUs = (uint32_t)time_us_64() - t0;
@@ -325,11 +327,15 @@ void frame() {
   g_accUs += (uint32_t)deltaUs;
 
   // Read once per frame; the simulation derives press and release edges
-  // from the held state
+  // from the held state. UP on the title or the pause screen (the HUD's
+  // snapshot says which: the Game itself may be core1's right now) cycles
+  // the overlay; the simulation ignores UP there.
   const uint32_t gpio = gpio_get_all();
   const uint8_t buttons = mapButtons(gpio);
-  if (down(gpio, PICOSYSTEM_SW_X_PIN) &&
-      !down(g_prevGpio, PICOSYSTEM_SW_X_PIN)) {
+  const render::HudState &hud = g_renderer.hud();
+  if (down(gpio, PICOSYSTEM_SW_UP_PIN) &&
+      !down(g_prevGpio, PICOSYSTEM_SW_UP_PIN) &&
+      (hud.state == sim::GameState::TITLE || hud.paused)) {
     g_prof.toggle();
   }
   g_prevGpio = gpio;
@@ -383,6 +389,7 @@ void frame() {
   for (int i = 0; i < ticks; i++) {
     g_game.tick(buttons);
     g_renderer.pollEffects(g_game);
+    audio::setMuted(g_game.muted());
     audio::request(g_game.sounds());
   }
   g_prof.tickUs = (uint32_t)time_us_64() - tick0;
@@ -423,14 +430,20 @@ int main() {
   initLed();
   initButtons();
   g_display.init();
-  audio::init();  // before core1, which is the one that plays
+  // Before core1, which is the one that plays. The piezo hangs straight off
+  // the pin: one PWM period per sample (a 22 kHz carrier keeps its drive
+  // current low) and the pin rests low between sounds.
+  audio::init(audio::Config{PICOSYSTEM_AUDIO_PIN, audio::Pacing::PWM_WRAP,
+                            false});
 
   g_game.reset(ds::randomSeed());
   g_renderer.setControlHints(render::ControlHints{
-      "MOVE: D-PAD    A/B/Y: FIRE",
-      "D-PAD: MOVE   A: FIRE",
+      "MOVE: D-PAD    A/B/Y: FIRE    X: PAUSE",
+      "D-PAD: MOVE   A: FIRE   X: PAUSE",
       render::ControlHints{}.dash,
       render::ControlHints{}.dashAlt,
+      "X: RESUME    DOWN: SOUND    UP: STATS",
+      "X: RESUME   DOWN: SOUND",
   });
   g_renderer.init(ds::SCREEN_W, ds::SCREEN_H, g_arena, sizeof(g_arena),
                   ds::SPAN_CAPACITY);

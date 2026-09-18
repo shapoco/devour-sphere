@@ -107,6 +107,35 @@ target_sources(${APP_NAME} PRIVATE
     src/band_writer.cpp
     src/ds_platform.cpp
     src/profiler.cpp
+    src/pwm_audio.cpp
+    asm/se_data.S
+)
+
+# --- The sound pack --------------------------------------------------------
+# materials/se/*.wav as PWM levels (core/tools/pack_se.py --pwm; needs ffmpeg
+# and python3), linked into flash by asm/se_data.S. The amplifier sits behind
+# a 7 kHz low-pass, so the PWM runs at 244 kHz (wrap 1023 at 250 MHz: the
+# carrier is 60 dB down by the time it reaches it) and a DMA pacing timer
+# delivers the samples at 22050 Hz. No ramps: the output rests at the middle
+# level and the amplifier is AC coupled. Out of PlatformIO's reach (asm/, not
+# src/): the ESP32S3 build has no sound and compiles pwm_audio.cpp's stub.
+set(SE_PWM_WRAP 1023)
+set(SE_RATE 22050)
+set(SE_SRC_DIR ${DS_ROOT}/materials/se)
+set(SE_PACK_PY ${DS_ROOT}/core/tools/pack_se.py)
+set(SE_PACK ${CMAKE_CURRENT_BINARY_DIR}/se_pwm.bin)
+file(GLOB SE_WAVS ${SE_SRC_DIR}/*.wav)
+add_custom_command(
+    OUTPUT ${SE_PACK}
+    COMMAND python3 ${SE_PACK_PY} --pwm ${SE_PWM_WRAP} --ramp 0 -r ${SE_RATE}
+            -o ${SE_PACK} ${SE_SRC_DIR}
+    DEPENDS ${SE_PACK_PY} ${SE_WAVS}
+    COMMENT "Packing the sound effects (PWM wrap ${SE_PWM_WRAP})"
+    VERBATIM
+)
+set_source_files_properties(asm/se_data.S PROPERTIES
+    COMPILE_DEFINITIONS "SE_PACK_PATH=\"${SE_PACK}\""
+    OBJECT_DEPENDS ${SE_PACK}
 )
 target_include_directories(${APP_NAME} PRIVATE include)
 target_compile_features(${APP_NAME} PRIVATE cxx_std_17)
@@ -119,6 +148,8 @@ target_link_libraries(${APP_NAME} PRIVATE
     xmc_lib
     xmc_pfm
     pico_rand                 # get_rand_32(), to seed the game
+    hardware_pwm              # the speaker (src/pwm_audio.cpp)
+    hardware_dma
     devoursphere::render      # pulls in devoursphere::sim and shapoco::gfx
 )
 
