@@ -15,7 +15,7 @@
 #include "ds_config.hpp"
 #include "ds_platform.hpp"
 #include "profiler.hpp"
-#include "pwm_audio.hpp"
+#include "se_player.hpp"
 #include "xmc/input.hpp"
 #include "xmc/ioex.hpp"
 #include "xmc/multicore.hpp"
@@ -129,13 +129,7 @@ uint8_t mapButtons(xmc::input::Button b) {
 // --- The amplifier's mute ----------------------------------------------------
 // The SDK's own audio is off (speakerEnabled = false), so its mute pin on the
 // IO expander (an I2C write: core0 only) is ours. Muted through the boot,
-// unmuted a moment later unless the game is muted; the ESP32S3 build has no
-// sound, so there it stays muted.
-#if defined(ESP32)
-constexpr bool HAS_AUDIO = false;
-#else
-constexpr bool HAS_AUDIO = true;
-#endif
+// unmuted a moment later unless the game is muted.
 constexpr uint32_t AMP_UNMUTE_DELAY_US = 300 * 1000;
 bool g_ampMuted = true;
 uint64_t g_bootUs = 0;
@@ -148,7 +142,7 @@ void initAmp() {
 }
 
 void serviceAmp(bool gameMuted, uint64_t nowUs) {
-  bool want = !HAS_AUDIO || gameMuted || nowUs - g_bootUs < AMP_UNMUTE_DELAY_US;
+  bool want = gameMuted || nowUs - g_bootUs < AMP_UNMUTE_DELAY_US;
   if (want == g_ampMuted) return;
   g_ampMuted = want;
   xmc::speaker::setMuted(want);
@@ -219,10 +213,11 @@ void xmcAppSetup(void) {
       "X: RESUME   DOWN: SOUND",
   });
   initAmp();
-  // Before core1, which is the one that plays. The speaker sits behind a
-  // buffer, a low-pass and an amplifier: the PWM runs fast (the pack's wrap
-  // at the system clock), a DMA timer paces the samples, and the output
-  // rests at the middle level (the amplifier is AC coupled).
+  // Before core1, which is the one that plays. RP2350: the speaker sits
+  // behind a buffer, a low-pass and an amplifier, so the PWM runs fast (the
+  // pack's wrap at the system clock), a DMA timer paces the samples, and the
+  // output rests at the middle level (the amplifier is AC coupled). ESP32S3:
+  // I2S PDM on the same pin; the other two fields are not used.
   audio::init(audio::Config{XMC_PIN_AUDIO_OUT, audio::Pacing::DMA_TIMER, true});
   g_renderer.init(ds::SCREEN_W, ds::SCREEN_H, g_arena, sizeof(g_arena),
                   ds::SPAN_CAPACITY);

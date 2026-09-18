@@ -41,7 +41,7 @@ impl/picosystem/
     se_data.S          効果音のパック (ビルド時に生成される build/se_pwm.bin) を .incbin でフラッシュに置く
 ```
 
-効果音の再生 (`pwm_audio.hpp` / `pwm_audio.cpp`) は計測オーバーレイと同じく Xiamocon 版のものを
+効果音の再生 (`se_player.hpp` / `se_player.cpp`) は計測オーバーレイと同じく Xiamocon 版のものを
 そのディレクトリから直接コンパイルして共有する (ボードごとの違いは `audio::Config` で渡す)。
 
 計測オーバーレイ (`profiler.hpp` / `profiler.cpp`) は Xiamocon 版のものを

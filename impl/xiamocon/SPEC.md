@@ -15,8 +15,8 @@ SDK からは表示転送・DMA・入力・電源管理といった足回りだ�
   (core/SPEC.md の HUD 参照)、正方形でも破綻しない。
 - フレームバッファを 1 枚も持たず、40 行の帯を 2 枚交互に使って描画・転送する。
 - シミュレーションは 60Hz 固定、描画は追いつける範囲で行う (可変フレームレート)。
-- 効果音は RP2350 のみ。SDK のオーディオは使わず、フラッシュの PCM を DMA で PWM に流す (後述)。
-  ESP32S3 は無音 (アンプはミュートしたまま)。
+- 効果音は両ターゲット。SDK のオーディオは使わず、RP2350 はフラッシュの PCM を DMA で PWM に流し、
+  ESP32S3 は I2S の PDM にタスクが PCM を流し込む (後述)。
 - ハイスコアのフラッシュ保存は無し (電源を切るまでは保持する)。
 - ターゲットは XIAO RP2350 と XIAO ESP32S3 の両方。ソースは共通で、違いは下記の数点のみ。
 
@@ -33,20 +33,29 @@ impl/xiamocon/
       ds_platform.hpp  2 つのターゲットで異なる部分の宣言
       band_writer.hpp
       profiler.hpp
-      pwm_audio.hpp    効果音 (init / request / setMuted。PicoSystem 版と共有)
+      se_player.hpp    効果音 (init / request / setMuted。PicoSystem 版と共有)
     asm/
-      se_data.S        効果音のパック (ビルド時に生成される .cmake/se_pwm.bin) を .incbin でフラッシュに置く。
+      se_data.S        RP2350: 効果音のパック (ビルド時に生成される .cmake/se_pwm.bin) を .incbin でフラッシュに置く。
                        src/ の外にあるのは PlatformIO (ESP32S3) に拾わせないため
+    embed_se.py        ESP32S3: docs/play/se.bin を se/se.bin に写す (PlatformIO の pre スクリプト。
+                       se/ は git 管理外)
     src/
       app.cpp          xmcApp* エントリ、静的領域、フレームループ、入力変換
       band_writer.cpp  帯の ping-pong と DMA 転送
       ds_platform.cpp  乱数シードとスタック計測 (ターゲットごとの実装)
       profiler.cpp     計測とオーバーレイ (PicoSystem 版 impl/picosystem/ と共有。
                        そのため ds_config.hpp / ds_platform.hpp を <...> でインクルードする)
-      pwm_audio.cpp    PWM + DMA の 1 音再生と優先度 (PicoSystem 版と共有。ESP32S3 では空実装)
+      se_player.cpp    効果音の 1 音再生と優先度 (PicoSystem 版と共有)。選択ロジックは共通で、
+                       バックエンドが RP2 (PWM + DMA) と ESP32S3 (I2S PDM + タスク) で分かれる
 ```
 
 RP2350 のビルドには効果音のパック生成のため **ffmpeg と python3 が要る**。
+ESP32S3 は Web 版のパック docs/play/se.bin (コミット済み) を埋め込むので何も要らないが、
+素材を変えたら impl/wasm/ で `make` して se.bin を作り直しておくこと。
+
+platformio.ini の core と ShapoGFX は `symlink://` で参照する。素のローカルパスだと PlatformIO が
+取り込み時に .pio/libdeps へコピーしたきり更新しないので、core を変えてもビルドが古い core を
+使い続ける (実際にそうなっていた)。
 
 ディレクトリ名が `devoursphere` でなければならないのは、`xmc run` が
 `.cmake/<カレントディレクトリ名>.uf2` を探して書き込むため。
@@ -585,11 +594,15 @@ PSRAM 上の tick は 10.05ms で、RP2350 (SRAM, 250MHz) の 7.4ms に対して
 - FUNC は起動時のみ SDK が特別扱いする (押しながら起動すると内蔵の診断アプリになる)。
   実行中は自由に使える。
 
-## 効果音 (RP2350)
+## 効果音
 
 core/SPEC.md「効果音」のとおり、sim は tick ごとに「鳴らす音」のビットを出すだけで、波形と再生は
-ここが持つ。再生器 `pwm_audio.cpp` は PicoSystem 版と共通で (impl/picosystem/SPEC.md「効果音」に
-仕組みと優先度表)、ボードによる違いは `audio::Config` で渡す。
+ここが持つ。再生器 `se_player.cpp` は PicoSystem 版と共通で (impl/picosystem/SPEC.md「効果音」に
+仕組みと優先度表)、「どの要求が声を取るか」(優先度、400 ms の保持、同優先度の鳴り直し) は
+チップによらず同じ。サンプルをスピーカーへ出す部分だけがチップごとのバックエンドで、
+ボードによる違いは `audio::Config` で渡す。
+
+### RP2350
 
 - **SDK のオーディオは使わない。** SDK は PIO の PDM (3 MHz 超) を CPU のデルタシグマ変調で埋める方式で、
   `speakerEnabled = false` にしてあるので PIO も DMA も IRQ も SDK 側は使っていない。
@@ -605,7 +618,28 @@ core/SPEC.md「効果音」のとおり、sim は tick ごとに「鳴らす音�
   ハイパス・ピーク揃え・ゲインも使わず素材のまま (音量はボリュームつまみ)。
 - パックは CMake のカスタムコマンドが `.cmake/se_pwm.bin` に生成し、asm/se_data.S が `.rodata` に置く
   (約 600 KB。フラッシュ 929 KB / 4 MB)。RAM は数十バイト。
-- 実機での音質 (PWM の残留、GP1 のスイッチングの回り込み) は未確認 (2026-09-18 時点)。
+- 実機 (2026-09-18): 期待どおりの動作と音質 (ユーザーの確認)。
+
+### ESP32S3
+
+- **DMA はフラッシュを読めない** (フラッシュはキャッシュ経由の XIP のみ、DMA バッファは内部 DRAM 必須)
+  ので、RP2 のような「CPU ゼロ」は組めない。代わりに ESP-IDF の **I2S PDM TX モード**
+  (`driver/i2s_pdm.h`。SDK の ESP32S3 用 StreamingDac と同じ周辺機器。デルタシグマはハードウェア) を
+  直接使い、**core1 に固定した小さなタスク** (優先度 11、sim タスクの 10 より上、スタック 3 KB) が
+  128 サンプルずつ `i2s_channel_write()` をブロッキングで回す。再生中の音はフラッシュの
+  パックから memcpy、無音なら 0。CPU 時間は 44 KB/s のコピーで 1 % 未満。
+- **パックは Web 版の se.bin** (s16、22.05 kHz) をそのまま使う。I2S に渡すのは s16 PCM なので変換不要で、
+  無音が 0 なのでランプも要らない。embed_se.py が docs/play/se.bin を se/se.bin に写し、
+  `board_build.embed_files` が `_binary_se_se_bin_start` として埋め込む。
+- **声はカーソル 1 語** (音の番号 << 24 | 位置。0xFFFFFFFF で無音)。`request()` (sim タスク) が
+  差し替え、再生タスクが compare-and-swap で進める。差し替えと衝突したチャンクは古い音の最後の
+  1 チャンクとして出て、新しい音は次のチャンクから始まる。
+- **遅延**: DMA リングは 4 × 128 サンプル (23 ms) で、書き込みはリングが埋まるとブロックするので、
+  要求から発音まで 25〜30 ms。RP2350 の実質 0 ms より遅いが SFX には足りる想定。
+  `chan.auto_clear = true` でタスクが遅れても繰り返しではなく無音になる。
+- RAM: I2S の DMA リング 1 KB + チャンク 256 B + タスクスタック 3 KB。実測 RAM 133,340 / 327,680 (40.7 %)。
+  フラッシュは 629 KB → 1,225 KB (パックの 594 KB)。
+- 実機未確認 (2026-09-18 時点)。
 
 ## デバッグ表示
 

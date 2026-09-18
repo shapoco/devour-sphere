@@ -22,7 +22,7 @@
 #include "ds_config.hpp"
 #include "ds_platform.hpp"
 #include "profiler.hpp"
-#include "pwm_audio.hpp"
+#include "se_player.hpp"
 
 namespace sim = devoursphere::sim;
 namespace render = devoursphere::render;

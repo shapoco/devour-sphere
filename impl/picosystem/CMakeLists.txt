@@ -134,8 +134,8 @@ add_executable(${APP_NAME}
     src/platform.cpp
     src/se_data.S
     # The piezo player is the Xiamocon one (both are RP2 chips; see
-    # pwm_audio.hpp for what differs per board)
-    ${XMC_APP}/src/pwm_audio.cpp
+    # se_player.hpp for what differs per board)
+    ${XMC_APP}/src/se_player.cpp
     # The timing overlay is the Xiamocon one, compiled from its own tree: it
     # only needs ds_config.hpp / ds_platform.hpp, which this front end
     # provides under the same names.
@@ -167,7 +167,7 @@ target_link_libraries(${APP_NAME} PRIVATE
     pico_rand                 # get_rand_32(), to seed the game
     hardware_spi
     hardware_dma
-    hardware_pwm              # the piezo (pwm_audio.cpp)
+    hardware_pwm              # the piezo (se_player.cpp)
     hardware_vreg             # the 250 MHz overclock needs 1.20 V
     devoursphere::render      # pulls in devoursphere::sim and shapoco::gfx
 )
