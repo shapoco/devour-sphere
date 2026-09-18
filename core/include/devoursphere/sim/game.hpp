@@ -110,6 +110,13 @@ class Game {
   // away from the sphere): the renderer pitches the player along the
   // flight path from it. Zero on the surface.
   int32_t playerClimb() const { return playerClimb_; }
+  // Whether the arrival will switch the sphere (and rescale the player)
+  // at ARRIVE_SWITCH_TICKS; false on the first sphere of a game
+  bool switchPending() const { return switchPending_; }
+  // The player's size once rescaled for the next sphere (what
+  // rescalePlayerForNextSphere() will make it; the size itself when no
+  // rescale is due). The renderer matches the camera distance to it.
+  uint32_t playerSizeAfterSwitch() const;
   // The high score lives outside the simulation (platform storage); it is
   // only kept here for display
   void setHighScore(uint32_t v) { highScore_ = v; }

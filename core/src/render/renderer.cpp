@@ -655,7 +655,24 @@ void Renderer::updateCamera(float dt) {
       low = 1 - 0.55f * smooth01((g.stateTimer() - t0) / (t1 - t0)) -
             0.45f * smooth01((g.stateTimer() - t1) / (sim::ARRIVE_TICKS - t1));
     }
-    wantDist *= 1.0f + 0.25f * low;
+    // A little farther than in play. Before the sphere switch rescales
+    // the player, farther still: the distance at which the body looks as
+    // big on screen as the rescaled body will at its own flight distance
+    // (the constant 8 FU makes a small body smaller on screen than a large
+    // one), so that the switch does not change the size of the body on
+    // screen. The pull-back happens during the orbit of the launch.
+    float flightDist = wantDist * 1.25f;
+    if (st == sim::GameState::LAUNCH || g.switchPending()) {
+      const uint32_t sizeAfter = g.playerSizeAfterSwitch();
+      if (sizeAfter < p.size) {
+        float bodyRAfter = sim::fragmentHalfSize(sim::log2Floor(sizeAfter)) /
+                           (float)FU * (2.0f + 0.2f * p.fragmentCount);
+        float distAfter = 3.5f * bodyRAfter + 8.0f;
+        if (distAfter < 11.0f) distAfter = 11.0f;
+        flightDist = bodyR * (distAfter * 1.25f / bodyRAfter);
+      }
+    }
+    wantDist += (flightDist - wantDist) * low;
     wantHeight = wantDist * (1.0f - 0.65f * low);
     wantAhead *= 1 - low;
     wantDown *= 1 - low;

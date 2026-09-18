@@ -299,6 +299,18 @@ void Game::placeRandom(Frame &f, int32_t &r, uint32_t size,
   r = SPHERE_RADIUS + altitudeForSize(size);
 }
 
+uint32_t Game::playerSizeAfterSwitch() const {
+  const Entity &p = entities[playerIndex_];
+  int shift = log2Floor(p.size) - PLAYER_START_SIZE_LOG2 - 1;
+  if (shift <= 0) return p.size;
+  uint32_t total = 0;
+  for (int i = 0; i < p.fragmentCount; i++) {
+    int e = (int)p.fragments[i].sizeLog2 - shift;
+    total += 1u << (e < 0 ? 0 : e);
+  }
+  return total;
+}
+
 void Game::rescalePlayerForNextSphere() {
   Entity &p = entities[playerIndex_];
   int k = log2Floor(p.size);
