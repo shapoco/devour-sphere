@@ -186,7 +186,8 @@ int main(int argc, char **argv) {
   static const char *const SOUND_NAMES[sim::SOUND_KINDS] = {
       "shot_vulcan", "shot_laser",   "shot_missile",       "hit_enemy",
       "hit_player",  "enemy_killed_small", "enemy_killed_big", "player_killed",
-      "get_fragment", "get_upgrade", "menu_select",        "menu_start"};
+      "get_fragment", "get_upgrade", "menu_select",        "menu_start",
+      "launch",       "arrive"};
   int soundCounts[sim::SOUND_KINDS] = {};
   int ticks = 0;
   auto t0 = std::chrono::steady_clock::now();

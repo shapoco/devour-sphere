@@ -54,6 +54,8 @@ enum class SoundKind : uint8_t {
   GET_UPGRADE,         // the player took an upgrade
   MENU_SELECT,         // the menu cursor moved
   MENU_START,          // a menu choice was confirmed
+  LAUNCH,              // the LAUNCH cinematic began (leaving the sphere)
+  ARRIVE,              // the ARRIVE cinematic began (flying in)
   COUNT
 };
 static_assert((int)SoundKind::COUNT == SOUND_KINDS, "SOUND_MIN_GAP_TICKS");

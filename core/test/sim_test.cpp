@@ -94,6 +94,8 @@ static void startGame(Game &g) {
   g.tick(0);
   g.tick(Button::A);  // -> the arrival flight to the first sphere
   CHECK(g.state() == GameState::ARRIVE);
+  CHECK(g.sounds() == ((1u << (int)SoundKind::MENU_START) |
+                       (1u << (int)SoundKind::ARRIVE)));
   CHECK(g.sphereLevel() == 1);
 }
 
@@ -307,11 +309,14 @@ static void testGameplay() {
     qp.fragments[0].sizeLog2 = 18, qp.size = 1u << 18;
   qp.hpMax = HP_PER_SIZE * (int32_t)qp.size;
   qp.hp = qp.hpMax;
-  for (int i = 0; i < 4 * TICK_RATE + 5; i++) q.tick(0);
+  uint32_t heard = 0;
+  for (int i = 0; i < 4 * TICK_RATE + 5; i++) q.tick(0), heard |= q.sounds();
   CHECK(q.state() == GameState::LAUNCH);
+  CHECK(heard & (1u << (int)SoundKind::LAUNCH));  // once, when it began
   const int32_t rLaunch = q.player().r;
   while (q.state() == GameState::LAUNCH) q.tick(0);
   CHECK(q.state() == GameState::ARRIVE);
+  CHECK(q.sounds() == (1u << (int)SoundKind::ARRIVE));
   CHECK(q.player().r > rLaunch + LAUNCH_ALTITUDE / 2);  // climbed away
   CHECK(q.sphereLevel() == 1);  // the sphere is switched midway
   while (q.state() == GameState::ARRIVE && q.sphereLevel() == 1) q.tick(0);

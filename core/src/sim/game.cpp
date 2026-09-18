@@ -402,11 +402,13 @@ void Game::checkTransitions() {
         }
         addScore((int64_t)SCORE_CLEAR_BASE * speedQ8);
         setState(GameState::LAUNCH);
+        pushSound(SoundKind::LAUNCH);
       }
       break;
     case GameState::LAUNCH:
       if (stateTimer_ >= LAUNCH_TICKS) {
         setState(GameState::ARRIVE);
+        pushSound(SoundKind::ARRIVE);
         switchPending_ = true;
       }
       break;
@@ -464,6 +466,7 @@ void Game::tick(uint8_t buttons) {
         scoreQ8_ = 0;
         resetUpgrades();
         setState(GameState::ARRIVE);
+        pushSound(SoundKind::ARRIVE);
         startSphere(false);  // the state is set first: the chosen weapon
         beginArrival();
       }

@@ -40,7 +40,7 @@ const RGBA_LUT = new Uint32Array(65536);
 // first key or pointer event, and requests before that are dropped.
 const SE_NAMES = ['shot_vulcan', 'shot_laser', 'shot_missile', 'hit_enemy',
   'hit_player', 'enemy_killed_small', 'enemy_killed_big', 'player_killed',
-  'get_fragment', 'get_upgrade', 'menu_select', 'menu_start'];
+  'get_fragment', 'get_upgrade', 'menu_select', 'menu_start', 'launch', 'arrive'];
 // Per-kind gain (the place to balance the material; 1 = as recorded)
 const SE_GAIN = {
   shot_vulcan: 1, shot_laser: 1, shot_missile: 1,
@@ -48,6 +48,7 @@ const SE_GAIN = {
   enemy_killed_small: 1, enemy_killed_big: 1, player_killed: 1,
   get_fragment: 1, get_upgrade: 1,
   menu_select: 1, menu_start: 1,
+  launch: 1, arrive: 1,
 };
 const SOUND_KEY = 'devoursphere.sound';
 

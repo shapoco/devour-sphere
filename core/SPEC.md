@@ -255,8 +255,10 @@ library.json              PlatformIO から `core/` をライブラリとして�
 | `GET_UPGRADE` | アップグレードを取った |
 | `MENU_SELECT` | 武器選択のカーソルが動いた |
 | `MENU_START` | タイトルで A、武器選択で A |
+| `LAUNCH` | LAUNCH 演出の開始 (スフィアクリア) |
+| `ARRIVE` | ARRIVE 演出の開始 (武器選択の決定後の最初の飛来と、LAUNCH の後) |
 
-DEAD 画面からの再開、体内フラグメントの合成、スフィアクリアと LAUNCH / ARRIVE には今は音がない。
+DEAD 画面からの再開と体内フラグメントの合成には今は音がない。
 
 ### 位置と姿勢
 

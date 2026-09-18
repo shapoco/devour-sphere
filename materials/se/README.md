@@ -29,5 +29,7 @@ impl/wasm/pack_se.py がこれらを 1 本のパック (docs/play/se.bin) に変
 | get_upgrade.wav | プレイヤーがアップグレードを取った |
 | menu_select.wav | メニューで選択項目を切り替えた |
 | menu_start.wav | メニューで決定した |
+| launch.wav | LAUNCH 演出の開始 |
+| arrive.wav | ARRIVE 演出の開始 |
 
 shot_missile と shot_vulcan、get_upgrade と menu_start は今は同じ素材 (後で差し替えるかもしれない)。
