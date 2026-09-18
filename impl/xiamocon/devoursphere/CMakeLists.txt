@@ -112,7 +112,7 @@ target_sources(${APP_NAME} PRIVATE
 )
 
 # --- The sound pack --------------------------------------------------------
-# materials/se/*.wav as PWM levels (core/tools/pack_se.py --pwm; needs ffmpeg
+# assets/se/*.wav as PWM levels (core/tools/pack_se.py --pwm; needs ffmpeg
 # and python3), linked into flash by asm/se_data.S. The amplifier sits behind
 # a 7 kHz low-pass, so the PWM runs at 244 kHz (wrap 1023 at 250 MHz: the
 # carrier is 60 dB down by the time it reaches it) and a DMA pacing timer
@@ -124,7 +124,7 @@ target_sources(${APP_NAME} PRIVATE
 # platformio.ini and se_player.cpp).
 set(SE_PWM_WRAP 1023)
 set(SE_RATE 24000)
-set(SE_SRC_DIR ${DS_ROOT}/materials/se)
+set(SE_SRC_DIR ${DS_ROOT}/assets/se)
 set(SE_PACK_PY ${DS_ROOT}/core/tools/pack_se.py)
 set(SE_PACK ${CMAKE_CURRENT_BINARY_DIR}/se_pwm.bin)
 file(GLOB SE_WAVS ${SE_SRC_DIR}/*.wav)

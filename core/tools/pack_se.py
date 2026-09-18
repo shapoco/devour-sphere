@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Pack the sound effects of materials/se/ into one PCM file.
+"""Pack the sound effects of assets/se/ into one PCM file.
 
 Every wav is converted with ffmpeg to mono 16-bit PCM at one sample rate,
 the silence at both ends is trimmed (below -50 dB; 20 ms of the tail is
 kept), and the results are concatenated behind a small table of contents.
 Keeping the sounds in one opaque file is also the "hide the source files
-where you can" that the license of the material asks for (materials/se/).
+where you can" that the license of the material asks for (assets/se/).
 
 Two flavours:
 

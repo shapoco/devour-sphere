@@ -92,7 +92,7 @@ target_compile_definitions(shapogfx PRIVATE
     SHAPOGFX3D_HOT_INSTANTIATE=1)
 
 # --- The sound pack --------------------------------------------------------
-# materials/se/*.wav as PWM levels (core/tools/pack_se.py --pwm; needs ffmpeg
+# assets/se/*.wav as PWM levels (core/tools/pack_se.py --pwm; needs ffmpeg
 # and python3), linked into flash by src/se_data.S. The PWM period is one
 # sample, so the wrap follows the system clock: 250 MHz / 24000 Hz - 1.
 # 24 kHz is the one rate every build uses (the ESP32S3's PDM hardware wants
@@ -111,7 +111,7 @@ math(EXPR SE_PWM_WRAP "${DS_SYS_CLOCK_HZ} / ${SE_RATE} - 1")
 set(SE_HIGHPASS 400 CACHE STRING "Sound pack: high-pass (Hz), 0 for none")
 set(SE_PEAK_DB -1 CACHE STRING "Sound pack: peak of every sound (dBFS)")
 set(SE_GAIN 2.0 CACHE STRING "Sound pack: gain on top of the peak (limited)")
-set(SE_SRC_DIR ${DS_ROOT}/materials/se)
+set(SE_SRC_DIR ${DS_ROOT}/assets/se)
 set(SE_PACK_PY ${DS_ROOT}/core/tools/pack_se.py)
 set(SE_PACK ${CMAKE_CURRENT_BINARY_DIR}/se_pwm.bin)
 file(GLOB SE_WAVS ${SE_SRC_DIR}/*.wav)

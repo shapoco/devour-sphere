@@ -57,7 +57,7 @@ cmake --build build -j         # build/devoursphere.uf2 (効果音のパック�
 
 MIT
 
-The sound effects (materials/se/, packed into docs/play/se.bin) are from
+The sound effects (assets/se/, packed into docs/play/se.bin) are from
 [効果音ラボ / Sound Effect Lab](https://soundeffect-lab.info/) and are not covered by
 the MIT license: they may be used as part of this game but not redistributed as
-material. See materials/se/README.md.
+material. See assets/se/README.md.

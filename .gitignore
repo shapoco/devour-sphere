@@ -22,4 +22,7 @@ __pycache__/
 releases/
 
 # Others
-tmp.*impl/xiamocon/devoursphere/se/
+tmp.*
+tmp.*/
+
+impl/xiamocon/devoursphere/se/

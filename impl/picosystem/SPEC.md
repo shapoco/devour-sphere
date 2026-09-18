@@ -61,7 +61,7 @@ cmake --build build -j                  # build/devoursphere.uf2
 `build.sh` は上の 2 行をまとめたもの (PICO_SDK_PATH は環境変数か既存の build/ のキャッシュに任せる)。
 
 - 効果音のパック (build/se_pwm.bin) は CMake がビルド時に core/tools/pack_se.py で
-  materials/se/*.wav から作るので、**ffmpeg と python3 が要る**。`make_release.sh` も同様。
+  assets/se/*.wav から作るので、**ffmpeg と python3 が要る**。`make_release.sh` も同様。
 - pico-sdk 2.x は picotool を要求する。手元にビルド済みのものがあれば
   `-Dpicotool_DIR=<picotoolConfig.cmake のあるディレクトリ>` で指す
   (無ければ SDK が GitHub から取得してビルドする)。
@@ -136,7 +136,7 @@ core/SPEC.md「効果音」のとおり、sim は tick ごとに「鳴らす音�
 PWM スライス 5 チャネル B) を次の構成で鳴らす。
 
 - **波形はフラッシュ、再生は DMA、CPU は発音の瞬間だけ。** core/tools/pack_se.py の `--pwm` モードが
-  materials/se/*.wav をモノラル 24kHz (全ビルド共通のレート、impl/xiamocon/SPEC.md) の PWM 値
+  assets/se/*.wav をモノラル 24kHz (全ビルド共通のレート、impl/xiamocon/SPEC.md) の PWM 値
   (0〜wrap+1、無音は中央値) に変換し、
   各音の先頭に 0 → 中央、末尾に中央 → 0 の 2ms のランプを付けて 1 本 (build/se_pwm.bin、約 600KB) にする。
   src/se_data.S が `.incbin` で `.rodata` に置く。CMake のカスタムコマンドが生成するので

@@ -7,8 +7,8 @@ REPO_ROOT := ../..
 GFX_ROOT := $(REPO_ROOT)/submodule/shapo-gfx
 OUT_DIR := $(REPO_ROOT)/docs/play
 OUT := $(OUT_DIR)/devoursphere.wasm
-# Sound effects: materials/se/*.wav packed into one PCM file (needs ffmpeg)
-SE_DIR := $(REPO_ROOT)/materials/se
+# Sound effects: assets/se/*.wav packed into one PCM file (needs ffmpeg)
+SE_DIR := $(REPO_ROOT)/assets/se
 SE_PACK := $(REPO_ROOT)/core/tools/pack_se.py
 SE_OUT := $(OUT_DIR)/se.bin
 

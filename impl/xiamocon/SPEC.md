@@ -28,6 +28,10 @@ impl/xiamocon/
   devoursphere/        ファームウェアのプロジェクト (ディレクトリ名 = 生成物の名前)
     CMakeLists.txt     RP2350 用 (pico-sdk。リポジトリのホストビルドとは別のトップレベル)
     platformio.ini     ESP32S3 用 (PlatformIO + Arduino)
+    build_esp32s3.sh   setup.shrc を読んで `xmc build -p esp32s3_pio_arduino` (make_release.sh が呼ぶ)
+    build_rp2350.sh    同 rp2350_pico_sdk
+    run_esp32s3.sh     同 `xmc run` (ビルドして書き込む)
+    run_rp2350.sh
     include/
       ds_config.hpp    帯の高さ、アリーナサイズ、tick 周期などの定数
       ds_platform.hpp  2 つのターゲットで異なる部分の宣言
@@ -37,8 +41,8 @@ impl/xiamocon/
     asm/
       se_data.S        RP2350: 効果音のパック (ビルド時に生成される .cmake/se_pwm.bin) を .incbin でフラッシュに置く。
                        src/ の外にあるのは PlatformIO (ESP32S3) に拾わせないため
-    embed_se.py        ESP32S3: docs/play/se.bin を se/se.bin に写す (PlatformIO の pre スクリプト。
-                       se/ は git 管理外)
+    embed_se.py        ESP32S3: docs/play/se.bin を se/se.bin に写す (PlatformIO の pre スクリプト)
+    se/                その写し先。ビルドのたびに作られる生成物で git 管理外 (ルートの .gitignore)
     src/
       app.cpp          xmcApp* エントリ、静的領域、フレームループ、入力変換
       band_writer.cpp  帯の ping-pong と DMA 転送

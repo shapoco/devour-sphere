@@ -24,8 +24,8 @@ impl/wasm/
   main.cpp         C API (WASM エクスポート) とネイティブ確認用の main()
   Makefile         Emscripten ビルド (docs/play/devoursphere.wasm と se.bin を生成)
   CMakeLists.txt   ネイティブビルド (1 フレームを PPM に書き出す)
-core/tools/pack_se.py  materials/se/*.wav を docs/play/se.bin に詰める (ffmpeg が必要。PicoSystem 版と共用)
-materials/se/      効果音の素材 (wav)。出典は materials/se/README.md
+core/tools/pack_se.py  assets/se/*.wav を docs/play/se.bin に詰める (ffmpeg が必要。PicoSystem 版と共用)
+assets/se/      効果音の素材 (wav)。出典は assets/se/README.md
 docs/
   style.css        サイト共通スタイル
   index.html       トップページ (play/ へのリンク)
@@ -117,7 +117,7 @@ cmake --build build
 core/SPEC.md の「効果音」のとおり、sim は tick ごとに「鳴らす音」のビットを出すだけで、
 波形と再生はこちらが持つ。
 
-- 波形は docs/play/se.bin 1 本にまとめる。core/tools/pack_se.py が materials/se/*.wav を
+- 波形は docs/play/se.bin 1 本にまとめる。core/tools/pack_se.py が assets/se/*.wav を
   ffmpeg でモノラル 24 kHz 16 bit (全プラットフォーム共通のレート。ESP32S3 版がこのファイルを
   そのまま使う) に変換し、両端の無音 (-50 dB 以下、末尾は 20 ms 残す) を
   切って連結する。形式は先頭に "DSSE"、サンプルレート、個数、総サンプル数、
@@ -148,7 +148,7 @@ core/SPEC.md の「効果音」のとおり、sim は tick ごとに「鳴らす
 形式変換や切り詰めなどの改変は許可されており、クレジット表記は任意。
 禁止されているのは素材 (改変したものを含む) を素材として再配布すること。
 「できる限り音源ファイルを隠す措置を」と依頼されているので、公開ページには個々の wav ではなく
-パック 1 本だけを置く。詳細は materials/se/README.md。
+パック 1 本だけを置く。詳細は assets/se/README.md。
 
 URL パラメータ (デバッグ用):
 

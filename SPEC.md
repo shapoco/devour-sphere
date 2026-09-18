@@ -54,7 +54,8 @@ impl/wasm/           WASM 版 (impl/wasm/SPEC.md)
 impl/xiamocon/       Xiamocon 版 (impl/xiamocon/SPEC.md)
 impl/picosystem/     PicoSystem 版 (impl/picosystem/SPEC.md)
 docs/                公開用の静的サイト (docs/play/ がゲーム)
-materials/se/        効果音の素材 (効果音ラボ、materials/se/README.md)
+assets/se/           効果音の素材 (効果音ラボ、assets/se/README.md)
+assets/release/      リリース zip にそのまま入れるファイル (README.txt、upload.sh)
 submodule/shapo-gfx/ ShapoGFX (git submodule)
 launch_web_server.sh docs/ をローカルで配信する
 make_release.sh      リリース用のバイナリと zip を作る
@@ -94,23 +95,29 @@ C/C++ のコードは .clang-format (ShapoGFX と同じ設定) で整形する�
 
 ## リリース
 
-GitHub の releases に置くファイルは `./make_release.sh` が作る (Xiamocon SDK が必要)。
+GitHub の releases に置くファイルは `./make_release.sh` が作る (Xiamocon SDK が必要。
+`XMC_REPO_PATH` に SDK のリポジトリを指しておく)。
 
 ```sh
 ./make_release.sh                  # releases/devour-sphere-YYYYMMDD.zip
-./make_release.sh --date 20260101  # 日付を明示する
-./make_release.sh --clean          # .cmake / .pio を消してから (picotool を再取得するので遅い)
 ```
 
 - impl/ の各ターゲットをビルドする。WASM 版は含めない
   (ダウンロードさせるものではなく docs/play/ で公開するため)。
+- ビルドは各ターゲットのディレクトリにあるスクリプトを呼ぶ
+  (impl/xiamocon/devoursphere/build_esp32s3.sh、同 build_rp2350.sh、impl/picosystem/build.sh)。
+  make_release.sh に全部のコマンドを並べると、SDK の setup.shrc が書き換える環境変数が
+  次のターゲットに漏れてうまくいかなかった。スクリプトは子プロセスなので漏れない。
 - `releases/devour-sphere-YYYYMMDD/<ターゲット>/` に置いて zip にまとめる。
   ターゲットは `xiamocon-rp2350` (devour-sphere.uf2)、
   `xiamocon-esp32s3` (devour-sphere.factory.bin と upload.sh)、`picosystem` (devour-sphere.uf2)。
 - ESP32S3 の factory イメージは bootloader・パーティションテーブル・boot_app0・
   アプリをオフセット通りに連結したものなので、0x0 に 1 回書けば済む。
-  同梱の `upload.sh` は esptool を探して (`esptool` / `esptool.py` /
-  `python3 -m esptool`、5.x でのサブコマンド名の変更にも対応) それを書き込む。
-- 書き込み方と操作方法を書いた README.txt を zip の直下に入れる。ビルド元のコミットも記録する。
-- `set -euo pipefail` で、途中で失敗したらそこで止まる。zip は最後に作るので
-  中途半端な zip はできない。実行のたびに出力先を作り直す。
+  同梱の `upload.sh` (assets/release/xiamocon-esp32s3/) は esptool を探して
+  (`esptool` / `esptool.py` / `python3 -m esptool`、5.x でのサブコマンド名の変更にも対応) それを書き込む。
+- 書き込み方と操作方法を書いた README.txt を zip の直下に入れる。元は assets/release/README.txt で、
+  `@DATE@` と `@COMMIT@` を sed で日付とビルド元のコミット (作業ツリーに変更があれば
+  "(with local changes)" 付き) に置き換える。
+- `set -eux` で、途中で失敗したらそこで止まる。zip は最後に作るので
+  中途半端な zip はできない。実行のたびに出力先と zip を消してから作る
+  (`zip -r` は既存の zip に追記するので、消さないと前回のファイルが残る)。
