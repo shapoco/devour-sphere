@@ -208,7 +208,8 @@ void phaseLine(char *line, const char *head, const char *labels,
 // The tick profile is per tick (the batch total divided by its ticks); the
 // frame profile is per frame. Both are drawn one frame late, like everything
 // on the overlay. Letters: see ../SPEC.md "デバッグ表示".
-uint32_t g_overlayUs = 0;  // drawing the overlay itself, per frame
+uint32_t g_overlayUs = 0;     // drawing the overlay itself, per frame
+bool g_benchPending = false;  // run Renderer::benchPrimitives() next frame
 
 void updatePhaseLines(int ticks) {
   if (!g_prof.on()) {
@@ -329,6 +330,7 @@ void frame() {
   if (down(gpio, PICOSYSTEM_SW_Y_PIN) &&
       !down(g_prevGpio, PICOSYSTEM_SW_Y_PIN)) {
     g_prof.toggle();
+    g_benchPending = g_prof.on();
   }
   g_prevGpio = gpio;
 
@@ -360,6 +362,12 @@ void frame() {
     updatePhaseLines(ran);  // the batch just collected, and the last frame
     g_game.resetTickProfile();
     updateProfileClock();
+    if (g_benchPending) {
+      // Once per switch-on of the overlay, here because the clock is
+      // installed and the Game is ours (nothing of the bench reaches it)
+      g_renderer.benchPrimitives(g_prof.benchUs);
+      g_benchPending = false;
+    }
     drawFrame(ran);
   }
 

@@ -99,10 +99,21 @@ void Profiler::endFrame(uint64_t nowUs,
       case 6:  // Stack high water marks. Both stacks are 4096 bytes and sit
                // next to each other in SCRATCH_X / SCRATCH_Y, so neither can
                // be grown and either reaching the limit is a bug.
-        // A whole screen of band transfers with nothing else running,
-        // measured once at start up. The SPI clock says this should be
-        // 14.75 ms; more than that is command overhead or a starved DMA.
-        p = putStr(p, end, "XFR ");
+        // The cost of one line / kite / point / fan through ShapoGFX
+        // (Renderer::benchPrimitives(), microseconds; 0 when the platform
+        // does not run it), then a whole screen of band transfers with
+        // nothing else running, measured once at start up. The SPI clock
+        // says the transfer should be 14.75 ms; more than that is command
+        // overhead or a starved DMA.
+        p = putStr(p, end, "L");
+        p = putUint(p, end, benchUs[0]);
+        p = putStr(p, end, " K");
+        p = putUint(p, end, benchUs[1]);
+        p = putStr(p, end, " P");
+        p = putUint(p, end, benchUs[2]);
+        p = putStr(p, end, " F");
+        p = putUint(p, end, benchUs[3]);
+        p = putStr(p, end, " X");
         p = putMs(p, end, xferUs);
         break;
       case 7:
@@ -131,7 +142,8 @@ void Profiler::endFrame(uint64_t nowUs,
         p = putUint(p, end, (uint32_t)stats.gfx.spanDropped);
         p = putStr(p, end, " ARN ");
         p = putUint(p, end, (uint32_t)(stats.gfx.arenaUsed / 1024));
-        p = putStr(p, end, "K");
+        p = putStr(p, end, "K L");
+        p = putUint(p, end, (uint32_t)stats.lines);  // 3D lines this frame
         break;
     }
     *p = '\0';

@@ -43,6 +43,8 @@ class Profiler {
   uint32_t tickUs = 0, beginUs = 0, rasterUs = 0, dmaWaitUs = 0, cmdUs = 0;
   uint32_t core1WaitUs = 0;  // core0 idle, waiting for core1 to finish
   uint32_t xferUs = 0;       // a whole screen, measured once at start up
+  uint32_t benchUs[4] =
+      {};  // Renderer::benchPrimitives(), when a platform runs it
   int ticks = 0;
 
   // Format what was just measured for the next frame to draw
@@ -72,6 +74,7 @@ class Profiler {
   uint32_t tickUs = 0, beginUs = 0, rasterUs = 0, dmaWaitUs = 0, cmdUs = 0;
   uint32_t core1WaitUs = 0;
   uint32_t xferUs = 0;
+  uint32_t benchUs[4] = {};
   int ticks = 0;
   void endFrame(uint64_t, const devoursphere::render::RenderStats &) {}
   void drawOverlay(const g2::Surface &, int) {}

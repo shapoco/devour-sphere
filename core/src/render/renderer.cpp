@@ -838,10 +838,15 @@ void Renderer::drawPresenceAuras() {
   vec3f up = g3::cross(right, viewDir_);
   float tanY = std::tan(camFov_ * 0.5f);
   float tanX = tanY * (float)w_ / (float)h_;
+  // Within RANGE of the player: an angle of 2 asin(RANGE / 2 / R) = 0.196
+  // around the sphere; tested in Q30 (with a margin) before any float, as
+  // most of the two hundred entities are far beyond it
+  constexpr int32_t COS_RANGE = (int32_t)(0.98007 * (1 << 30));  // cos 0.2
   int drawn = 0;
   for (int i = 0; i < sim::MAX_ENTITIES && drawn < MAX_AURAS; i++) {
     const sim::Entity &c = g.entities[i];
     if (!c.alive || c.isPlayer) continue;
+    if (sim::dotQ30(c.frame.n, camQ_.player) < COS_RANGE) continue;
     vec3f pos = toLocal(sim::scaleToLength(c.frame.n, c.r));
     float d = g3::length(pos);  // distance from the player
     if (d > RANGE || d < 0.1f) continue;
@@ -1005,15 +1010,20 @@ void Renderer::addEnemyMarker(const sim::Entity &c, bool always) {
   bool remaining =
       always || (g.playerRank() <= MARKER_ALWAYS_RANK && c.size > ps);
   float cosDist = g3::dot(up, camUnit_);
-  float ang = std::acos(cosDist > 1 ? 1 : (cosDist < -1 ? -1 : cosDist));
+  vec3f d = up - camUnit_ * cosDist;
+  float len = g3::length(d);  // the sine of the angle
+  if (len < 1e-5f) return;
+  // The angle from its sine and cosine through the simulation's atan2:
+  // acos is a library call, a few thousand cycles for every enemy beyond
+  // the horizon on a core without an FPU
+  float ang = sim::atan2Brad((int32_t)(len * (1 << 30)),
+                             (int32_t)(cosDist * (1 << 30))) *
+              BRAD_TO_RAD;
   if (ang > MARKER_MAX_ANGLE && !remaining) return;
   float fade =
       1.0f - (ang - horizonAngle_) / (MARKER_MAX_ANGLE - horizonAngle_);
   if (fade < 0) fade = 0;
   if (fade > 1) fade = 1;
-  vec3f d = up - camUnit_ * cosDist;
-  float len = g3::length(d);
-  if (len < 1e-5f) return;
   d = d * (1.0f / len);
   vec3f hp = camUnit_ * fastCos(horizonAngle_) + d * fastSin(horizonAngle_);
   vec3f world = sphereCenter_ + hp * SPHERE_R;
@@ -1348,6 +1358,72 @@ void Renderer::renderBand(const g2::Surface &dst, int y, int h, int dstY) {
 }
 
 void Renderer::endFrame() { g3d_.endRender(); }
+
+void Renderer::benchPrimitives(uint32_t us[4]) {
+  for (int k = 0; k < 4; k++) us[k] = 0;
+  if (!profileClockUs || !camValid_) return;
+  constexpr int N = 100;
+  // A throwaway scene with the last frame's camera; the next beginFrame()
+  // starts over, so nothing of it is ever rendered
+  g3d_.beginScene();
+  g3d_.lookAt(cam_.eye, cam_.target, cam_.up);
+  g3d_.disableParallelLight();
+  g3d_.disableEnvironmentLight();
+  g3d_.beginLayer();
+  // N things spread over the view 3 FU in front of the eye, none clipped
+  const sim::Vec3 base = eyeQ_ + sim::scaleToLength(camQ_.fwd, 3 * FU);
+  auto at = [&](int i) {
+    return base + sim::scaleToLength(camQ_.right, (i % 10 - 5) * (FU / 8)) +
+           sim::scaleToLength(camQ_.up, (i / 10 - 5) * (FU / 8));
+  };
+  const g2::Color white = g2::makeColor(255, 255, 255);
+  const uint32_t t0 = profileClockUs();
+  for (int i = 0; i < N; i++) {
+    const sim::Vec3 p = at(i);
+    const g3::FixedVertex v[2] = {
+        fixedVertex(p, white),
+        fixedVertex(p + sim::scaleToLength(camQ_.right, FU / 16), white)};
+    static const uint16_t idx[2] = {0, 1};
+    g3::VertexBuffer vb = {2, nullptr, nullptr, v};
+    g3::Primitive prim = {g3::PrimitiveType::LINES, &vb, 2, idx,
+                          &palette_[PAL_LINE]};
+    g3d_.putPrimitive(prim);
+  }
+  const uint32_t t1 = profileClockUs();
+  for (int i = 0; i < N; i++) {
+    putKiteQ(at(i), camQ_.right, camQ_.up, FU / 16, FU / 8, palette_[PAL_CORE]);
+  }
+  const uint32_t t2 = profileClockUs();
+  for (int i = 0; i < N; i++) putPointQ(at(i), white, palette_[PAL_LINE]);
+  const uint32_t t3 = profileClockUs();
+  // A marker: a 3-point fan with vertex colors, additive, from float
+  for (int i = 0; i < N; i++) {
+    const sim::Vec3 p = at(i);
+    const vec3f c = {p.x * (1.0f / FU), p.y * (1.0f / FU), p.z * (1.0f / FU)};
+    const vec3f r = q30ToF(camQ_.right) * (1.0f / 16),
+                u = q30ToF(camQ_.up) * (1.0f / 16);
+    const vec3f pos[5] = {c, c + u, c + r, c - u, c + u};
+    g3::Vertex verts[5];
+    uint16_t idx[5];
+    for (int k = 0; k < 5; k++) {
+      verts[k].position = pos[k];
+      verts[k].normal = {0, 1, 0};
+      verts[k].uv = {0, 0};
+      verts[k].color = white;
+      idx[k] = (uint16_t)k;
+    }
+    g3::VertexBuffer vb = {5, verts};
+    g3::Primitive prim = {g3::PrimitiveType::TRIANGLE_FAN, &vb, 5, idx,
+                          &palette_[PAL_LINE_ADD]};
+    g3d_.putPrimitive(prim);
+  }
+  const uint32_t t4 = profileClockUs();
+  g3d_.endScene();
+  us[0] = (t1 - t0) / N;
+  us[1] = (t2 - t1) / N;
+  us[2] = (t3 - t2) / N;
+  us[3] = (t4 - t3) / N;
+}
 
 RenderStats Renderer::stats() const {
   RenderStats s;
