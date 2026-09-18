@@ -69,6 +69,9 @@ target_compile_definitions(shapogfx PUBLIC
 # Nothing in this game is textured (verified in the Xiamocon build, see
 # impl/xiamocon/devoursphere/CMakeLists.txt). PRIVATE: read by src/gfx3d only.
 target_compile_definitions(shapogfx PRIVATE SHAPOGFX3D_TEXTURE=0)
+# No FPU: the vertex stage, the primitive setup and the span builders in
+# fixed point (see ShapoGFX's SPEC.md). Read by gfx3d.cpp only.
+target_compile_definitions(shapogfx PRIVATE SHAPOGFX3D_FIXED_POINT=1)
 # The span loops (render() and what it calls per span, ~14 KB) run from RAM
 # through the SDK's .time_critical placement; the rest of the 3D library
 # stays in flash. See ../SPEC.md "コードを RAM に置く".

@@ -285,6 +285,15 @@ bands: D1.2 / 6.7  U6.0 / 3.7  V3.5
 もう一つの混雑時の増分は画面外の敵を示すオーラ (加算合成の扇形、1 個約 1ms、最大 12 個) で、
 `DEVOURSPHERE_SIMPLE_AURAS=1` により敵の色の不透明な三角形にしている (core/SPEC.md「オーラの簡略表示」)。
 
+### 固定小数点パイプライン
+
+`SHAPOGFX3D_FIXED_POINT=1` (CMake で gfx3d に PRIVATE) で、ShapoGFX の頂点変換・投影・
+プリミティブのセットアップ・スパン構築を整数版にしている (ShapoGFX の SPEC.md
+「Fixed-point vertex stage」)。8 回目の計測で残っていた `O` (エンティティ 6〜9ms) と
+`H` (4〜7ms) の大半がこの float 処理で、混雑時に台数に比例して伸びる部分だった。
+公開 API は float のままで、render 層に変更はない。ホストで float 版と比べると
+1 フレーム 57,600 画素中 平均 90 画素、最悪 811 画素が違う (辺の丸め)。
+
 ### コードを RAM に置く
 
 `DS_RAM_CODE` (CMake、既定 `sim`) で、どのコードを RAM に置くかを選ぶ。
