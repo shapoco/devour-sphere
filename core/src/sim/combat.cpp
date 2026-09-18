@@ -291,12 +291,13 @@ void Game::damageEntity(int idx, int32_t dmg, int attacker, bool allowCrit) {
 void Game::killEntity(int idx, int killer) {
   Entity &c = entities[idx];
   if (!c.alive) return;
-  // The sound: the player's own death, or a kill by the player (the size
-  // is compared as it stands at this moment)
+  // The sound: the player's own death, or a kill by the player (shot down
+  // or drained dry). Big when the enemy is bigger now, or was when the
+  // player started absorbing it
   if (c.isPlayer) {
     pushSound(SoundKind::PLAYER_KILLED);
   } else if (killer == playerIndex_) {
-    pushSound(c.size > entities[playerIndex_].size
+    pushSound(c.absorbedBig || c.size > entities[playerIndex_].size
                   ? SoundKind::ENEMY_KILLED_BIG
                   : SoundKind::ENEMY_KILLED_SMALL);
   }
@@ -342,6 +343,10 @@ void Game::transferSize(int from, int to) {
   Entity &S = entities[from];
   Entity &B = entities[to];
   if (!S.alive || !B.alive) return;
+  // Who gets absorbed is decided by size weighted by health, so the player
+  // can absorb a bigger enemy whose gauge is low. Its size shrinks from here
+  // on, so remember now for the kill sound
+  if (B.isPlayer && S.size > B.size) S.absorbedBig = 1;
   // Health flows too: a share of the smaller one's gauge, healing the
   // bigger one by the same amount
   if ((tickCount_ % ABSORB_HP_INTERVAL) == 0) {
@@ -389,16 +394,27 @@ void Game::transferSize(int from, int to) {
     S.hp = 0;
     stats_.absorbs++;
     if (S.isPlayer) events_ |= Event::PLAYER_DIED;
-    // Devoured whole: size only flows to the bigger one, so an enemy
-    // devoured by the player was always the smaller
-    if (S.isPlayer) pushSound(SoundKind::PLAYER_KILLED);
-    else if (B.isPlayer) pushSound(SoundKind::ENEMY_KILLED_SMALL);
+    // Devoured whole (nothing of it is left to compare: the flag decides)
+    if (S.isPlayer) {
+      pushSound(SoundKind::PLAYER_KILLED);
+    } else if (B.isPlayer) {
+      pushSound(S.absorbedBig ? SoundKind::ENEMY_KILLED_BIG
+                              : SoundKind::ENEMY_KILLED_SMALL);
+    }
     if (B.isPlayer) addScore((int64_t)SCORE_DEVOUR_BASE * 256);
     return;
   }
   syncFragments(S, 0, 0);
-  if (S.isPlayer) events_ |= Event::PLAYER_HIT;
-  if (B.isPlayer) events_ |= Event::PLAYER_ATE_FRAGMENT;
+  // Being drained sounds like being hit, draining like eating fragments;
+  // the minimum gap of the kinds (SOUND_MIN_GAP_TICKS) paces them
+  if (S.isPlayer) {
+    events_ |= Event::PLAYER_HIT;
+    pushSound(SoundKind::HIT_PLAYER);
+  }
+  if (B.isPlayer) {
+    events_ |= Event::PLAYER_ATE_FRAGMENT;
+    pushSound(SoundKind::GET_FRAGMENT);
+  }
   if ((tickCount_ % ticks30(5)) == 0) {
     if (S.isPlayer)
       pushEffect(EffectKind::PLAYER_DRAINED, from, S.frame.n, S.r, (int32_t)t);

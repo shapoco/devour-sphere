@@ -72,6 +72,8 @@ struct Entity {
   int16_t fireCooldown;
   int16_t invincible;   // ticks of spawn protection
   int16_t absorbGuard;  // ticks during which the entity cannot be absorbed
+  uint8_t absorbedBig;  // was bigger than the player when it started absorbing
+                        // it (the kill sound; the size shrinks while absorbed)
   int16_t evadeTicks;   // AI: ticks left of an evasive maneuver
   int16_t evadeFrom;    // AI: entity whose fire triggered it (-1 = unknown)
   int16_t evadeFlipAt;  // AI: flip the escape side when evadeTicks gets here

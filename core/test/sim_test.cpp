@@ -458,12 +458,69 @@ static void testCombatAndLayout() {
     CHECK(b.player().size < p0);
     CHECK(b.entities[other].size > o0);
     CHECK(b.player().size + b.entities[other].size == p0 + o0);
+    uint32_t sounds = 0;
     for (int t = 0; t < 10 * TICK_RATE && b.player().alive; t++) {
       b.entities[other].frame = b.player().frame;
       b.entities[other].r = b.player().r;
       b.tick(Button::DOWN);
+      sounds |= b.sounds();
     }
     CHECK(!b.player().alive);  // eventually absorbed
+    // Being drained sounds like being hit, the end like dying
+    CHECK(sounds & (1u << (int)SoundKind::HIT_PLAYER));
+    CHECK(b.sounds() & (1u << (int)SoundKind::PLAYER_KILLED));
+  }
+
+  // The other way round: the player absorbs a smaller enemy (eating sounds
+  // while it drains, the "small" kill at the end), and a bigger one whose
+  // gauge is low (the "big" kill, although it has shrunk by then)
+  for (int bigger = 0; bigger < 2; bigger++) {
+    Game b;
+    b.reset(77);
+    b.debugStartSphere(1, 0);
+    Entity &p = b.entities[b.playerIndex()];
+    int other = -1;
+    for (int i = 1; i < MAX_ENTITIES && other < 0; i++)
+      if (b.entities[i].alive) other = i;
+    Entity &o = b.entities[other];
+    o.fragmentCount = 1;
+    o.fragments[0] = p.fragments[0];
+    // (size 2, not 1: a size-1 enemy is devoured whole by the first transfer
+    // and never drains)
+    o.fragments[0].sizeLog2 = bigger ? log2Floor(p.size) : 1;
+    o.size = 1u << o.fragments[0].sizeLog2;
+    if (bigger) {
+      // Half again as big as the player, but nearly dead: the player's
+      // health-weighted size wins
+      o.fragmentCount = 2;
+      o.fragments[1] = o.fragments[0];
+      o.fragments[1].sizeLog2--;
+      o.size += 1u << o.fragments[1].sizeLog2;
+    }
+    CHECK(bigger ? o.size > p.size : o.size < p.size);
+    o.hpMax = HP_PER_SIZE * (int32_t)o.size;
+    o.hp = bigger ? 1 : o.hpMax;
+    o.frame = p.frame;
+    o.r = p.r;
+    o.invincible = 0;
+    o.absorbGuard = 0;
+    p.invincible = 0;
+    p.hp = p.hpMax;
+    uint32_t sounds = 0;
+    for (int t = 0; t < 10 * TICK_RATE && b.entities[other].alive; t++) {
+      b.entities[other].frame = b.player().frame;
+      b.entities[other].r = b.player().r;
+      b.tick(Button::DOWN);
+      sounds |= b.sounds();
+    }
+    CHECK(!b.entities[other].alive);
+    CHECK(b.player().alive);
+    CHECK(sounds & (1u << (int)SoundKind::GET_FRAGMENT));
+    CHECK(!(sounds & (1u << (int)SoundKind::HIT_PLAYER)));
+    uint32_t kill = b.sounds() & ((1u << (int)SoundKind::ENEMY_KILLED_SMALL) |
+                                  (1u << (int)SoundKind::ENEMY_KILLED_BIG));
+    CHECK(kill == (1u << (bigger ? (int)SoundKind::ENEMY_KILLED_BIG
+                                 : (int)SoundKind::ENEMY_KILLED_SMALL)));
   }
 
   // Absorption drains health too: every ABSORB_HP_INTERVAL ticks the smaller
