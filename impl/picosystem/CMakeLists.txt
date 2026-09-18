@@ -103,6 +103,12 @@ else()
     set(DS_SYS_CLOCK_HZ 125000000)
 endif()
 math(EXPR SE_PWM_WRAP "${DS_SYS_CLOCK_HZ} / ${SE_RATE} - 1")
+# The piezo is quiet and plays nothing below a few hundred hertz: the band
+# it cannot play is dropped, every sound's peak is normalized, and a common
+# gain is applied through a limiter (see ../SPEC.md "効果音"). Tuning knobs.
+set(SE_HIGHPASS 400 CACHE STRING "Sound pack: high-pass (Hz), 0 for none")
+set(SE_PEAK_DB -1 CACHE STRING "Sound pack: peak of every sound (dBFS)")
+set(SE_GAIN 2.0 CACHE STRING "Sound pack: gain on top of the peak (limited)")
 set(SE_SRC_DIR ${DS_ROOT}/materials/se)
 set(SE_PACK_PY ${DS_ROOT}/core/tools/pack_se.py)
 set(SE_PACK ${CMAKE_CURRENT_BINARY_DIR}/se_pwm.bin)
@@ -110,6 +116,7 @@ file(GLOB SE_WAVS ${SE_SRC_DIR}/*.wav)
 add_custom_command(
     OUTPUT ${SE_PACK}
     COMMAND python3 ${SE_PACK_PY} --pwm ${SE_PWM_WRAP} -r ${SE_RATE}
+            --highpass ${SE_HIGHPASS} --peak ${SE_PEAK_DB} --gain ${SE_GAIN}
             -o ${SE_PACK} ${SE_SRC_DIR}
     DEPENDS ${SE_PACK_PY} ${SE_WAVS}
     COMMENT "Packing the sound effects (PWM wrap ${SE_PWM_WRAP})"

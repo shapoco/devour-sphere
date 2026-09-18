@@ -37,10 +37,19 @@ All fields are little endian. The order of SOUNDS is the order of
 devoursphere::sim::SoundKind (core/include/devoursphere/sim/game.hpp): bit N
 of Game::sounds() is sound N of the pack.
 
-  pack_se.py [-r RATE] [--pwm WRAP [--ramp MS]] [-o OUT] SRC_DIR
+Loudness (meant for the piezo, which renders nothing below a few hundred
+hertz and is quiet): --highpass drops the band the speaker cannot play so
+that it does not eat the headroom, --peak normalizes every sound's peak to
+that level (dBFS) after the high-pass, and --gain multiplies on top with a
+limiter catching what would clip. The browser pack uses none of these and
+keeps the material as recorded.
+
+  pack_se.py [-r RATE] [--pwm WRAP [--ramp MS]] [--highpass HZ] [--peak DB]
+             [--gain X] [-o OUT] SRC_DIR
 """
 
 import argparse
+import math
 import struct
 import subprocess
 import sys
@@ -69,12 +78,38 @@ TRIM = ("silenceremove=start_periods=1:start_threshold=-50dB,"
         "areverse")
 
 
-def convert(path, rate):
-    cmd = ["ffmpeg", "-v", "error", "-i", str(path), "-ac", "1", "-ar",
-           str(rate), "-af", TRIM, "-f", "s16le", "-acodec", "pcm_s16le", "-"]
+def run_ffmpeg(path, rate, filters, output):
+    cmd = ["ffmpeg", "-v", "info", "-i", str(path), "-ac", "1", "-ar",
+           str(rate), "-af", filters] + output
     r = subprocess.run(cmd, capture_output=True)
     if r.returncode != 0:
         sys.exit(f"{path}: ffmpeg failed\n{r.stderr.decode(errors='replace')}")
+    return r
+
+
+def peak_db(path, rate, filters):
+    """Peak level (dBFS) of the sound after `filters`"""
+    r = run_ffmpeg(path, rate, f"{filters},volumedetect", ["-f", "null", "-"])
+    for line in r.stderr.decode(errors="replace").splitlines():
+        if "max_volume:" in line:
+            return float(line.split("max_volume:")[1].split("dB")[0])
+    sys.exit(f"{path}: no peak from volumedetect")
+
+
+def convert(path, rate, highpass=0.0, peak=None, gain=1.0):
+    filters = TRIM
+    if highpass > 0:
+        filters += f",highpass=f={highpass}"
+    gain_db = 20 * math.log10(gain) if gain > 0 else 0.0
+    if peak is not None:
+        gain_db += peak - peak_db(path, rate, filters)
+    if abs(gain_db) > 0.01:
+        filters += f",volume={gain_db:.2f}dB"
+        if gain_db > 0:
+            # What the gain pushes past full scale is limited, not clipped
+            filters += ",alimiter=limit=0.97:attack=2:release=30:level=false"
+    r = run_ffmpeg(path, rate, filters,
+                   ["-f", "s16le", "-acodec", "pcm_s16le", "-"])
     pcm = r.stdout
     return pcm[:len(pcm) & ~1]
 
@@ -99,6 +134,12 @@ def main():
                     help="write PWM levels 0..WRAP+1 instead of signed PCM")
     ap.add_argument("--ramp", type=float, default=2.0, metavar="MS",
                     help="PWM: ramp at both ends of every sound (default 2 ms)")
+    ap.add_argument("--highpass", type=float, default=0.0, metavar="HZ",
+                    help="drop the band below HZ (12 dB/oct)")
+    ap.add_argument("--peak", type=float, metavar="DB",
+                    help="normalize every sound's peak to DB dBFS")
+    ap.add_argument("--gain", type=float, default=1.0, metavar="X",
+                    help="multiply by X on top (limited, not clipped)")
     args = ap.parse_args()
 
     pcms = []
@@ -106,7 +147,7 @@ def main():
         src = args.src / f"{name}.wav"
         if not src.exists():
             sys.exit(f"{src}: missing (the pack needs every sound of SoundKind)")
-        pcms.append(convert(src, args.rate))
+        pcms.append(convert(src, args.rate, args.highpass, args.peak, args.gain))
 
     ramp = 0
     if args.pwm is not None:
