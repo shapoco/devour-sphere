@@ -6,7 +6,9 @@
 
 namespace devoursphere::sim {
 
-const int LAUNCH_TICKS = 6 * TICK_RATE;
+const int LAUNCH_TICKS = 5 * TICK_RATE;
+const int ARRIVE_TICKS = 5 * TICK_RATE;
+const int ARRIVE_SWITCH_TICKS = TICK_RATE;
 static constexpr int DEAD_WAIT_TICKS = 2 * TICK_RATE;
 static constexpr int CLEAR_GRACE_TICKS = 4 * TICK_RATE;
 
@@ -30,6 +32,7 @@ void Game::reset(uint32_t seed) {
   resetUpgrades();
   lastUpgradeKind_ = UpgradeKind::NONE;
   respawnDelay_ = 0;
+  playerClimb_ = 0;
   effectCount_ = 0;
   aliveEntities_ = 0;
   maxBodyRadius_ = 0;
@@ -57,6 +60,27 @@ void Game::setState(GameState s) {
   stateTimer_ = 0;
 }
 
+// The first sphere of a game: there is no sphere to leave, so the arrival
+// starts just past its switch point (camera beside the player, the sphere
+// already there). Past it, because the transitions of this same tick would
+// otherwise switch the sphere once more.
+void Game::beginArrival() {
+  Entity &p = entities[playerIndex_];
+  p.invincible = 0;  // frozen instead; the protection starts on landing
+  p.r = SPHERE_RADIUS + ALTITUDE + ARRIVE_ALTITUDE;
+  stateTimer_ = ARRIVE_SWITCH_TICKS + 1;
+}
+
+// Midway through the arrival: the old sphere is behind the player and off
+// screen, the new one is ahead. The player shrinks back to a small entity
+// and starts its descent.
+void Game::switchSphere() {
+  spheresCleared_++;
+  sphereLevel_++;
+  rescalePlayerForNextSphere();
+  startSphere(true);
+}
+
 int Game::findFreeEntity() const {
   for (int i = 0; i < MAX_ENTITIES; i++) {
     // The player's slot is never reused (a dead player is a ghost that the
@@ -82,12 +106,15 @@ void Game::startSphere(bool keepPlayer) {
 
   playerIndex_ = 0;
   if (keepPlayer) {
+    // The player arrives from above, keeping its heading (the stars must
+    // not jump when the sphere is switched under it); it is frozen until
+    // it lands, so no spawn protection is needed yet
     entities[0] = saved;
     Entity &p = entities[0];
     p.alive = true;
-    p.invincible = 2 * TICK_RATE;
+    p.invincible = 0;
     p.hp = p.hpMax;
-    placeRandom(p.frame, p.r, p.size, false);
+    p.r = SPHERE_RADIUS + ALTITUDE + ARRIVE_ALTITUDE;
   } else {
     spawnPlayer();
   }
@@ -297,11 +324,14 @@ void Game::checkTransitions() {
       }
       break;
     case GameState::LAUNCH:
-      if (stateTimer_ >= LAUNCH_TICKS) {
-        spheresCleared_++;
-        sphereLevel_++;
-        rescalePlayerForNextSphere();
-        startSphere(true);
+      if (stateTimer_ >= LAUNCH_TICKS) setState(GameState::ARRIVE);
+      break;
+    case GameState::ARRIVE:
+      if (stateTimer_ == ARRIVE_SWITCH_TICKS) {
+        switchSphere();
+      } else if (stateTimer_ >= ARRIVE_TICKS) {
+        // Landed: the spawn protection starts now
+        p.invincible = RESPAWN_INVINCIBLE_TICKS;
         setState(GameState::PLAYING);
       }
       break;
@@ -339,8 +369,9 @@ void Game::tick(uint8_t buttons) {
         displayScaleLog2_ = 0;
         scoreQ8_ = 0;
         resetUpgrades();
-        setState(GameState::PLAYING);
-        startSphere(false);
+        setState(GameState::ARRIVE);
+        startSphere(false);  // the state is set first: the chosen weapon
+        beginArrival();
       }
       break;
     case GameState::DEAD:
@@ -365,12 +396,13 @@ void Game::tick(uint8_t buttons) {
   }
   if (state_ == GameState::PLAYING && p.alive && !autoPlayer_) {
     updatePlayerControls(buttons);
-  } else if (state_ == GameState::LAUNCH) {
+  } else if (state_ == GameState::LAUNCH || state_ == GameState::ARRIVE) {
     p.turn = 0;
     p.dashing = true;
     p.braking = false;
     p.firing = false;
   }
+  playerClimb_ = 0;
 
   tickProfile_.stamp(TP_OTHER);
 

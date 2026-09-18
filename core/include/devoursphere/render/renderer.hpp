@@ -266,6 +266,13 @@ class Renderer {
   bool camValid_ = false;
   float camDist_ = 0, camHeight_ = 0, camFov_ = 0, camRoll_ = 0;
   float camAhead_ = 0, camDown_ = 0;  // look target: ahead / below the player
+  // The flight between spheres: the camera circles the player (0 = behind,
+  // PI = in front) and the player's frame is pitched along its flight path
+  // (positive = nose up) for both the body and the camera
+  float camOrbit_ = 0, camPitch_ = 0;
+  g3::vec3f flightFwd_ = {0, 1, 0}, flightUp_ = {0, 0, 1};  // pitched frame
+  uint16_t playerPitchBrad_ = 0;
+  uint32_t sphereSeedSeen_ = 0;  // a new sphere snaps the camera distance
   float camNominal_ = 11;  // camera distance without dash/brake (sphere LOD)
   g3::mat4f view_ = g3::mat4f::identity();
   g3::mat4f proj_ = g3::mat4f::identity();

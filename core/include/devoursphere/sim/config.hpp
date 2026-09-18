@@ -64,6 +64,19 @@ constexpr int32_t ALTITUDE = 12 * FU;
 constexpr int32_t ALT_APPROACH_SHIFT =
     5 + RATE_SHIFT;  // altitude eases 1/32 per tick at 30 Hz
 
+// --- Flight between spheres (LAUNCH / ARRIVE) ------------------------------
+// The player climbs LAUNCH_ALTITUDE above the cruising altitude during the
+// launch (accelerating, t^2) and keeps climbing until the arrival switches
+// the sphere; the descent starts ARRIVE_ALTITUDE above the new sphere
+// (decelerating, mirror of the climb). Lower than the launch altitude so
+// that the next sphere looks bigger than the one just left.
+constexpr int32_t LAUNCH_ALTITUDE = 900 * FU;
+constexpr int32_t ARRIVE_ALTITUDE = 500 * FU;
+// One full roll around the heading, and when it starts in each state
+constexpr int FLIGHT_ROLL_TICKS = 3 * TICK_RATE;
+constexpr int LAUNCH_ROLL_START = TICK_RATE / 2;
+constexpr int ARRIVE_ROLL_START = 3 * TICK_RATE / 2;
+
 // --- Movement ---------------------------------------------------------------
 constexpr int32_t SPEED_BASE = fuPerSec(15);  // units per tick for size 1
 constexpr int32_t SPEED_PER_LOG2 =

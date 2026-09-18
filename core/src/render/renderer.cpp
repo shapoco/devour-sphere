@@ -595,10 +595,11 @@ void Renderer::updateCamera(float dt) {
   float wantHeight = wantDist * 1.0f;
   float wantFov = 70.0f * PI / 180.0f;
   float wantRoll = 0;
+  float wantOrbit = 0;
   float wantAhead = bodyR * 0.5f + 1.0f;  // look target ahead of the player
   float wantDown = 0.12f;                 // ... and below (x camera height)
   sim::GameState st = g.state();
-  inFlight_ = st == sim::GameState::LAUNCH;
+  inFlight_ = st == sim::GameState::LAUNCH || st == sim::GameState::ARRIVE;
   altExcess_ = (p.r - sim::SPHERE_RADIUS - sim::ALTITUDE) * (1.0f / FU);
   if (altExcess_ < 0) altExcess_ = 0;
   wireFadeOffset_ = (int32_t)(altExcess_ * (FU * 16));
@@ -620,15 +621,40 @@ void Renderer::updateCamera(float dt) {
     }
     wantRoll =
         (p.turnLevel / 256.0f) * (p.braking ? 14.0f : 9.0f) * PI / 180.0f;
-  } else if (st == sim::GameState::LAUNCH) {
-    // Pull back slowly (smoothstep over the whole launch)
-    float t = g.stateTimer() / (float)sim::LAUNCH_TICKS;
-    if (t > 1) t = 1;
-    float e = t * t * (3 - 2 * t);
-    wantDist *= 1.0f + e * 1.5f;
-    nominalDist = wantDist;
-    wantHeight *= 1.0f + e * 0.8f;
-    wantFov = 70.0f * PI / 180.0f;
+  } else if (inFlight_) {
+    // The flight between spheres. The camera circles the player from
+    // behind to the front during the launch (the sphere left behind comes
+    // into view beyond the player) and from the front back to behind
+    // during the arrival (the next sphere ahead), low over the flight path;
+    // the last part of the descent brings it back up to the play angle.
+    // The sphere LOD keeps the player's own nominal distance.
+    auto smooth01 = [](float u) {
+      if (u <= 0) return 0.0f;
+      if (u >= 1) return 1.0f;
+      return u * u * (3 - 2 * u);
+    };
+    float orbit, low;  // 0..PI, 0 = behind; 0..1 flight elevation
+    if (st == sim::GameState::LAUNCH) {
+      const float t0 = 0.3f * sim::LAUNCH_TICKS;  // lift off first
+      float u = smooth01((g.stateTimer() - t0) / (sim::LAUNCH_TICKS - t0));
+      orbit = PI * u;
+      low = u;
+    } else {
+      // Beside the player exactly at the switch tick, then behind it
+      const float t0 = 2.0f * sim::ARRIVE_SWITCH_TICKS;
+      float u = smooth01(g.stateTimer() / t0);
+      orbit = PI * (1 - u);
+      // Once behind, rise a little to see the body from above during the
+      // dive, then up to the play angle for the landing
+      const float t1 = sim::ARRIVE_TICKS - 1.5f * sim::TICK_RATE;
+      low = 1 - 0.55f * smooth01((g.stateTimer() - t0) / (t1 - t0)) -
+            0.45f * smooth01((g.stateTimer() - t1) / (sim::ARRIVE_TICKS - t1));
+    }
+    wantDist *= 1.0f + 0.25f * low;
+    wantHeight = wantDist * (1.0f - 0.65f * low);
+    wantAhead *= 1 - low;
+    wantDown *= 1 - low;
+    wantOrbit = orbit;
   } else if (st == sim::GameState::TITLE ||
              st == sim::GameState::WEAPON_SELECT) {
     // Cinematic orbit around the attract-mode player
@@ -643,21 +669,33 @@ void Renderer::updateCamera(float dt) {
     wantHeight *= 1.2f;
   }
 
-  if (!camValid_) {
+  // Pitch along the flight path: the radial movement against the speed
+  // along the surface (both units per tick). Zero on the surface.
+  float wantPitch = 0;
+  if (g.playerClimb() != 0) {
+    wantPitch = std::atan2((float)g.playerClimb(), (float)p.speed);
+  }
+
+  if (!camValid_ || g.sphereSeed() != sphereSeedSeen_) {
+    // A new sphere: the player has been rescaled, so the distances snap
+    // to its new size (the sphere is off screen at that moment and the
+    // player keeps its size on screen); the orbit and the pitch carry on
+    sphereSeedSeen_ = g.sphereSeed();
     camDist_ = wantDist;
     camNominal_ = nominalDist;
     camHeight_ = wantHeight;
-    camFov_ = wantFov;
-    camRoll_ = wantRoll;
     camAhead_ = wantAhead;
     camDown_ = wantDown;
+    if (!camValid_) {
+      camFov_ = wantFov;
+      camRoll_ = wantRoll;
+      camOrbit_ = wantOrbit;
+      camPitch_ = wantPitch;
+    }
     camValid_ = true;
   } else {
-    // The camera eases more slowly during the launch and after death
-    float rate =
-        (st == sim::GameState::LAUNCH || st == sim::GameState::DEAD || !p.alive)
-            ? 1.5f
-            : 5.0f;
+    // The camera eases more slowly after death
+    float rate = (st == sim::GameState::DEAD || !p.alive) ? 1.5f : 5.0f;
     float k = 1.0f - std::exp(-dt * rate);
     camDist_ += (wantDist - camDist_) * k;
     camNominal_ += (nominalDist - camNominal_) * k;
@@ -666,14 +704,36 @@ void Renderer::updateCamera(float dt) {
     camRoll_ += (wantRoll - camRoll_) * k;
     camAhead_ += (wantAhead - camAhead_) * k;
     camDown_ += (wantDown - camDown_) * k;
+    // The orbit follows its (already smoothed) script closely; the pitch
+    // is what makes the player nose over when the sphere is switched
+    float kOrbit = 1.0f - std::exp(-dt * 8.0f);
+    camOrbit_ += (wantOrbit - camOrbit_) * kOrbit;
+    float kPitch = 1.0f - std::exp(-dt * 4.0f);
+    camPitch_ += (wantPitch - camPitch_) * kPitch;
+    if (std::fabs(camOrbit_) < 1e-4f) camOrbit_ = 0;
+    if (std::fabs(camPitch_) < 1e-4f) camPitch_ = 0;
   }
 
-  vec3f eye = fwd * (-camDist_) + up * camHeight_;
+  // The frame pitched along the flight path (identical to the frame on the
+  // surface), for the camera, the player's body and the dash dust
+  vec3f fwdP = fwd, upP = up;
+  if (camPitch_ != 0) {
+    vec3f right = g3::normalize(g3::cross(fwd, up));
+    fwdP = rotateAroundAxis(fwd, right, camPitch_);
+    upP = rotateAroundAxis(up, right, camPitch_);
+  }
+  flightFwd_ = fwdP;
+  flightUp_ = upP;
+  playerPitchBrad_ = (uint16_t)(int32_t)(camPitch_ * (65536.0f / (2 * PI)));
+  // ... and circled by the camera
+  vec3f fwdO = camOrbit_ != 0 ? rotateAroundAxis(fwdP, upP, camOrbit_) : fwdP;
+
+  vec3f eye = fwdO * (-camDist_) + upP * camHeight_;
   // Look at a point ahead of (and normally slightly below) the player so
   // that the sphere surface fills the lower part of the screen
-  vec3f target = fwd * camAhead_ - up * (camHeight_ * camDown_);
+  vec3f target = fwdP * camAhead_ - upP * (camHeight_ * camDown_);
   vec3f dir = g3::normalize(target - eye);
-  vec3f upR = rotateAroundAxis(up, dir, camRoll_);
+  vec3f upR = rotateAroundAxis(upP, dir, camRoll_);
   cam_.eye = eye;
   cam_.target = target;
   cam_.up = upR;
@@ -747,8 +807,14 @@ void Renderer::drawEntity(const sim::Entity &c, const sim::Vec3 &pos, float px,
                           bool full, bool blink) {
   using sim::Vec3;
   Vec3 up = c.frame.n;
-  const Vec3 fwd = c.frame.t;
+  Vec3 fwd = c.frame.t;
   Vec3 right = sim::crossQ30(fwd, up);
+  // In flight the player is pitched along its flight path (nose up when
+  // climbing): a rotation around its right axis, which stays as it is
+  if (c.isPlayer && playerPitchBrad_ != 0) {
+    fwd = rotQ30(fwd, right, playerPitchBrad_);
+    up = rotQ30(up, right, playerPitchBrad_);
+  }
   const int32_t coreY = c.coreY, coreHalf = c.coreHalf;
   const int32_t focusY = c.layoutFocusY;
   const g3::Material &m = materialForEntity(c);
@@ -1107,7 +1173,8 @@ void Renderer::drawPresenceAuras() {
 void Renderer::drawHealthWarning() {
   const sim::Game &g = *game_;
   if (g.state() != sim::GameState::PLAYING &&
-      g.state() != sim::GameState::LAUNCH) {
+      g.state() != sim::GameState::LAUNCH &&
+      g.state() != sim::GameState::ARRIVE) {
     return;
   }
   const sim::Entity &p = g.player();

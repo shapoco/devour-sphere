@@ -19,6 +19,7 @@ enum class GameState : uint8_t {
   PLAYING,
   LAUNCH,  // the player became the largest: leaving the sphere
   DEAD,    // game over screen
+  ARRIVE,  // flying in to the next sphere (the sphere switches midway)
 };
 
 // Event flags raised during the last tick (for effects; cleared every tick)
@@ -59,6 +60,10 @@ struct DebugStats {
 };
 
 extern const int LAUNCH_TICKS;  // length of the LAUNCH state
+extern const int ARRIVE_TICKS;  // length of the ARRIVE state
+// Tick of ARRIVE at which the next sphere replaces the old one (the camera
+// is beside the player, neither sphere on screen)
+extern const int ARRIVE_SWITCH_TICKS;
 
 class Game {
  public:
@@ -92,6 +97,10 @@ class Game {
   uint32_t playerDisplayScaleLog2() const { return displayScaleLog2_; }
   uint32_t score() const { return (uint32_t)(scoreQ8_ >> 8); }
   int sphereTicks() const { return sphereTicks_; }  // ticks on this sphere
+  // Radial movement of the player during the last tick (units, positive
+  // away from the sphere): the renderer pitches the player along the
+  // flight path from it. Zero on the surface.
+  int32_t playerClimb() const { return playerClimb_; }
   // The high score lives outside the simulation (platform storage); it is
   // only kept here for display
   void setHighScore(uint32_t v) { highScore_ = v; }
@@ -184,9 +193,15 @@ class Game {
   void takeUpgrade(UpgradeKind k);
   void updateShieldRegen();
   bool respawnPlayer();
-  // After clearing a sphere the player is frozen: no hits, no eating, no
-  // absorption in either direction, so the body keeps its shape
-  bool playerFrozen() const { return state_ == GameState::LAUNCH; }
+  // In flight (after clearing a sphere and until landing on the next) the
+  // player is frozen: no hits, no eating, no absorption in either direction,
+  // so the body keeps its shape; the AI ignores it too
+  bool playerFrozen() const {
+    return state_ == GameState::LAUNCH || state_ == GameState::ARRIVE;
+  }
+  int32_t playerClimb_ = 0;
+  void beginArrival();
+  void switchSphere();
   int32_t enemyDamagePct() const;
   int sphereTicks_ = 0;
   uint32_t highScore_ = 0;

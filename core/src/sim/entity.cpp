@@ -85,6 +85,7 @@ void Game::updateAi(int idx) {
     if (o.frame.n.z > c.frame.n.z + sightDz) break;
     if (j == idx || !o.alive) continue;
     if (o.isPlayer && c.isPlayer) continue;
+    if (o.isPlayer && playerFrozen()) continue;  // in flight, far above
     int64_t d2;
     if (!tangentialDist2(c.frame.n, o.frame.n, o.isPlayer ? playerSight : sight,
                          d2)) {
@@ -305,13 +306,25 @@ void Game::moveEntity(Entity &c) {
     c.frame.t = rotateAroundQ30(c.frame.t, c.frame.n, (uint16_t)angle);
   }
   // Bank into the turn (visual, but kept in the simulation so that every
-  // platform shows the same attitude)
-  int32_t bankTarget =
-      ((int32_t)(c.braking ? BANK_MAX_BRAKE : BANK_MAX) * c.turnLevel) >> 8;
-  int32_t db = bankTarget - c.bank;
-  int32_t bs = db >> BANK_APPROACH_SHIFT;
-  if (bs == 0 && db != 0) bs = db > 0 ? 1 : -1;
-  c.bank = (int16_t)(c.bank + bs);
+  // platform shows the same attitude). In flight the player rolls once
+  // around its heading instead, from the state timer so that the roll
+  // ends at exactly zero.
+  const bool flying = c.isPlayer && playerFrozen();
+  int rollAt = -1;
+  if (flying) {
+    rollAt = stateTimer_ - (state_ == GameState::LAUNCH ? LAUNCH_ROLL_START
+                                                        : ARRIVE_ROLL_START);
+  }
+  if (rollAt >= 0 && rollAt <= FLIGHT_ROLL_TICKS) {
+    c.bank = (int16_t)(uint16_t)((int64_t)rollAt * 65536 / FLIGHT_ROLL_TICKS);
+  } else {
+    int32_t bankTarget =
+        ((int32_t)(c.braking ? BANK_MAX_BRAKE : BANK_MAX) * c.turnLevel) >> 8;
+    int32_t db = bankTarget - c.bank;
+    int32_t bs = db >> BANK_APPROACH_SHIFT;
+    if (bs == 0 && db != 0) bs = db > 0 ? 1 : -1;
+    c.bank = (int16_t)(c.bank + bs);
+  }
 
   if (c.speed > 0) {
     int32_t ang = (int32_t)(((int64_t)c.speed << Q30_SHIFT) / c.r);
@@ -322,18 +335,33 @@ void Game::moveEntity(Entity &c) {
   // Altitude
   int32_t rTarget = SPHERE_RADIUS + altitudeForSize(c.size);
   int approach = ALT_APPROACH_SHIFT;
-  if (c.isPlayer && state_ == GameState::LAUNCH) {
-    // Slow, accelerating ascent
-    int64_t t = stateTimer_;
-    rTarget =
-        SPHERE_RADIUS + ALTITUDE +
-        (int32_t)(900 * FU * t * t / ((int64_t)LAUNCH_TICKS * LAUNCH_TICKS));
+  if (flying) {
+    if (state_ == GameState::LAUNCH || stateTimer_ <= ARRIVE_SWITCH_TICKS) {
+      // Slow, accelerating ascent, continued past the launch until the
+      // sphere is switched
+      int64_t t = stateTimer_;
+      if (state_ == GameState::ARRIVE) t += LAUNCH_TICKS;
+      rTarget = SPHERE_RADIUS + ALTITUDE +
+                (int32_t)((int64_t)LAUNCH_ALTITUDE * t * t /
+                          ((int64_t)LAUNCH_TICKS * LAUNCH_TICKS));
+    } else {
+      // Decelerating descent to the cruising altitude, reached a second
+      // before the state ends so that the body levels out before the
+      // player takes over
+      int64_t left = ARRIVE_TICKS - TICK_RATE - stateTimer_;
+      if (left < 0) left = 0;
+      int64_t span = ARRIVE_TICKS - TICK_RATE - ARRIVE_SWITCH_TICKS;
+      rTarget =
+          SPHERE_RADIUS + ALTITUDE +
+          (int32_t)((int64_t)ARRIVE_ALTITUDE * left * left / (span * span));
+    }
     approach = 3;
   }
   int32_t dr = rTarget - c.r;
   int32_t rs = dr >> approach;
   if (rs == 0 && dr != 0) rs = dr > 0 ? 1 : -1;
   c.r += rs;
+  if (c.isPlayer) playerClimb_ = rs;
 
   if (c.fireCooldown > 0) c.fireCooldown--;
   if (c.invincible > 0) c.invincible--;

@@ -162,13 +162,15 @@ void Renderer::updateEffects(float dt) {
   // past the camera as the player moves
   const sim::Entity &p = game_->player();
   float dash = p.dashLevel / 256.0f;
-  bool dashing =
-      p.alive && dash > 0.05f && game_->state() == sim::GameState::PLAYING;
+  const sim::GameState st = game_->state();
+  bool dashing = p.alive && dash > 0.05f &&
+                 (st == sim::GameState::PLAYING ||
+                  st == sim::GameState::LAUNCH || st == sim::GameState::ARRIVE);
   if (dashing) {
-    vec3f up = {p.frame.n.x / 1073741824.0f, p.frame.n.y / 1073741824.0f,
-                p.frame.n.z / 1073741824.0f};
-    vec3f fwd = {p.frame.t.x / 1073741824.0f, p.frame.t.y / 1073741824.0f,
-                 p.frame.t.z / 1073741824.0f};
+    // Along the player's frame, pitched along the flight path in flight
+    // (the same vectors as the frame on the surface)
+    vec3f up = flightUp_;
+    vec3f fwd = flightFwd_;
     vec3f right = g3::cross(fwd, up);
     float reach = camDist_ * 4.0f + 10.0f;
     dustSpawnAcc_ += dt * 90.0f * dash;  // more dust the faster the dash

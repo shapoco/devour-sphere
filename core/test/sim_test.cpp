@@ -85,14 +85,28 @@ static void playTicks(Game &g, int n, uint32_t t0) {
   for (int i = 0; i < n; i++) g.tick(scriptedInput(t0 + i));
 }
 
-static void enterPlay(Game &g) {
+// Through the menus into the arrival flight to the first sphere
+static void startGame(Game &g) {
   g.tick(0);
   g.tick(Button::A);  // title -> weapon select
   g.tick(0);
   g.tick(Button::RIGHT);
   g.tick(0);
-  g.tick(Button::A);  // -> playing
+  g.tick(Button::A);  // -> the arrival flight to the first sphere
+  CHECK(g.state() == GameState::ARRIVE);
+  CHECK(g.sphereLevel() == 1);
+}
+
+// ... and through the flight onto the sphere
+static void enterPlay(Game &g) {
+  startGame(g);
+  // The first sphere starts at the switch point of the arrival (no sphere
+  // to leave), so the flight is shorter
+  int flown = 0;
+  while (g.state() == GameState::ARRIVE) g.tick(0), flown++;
   CHECK(g.state() == GameState::PLAYING);
+  CHECK(g.sphereLevel() == 1);
+  CHECK(flown == ARRIVE_TICKS - ARRIVE_SWITCH_TICKS - 1);
   CHECK(g.selectedWeapon() == 1);
 }
 
@@ -162,13 +176,16 @@ static void testGameplay() {
   CHECK(g.selectedWeapon() == 0);
 
   g.reset(777);
-  enterPlay(g);
+  startGame(g);
   const Entity &p = g.player();
   CHECK(p.alive && p.isPlayer);
   CHECK(p.size == (1u << PLAYER_START_SIZE_LOG2));
+  CHECK(p.r > SPHERE_RADIUS + ALTITUDE + ARRIVE_ALTITUDE / 2);  // flying in
   int alive = 0;
   for (int i = 0; i < MAX_ENTITIES; i++) alive += g.entities[i].alive;
   CHECK(alive == INITIAL_ENTITIES);
+  while (g.state() == GameState::ARRIVE) g.tick(0);
+  CHECK(g.state() == GameState::PLAYING);
 
   bool sawBullet = false, sawFragment = false;
   for (int i = 0; i < 6000; i++) {
@@ -266,8 +283,22 @@ static void testGameplay() {
   qp.hp = qp.hpMax;
   for (int i = 0; i < 4 * TICK_RATE + 5; i++) q.tick(0);
   CHECK(q.state() == GameState::LAUNCH);
-  for (int i = 0; i < LAUNCH_TICKS + 5; i++) q.tick(0);
+  const int32_t rLaunch = q.player().r;
+  while (q.state() == GameState::LAUNCH) q.tick(0);
+  CHECK(q.state() == GameState::ARRIVE);
+  CHECK(q.player().r > rLaunch + LAUNCH_ALTITUDE / 2);  // climbed away
+  CHECK(q.sphereLevel() == 1);  // the sphere is switched midway
+  while (q.state() == GameState::ARRIVE && q.sphereLevel() == 1) q.tick(0);
+  CHECK(q.state() == GameState::ARRIVE);
+  CHECK(q.stateTimer() == ARRIVE_SWITCH_TICKS);
+  CHECK(q.sphereLevel() == 2);
+  CHECK(q.player().r == SPHERE_RADIUS + ALTITUDE + ARRIVE_ALTITUDE);
+  CHECK(q.player().invincible == 0);  // frozen instead, until it lands
+  while (q.state() == GameState::ARRIVE) q.tick(0);
   CHECK(q.state() == GameState::PLAYING);
+  CHECK(q.player().invincible > 0);
+  CHECK(q.player().r < SPHERE_RADIUS + ALTITUDE + 8 * FU);  // landed
+  CHECK(q.player().bank == 0);  // the roll ended where it began
   CHECK(q.sphereLevel() == 2);
   CHECK(q.score() >= 2000);  // clear bonus on sphere 1
   CHECK(q.player().size < 64);

@@ -283,6 +283,7 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
     }
     case sim::GameState::PLAYING:
     case sim::GameState::LAUNCH:
+    case sim::GameState::ARRIVE:
     case sim::GameState::DEAD: {
       // Health gauge (top left)
       const int gx = margin, gy = oy + margin;
@@ -352,12 +353,24 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
       }
 
       if (hud.state == sim::GameState::LAUNCH) {
-        setHudFont(g, HudFont::LARGE);
-        drawCenteredFit(g, oy + uiY(100), "SPHERE DEVOURED", "DEVOURED",
-                        g2::makeColor(255, 230, 120));
-        setHudFont(g, ui_.compact ? HudFont::SMALL : HudFont::MEDIUM);
-        drawCenteredFit(g, oy + uiY(135), "leaving for a larger world...",
-                        "next sphere...", HUD_TEXT);
+        // Gone before the camera comes round to the front of the player
+        if (hud.stateTimer < sim::LAUNCH_TICKS / 2) {
+          setHudFont(g, HudFont::LARGE);
+          drawCenteredFit(g, oy + uiY(100), "SPHERE DEVOURED", "DEVOURED",
+                          g2::makeColor(255, 230, 120));
+          setHudFont(g, ui_.compact ? HudFont::SMALL : HudFont::MEDIUM);
+          drawCenteredFit(g, oy + uiY(135), "leaving for a larger world...",
+                          "next sphere...", HUD_TEXT);
+        }
+      } else if (hud.state == sim::GameState::ARRIVE) {
+        // From the moment the camera is behind the player (the next sphere
+        // in view beyond it) until shortly before the landing
+        if (hud.stateTimer >= 2 * sim::ARRIVE_SWITCH_TICKS &&
+            hud.stateTimer < sim::ARRIVE_TICKS - sim::TICK_RATE / 2) {
+          setHudFont(g, HudFont::LARGE);
+          std::snprintf(buf, sizeof(buf), "SPHERE %d", hud.sphereLevel);
+          drawCenteredFit(g, oy + uiY(100), buf, nullptr, HUD_TEXT);
+        }
       } else if (hud.state == sim::GameState::DEAD) {
         setHudFont(g, HudFont::LARGE);
         drawCenteredFit(g, oy + uiY(100), "YOU WERE DEVOURED", "DEVOURED",
