@@ -310,6 +310,11 @@ bands: D1.1 / 1.4  U3.8  V3.4
 - 残る CPU 側は `BGN` の render 層 float (凧の頂点生成、浮遊フラグメント、弾) と
   ワイヤーフレームの走査、tick の配置物理 `L` (今は tick の最大項)。
 
+9 回目の後、render 層の凧の頂点生成 (エンティティ本体・浮遊フラグメント・弾) も整数にした
+(core/SPEC.md「render 層の整数ジオメトリ」)。sim の units と Q30 の向きから頂点を作り、
+ShapoGFX の `FixedVertex` で渡すので、固定小数点パイプラインは float を一度も通らない。
+`O` と `H` に効くはずで、10 回目の計測待ち。
+
 ### コードを RAM に置く
 
 `DS_RAM_CODE` (CMake、既定 `sim`) で、どのコードを RAM に置くかを選ぶ。

@@ -417,7 +417,18 @@ class Renderer {
   void putQuad(const g3::vec3f &c, const g3::vec3f &dir, const g3::vec3f &perp,
                float halfLen, float halfWidth, const g3::Material &m);
   void buildScene();
-  void drawEntity(const sim::Entity &c, const g3::vec3f &pos, float px,
+  // Integer geometry: positions in world units relative to origin_,
+  // directions as the simulation's Q30 unit vectors; ShapoGFX takes the
+  // vertices as FixedVertex (16.16 FU = units << 8). No float anywhere.
+  void putKiteQ(const sim::Vec3 &c, const sim::Vec3 &dir, const sim::Vec3 &perp,
+                int32_t s, int32_t tipLen, const g3::Material &m);
+  void putQuadQ(const sim::Vec3 &c, const sim::Vec3 &dir, const sim::Vec3 &perp,
+                int32_t halfLen, int32_t halfWidth, const g3::Material &m);
+  void putLineLoopQ(const sim::Vec3 *pts, int n, g2::Color c,
+                    const g3::Material &m);
+  void putPointQ(const sim::Vec3 &p, g2::Color c, const g3::Material &m);
+  sim::Vec3 eyeQ_ = {};  // cam_.eye in world units relative to origin_
+  void drawEntity(const sim::Entity &c, const sim::Vec3 &pos, float px,
                   bool full, bool blink);
   void drawFloatingFragments();
   void drawBullets();

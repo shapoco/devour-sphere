@@ -252,6 +252,100 @@ void Renderer::putPoint3(const vec3f &p, g2::Color c, const g3::Material &m) {
   pointCount_++;
 }
 
+// --- Integer geometry ------------------------------------------------------
+// The body kites, the floating fragments and the bullets are built from the
+// simulation's own integers -- positions in world units relative to the
+// render origin, directions as Q30 unit vectors -- and handed to ShapoGFX as
+// FixedVertex (16.16 FU, which is units << 8). On a core without an FPU
+// this is what makes a kite cheap; the float path stays for the effects and
+// the overlays.
+
+static inline int32_t unitsToFix(int32_t units) {
+  return units > 0x7FFFFF ? INT32_MAX
+                          : (units < -0x7FFFFF ? INT32_MIN : units << 8);
+}
+static inline g3::FixedVertex fixedVertex(const sim::Vec3 &p, g2::Color c) {
+  g3::FixedVertex v;
+  v.position[0] = unitsToFix(p.x);
+  v.position[1] = unitsToFix(p.y);
+  v.position[2] = unitsToFix(p.z);
+  v.normal[0] = 0;
+  v.normal[1] = 32767;
+  v.normal[2] = 0;
+  v.uv[0] = v.uv[1] = 0;
+  v.color = c;
+  return v;
+}
+// Rotate the unit vector v around the unit axis by `brad` (Rodrigues, no
+// renormalization: the inputs are unit vectors)
+static inline sim::Vec3 rotQ30(const sim::Vec3 &v, const sim::Vec3 &axis,
+                               uint16_t brad) {
+  const int32_t c = sim::cosQ30(brad), s = sim::sinQ30(brad);
+  const sim::Vec3 k = sim::crossQ30(axis, v);
+  const int32_t d = sim::dotQ30(axis, v);
+  return sim::scaleQ30(v, c) + sim::scaleQ30(k, s) +
+         sim::scaleQ30(axis, sim::mulQ30(d, sim::Q30_ONE - c));
+}
+
+void Renderer::putKiteQ(const sim::Vec3 &c, const sim::Vec3 &dir,
+                        const sim::Vec3 &perp, int32_t s, int32_t tipLen,
+                        const g3::Material &m) {
+  const sim::Vec3 dt = sim::scaleToLength(dir, tipLen);
+  const sim::Vec3 ds = sim::scaleToLength(dir, s);
+  const sim::Vec3 ps = sim::scaleToLength(perp, s);
+  const g3::FixedVertex v[4] = {fixedVertex(c + dt, g3::VERTEX_WHITE),
+                                fixedVertex(c + ps, g3::VERTEX_WHITE),
+                                fixedVertex(c - ds, g3::VERTEX_WHITE),
+                                fixedVertex(c - ps, g3::VERTEX_WHITE)};
+  static const uint16_t idx[6] = {0, 1, 2, 0, 2, 3};
+  g3::VertexBuffer vb = {4, nullptr, nullptr, v};
+  g3::Primitive prim = {g3::PrimitiveType::TRIANGLES, &vb, 6, idx, &m};
+  g3d_.putPrimitive(prim);
+  kites_++;
+}
+
+void Renderer::putQuadQ(const sim::Vec3 &c, const sim::Vec3 &dir,
+                        const sim::Vec3 &perp, int32_t halfLen,
+                        int32_t halfWidth, const g3::Material &m) {
+  const sim::Vec3 dl = sim::scaleToLength(dir, halfLen);
+  const sim::Vec3 pw = sim::scaleToLength(perp, halfWidth);
+  const g3::FixedVertex v[4] = {fixedVertex(c + dl + pw, g3::VERTEX_WHITE),
+                                fixedVertex(c + dl - pw, g3::VERTEX_WHITE),
+                                fixedVertex(c - dl - pw, g3::VERTEX_WHITE),
+                                fixedVertex(c - dl + pw, g3::VERTEX_WHITE)};
+  static const uint16_t idx[6] = {0, 1, 2, 0, 2, 3};
+  g3::VertexBuffer vb = {4, nullptr, nullptr, v};
+  g3::Primitive prim = {g3::PrimitiveType::TRIANGLES, &vb, 6, idx, &m};
+  g3d_.putPrimitive(prim);
+  kites_++;
+}
+
+void Renderer::putLineLoopQ(const sim::Vec3 *pts, int n, g2::Color c,
+                            const g3::Material &m) {
+  if (n < 2 || n > 8) return;
+  g3::FixedVertex v[8];
+  uint16_t idx[8];
+  for (int i = 0; i < n; i++) {
+    v[i] = fixedVertex(pts[i], c);
+    idx[i] = (uint16_t)i;
+  }
+  g3::VertexBuffer vb = {(uint16_t)n, nullptr, nullptr, v};
+  g3::Primitive prim = {g3::PrimitiveType::LINE_LOOP, &vb, (uint16_t)n, idx,
+                        &m};
+  g3d_.putPrimitive(prim);
+  lineCount_ += n;
+}
+
+void Renderer::putPointQ(const sim::Vec3 &p, g2::Color c,
+                         const g3::Material &m) {
+  const g3::FixedVertex v[1] = {fixedVertex(p, c)};
+  static const uint16_t idx[1] = {0};
+  g3::VertexBuffer vb = {1, nullptr, nullptr, v};
+  g3::Primitive prim = {g3::PrimitiveType::POINTS, &vb, 1, idx, &m};
+  g3d_.putPrimitive(prim);
+  pointCount_++;
+}
+
 void Renderer::putKite(const vec3f &c, const vec3f &dir, const vec3f &perp,
                        float s, float tipLen, const g3::Material &m) {
   g3::Vertex v[4];
@@ -397,6 +491,7 @@ void Renderer::updateCamera(float dt) {
   cam_.target = target;
   cam_.up = upR;
   cam_.fovY = camFov_;
+  eyeQ_ = {(int32_t)(eye.x * FU), (int32_t)(eye.y * FU), (int32_t)(eye.z * FU)};
 
   float aspect = (float)w_ / (float)h_;
   view_ = g3::mat4f::lookAt(eye, target, upR);
@@ -461,21 +556,20 @@ g2::Color Renderer::colorForEntity(const sim::Entity &c) const {
 
 // px: projected body radius in pixels; full: draw every fragment (otherwise
 // an outline of the body)
-void Renderer::drawEntity(const sim::Entity &c, const vec3f &pos, float px,
+void Renderer::drawEntity(const sim::Entity &c, const sim::Vec3 &pos, float px,
                           bool full, bool blink) {
-  vec3f up = q30ToF(c.frame.n);
-  vec3f fwd = q30ToF(c.frame.t);
-  vec3f right = g3::cross(fwd, up);
-  const float k = 1.0f / FU;
-  float coreY = c.coreY * k, coreHalf = c.coreHalf * k;
-  float focusY = c.layoutFocusY * k;
+  using sim::Vec3;
+  Vec3 up = c.frame.n;
+  const Vec3 fwd = c.frame.t;
+  Vec3 right = sim::crossQ30(fwd, up);
+  const int32_t coreY = c.coreY, coreHalf = c.coreHalf;
+  const int32_t focusY = c.layoutFocusY;
   const g3::Material &m = materialForEntity(c);
 
   // Bank into the turn: roll the body around the heading
   if (c.bank != 0) {
-    float bank = c.bank * BRAD_TO_RAD;
-    right = rotateAroundAxis(right, fwd, bank);
-    up = rotateAroundAxis(up, fwd, bank);
+    right = rotQ30(right, fwd, (uint16_t)c.bank);
+    up = rotQ30(up, fwd, (uint16_t)c.bank);
   }
   // Hit flash: the whole body turns white for a moment
   int idx = (int)(&c - game_->entities);
@@ -493,53 +587,59 @@ void Renderer::drawEntity(const sim::Entity &c, const vec3f &pos, float px,
   if (full) {
     // Dihedral: fragments tilt outwards (around the heading) the farther
     // they are from the body's axis, so the body looks like it has volume
-    float bodyR = c.bodyRadius * k * 1.4f;
-    if (bodyR < 0.1f) bodyR = 0.1f;
+    constexpr uint16_t TILT_MAX_BRAD = sim::degToBrad(35);  // TILT_MAX
+    int32_t bodyR = c.bodyRadius * 7 / 5;
+    if (bodyR < FU / 10) bodyR = FU / 10;
     for (int i = 0; i < c.fragmentCount; i++) {
       const sim::Fragment &p = c.fragments[i];
-      float s = sim::fragmentHalfSize(p.sizeLog2) * k;
-      float lx = p.x * k * 1.4f, ly = p.y * k;  // widen like wings
+      const int32_t s = sim::fragmentHalfSize(p.sizeLog2);
+      const int32_t lx = p.x * 7 / 5, ly = p.y;  // widen like wings
       for (int side = -1; side <= 1; side += 2) {
-        float x = lx * side;
-        float t = std::fabs(x) / bodyR;
-        if (t > 1) t = 1;
+        const int32_t x = lx * side;
+        int32_t ax = x < 0 ? -x : x;
+        if (ax > bodyR) ax = bodyR;
         // rotating +right around fwd by a positive angle moves it towards
         // -up: the outer edge of each wing droops (anhedral)
-        float tilt = side * t * TILT_MAX;
-        vec3f rightT = rotateAroundAxis(right, fwd, tilt);
-        float dx = x, dy = ly - focusY;
-        float len = std::sqrt(dx * dx + dy * dy);
-        if (len < 1e-4f) dx = 0, dy = -1, len = 1;
-        dx /= len, dy /= len;
-        vec3f dir = rightT * dx + fwd * dy;
-        vec3f perp = rightT * (-dy) + fwd * dx;
-        vec3f kc = pos + right * x + fwd * ly;
-        putKite(kc, dir, perp, s, s * 2.5f, bodyMat);
+        const int32_t tilt =
+            side * (int32_t)((int64_t)ax * TILT_MAX_BRAD / bodyR);
+        const Vec3 rightT = rotQ30(right, fwd, (uint16_t)tilt);
+        int32_t dx = x, dy = ly - focusY;
+        if (dx == 0 && dy == 0) dy = -1;
+        const Vec3 u = sim::normalizeQ30({dx, dy, 0});  // (dx, dy) unit, Q30
+        const Vec3 dir = sim::scaleQ30(rightT, u.x) + sim::scaleQ30(fwd, u.y);
+        const Vec3 perp = sim::scaleQ30(rightT, -u.y) + sim::scaleQ30(fwd, u.x);
+        const Vec3 kc =
+            pos + sim::scaleToLength(right, x) + sim::scaleToLength(fwd, ly);
+        putKiteQ(kc, dir, perp, s, s * 5 / 2, bodyMat);
         if (carrier) {
           // A slightly brighter outline shows that this enemy carries an
           // upgrade (only visible up close)
-          const vec3f pts[4] = {kc + dir * (s * 2.5f), kc + perp * s,
-                                kc - dir * s, kc - perp * s};
-          putLineLoop3(pts, 4, outline, palette_[PAL_LINE]);
+          const Vec3 pts[4] = {kc + sim::scaleToLength(dir, s * 5 / 2),
+                               kc + sim::scaleToLength(perp, s),
+                               kc - sim::scaleToLength(dir, s),
+                               kc - sim::scaleToLength(perp, s)};
+          putLineLoopQ(pts, 4, outline, palette_[PAL_LINE]);
         }
       }
     }
     // Core (white, pointing forward)
-    putKite(pos + fwd * coreY, fwd, right, coreHalf, coreHalf * 2.5f,
-            palette_[PAL_CORE]);
+    putKiteQ(pos + sim::scaleToLength(fwd, coreY), fwd, right, coreHalf,
+             coreHalf * 5 / 2, palette_[PAL_CORE]);
   } else {
     // Far away: the outline of a body-sized kite (lines stay visible even
     // edge-on), plus the core when it is more than a few pixels. A carrier
     // of an upgrade is drawn in white so it stands out from afar
-    float s = c.bodyRadius * k * 0.5f;
-    vec3f center = pos + fwd * (coreY - s);
-    const vec3f pts[4] = {center - fwd * (s * 2.0f), center + right * s,
-                          center + fwd * s, center - right * s};
-    putLineLoop3(pts, 4, carrier ? outline : colorForEntity(c),
+    const int32_t s = c.bodyRadius / 2;
+    const Vec3 center = pos + sim::scaleToLength(fwd, coreY - s);
+    const Vec3 pts[4] = {center - sim::scaleToLength(fwd, s * 2),
+                         center + sim::scaleToLength(right, s),
+                         center + sim::scaleToLength(fwd, s),
+                         center - sim::scaleToLength(right, s)};
+    putLineLoopQ(pts, 4, carrier ? outline : colorForEntity(c),
                  palette_[PAL_LINE]);
     if (px >= 4.0f) {
-      putKite(pos + fwd * coreY, fwd, right, coreHalf, coreHalf * 2.5f,
-              palette_[PAL_CORE]);
+      putKiteQ(pos + sim::scaleToLength(fwd, coreY), fwd, right, coreHalf,
+               coreHalf * 5 / 2, palette_[PAL_CORE]);
     }
   }
   entitiesDrawn_++;
@@ -560,30 +660,43 @@ void Renderer::drawFloatingFragments() {
     // Horizon test in integer, before anything is converted to float
     if (sim::dotQ30(fp.n, camQ_.unit) < camQ_.cosHorizon - HORIZON_Q01)
       continue;
-    vec3f up = q30ToF(fp.n);
-    vec3f pos = toLocal(sim::scaleToLength(fp.n, fp.r));
+    const sim::Vec3 posQ = sim::scaleToLength(fp.n, fp.r) - origin_;
+    const vec3f pos = {posQ.x * (1.0f / FU), posQ.y * (1.0f / FU),
+                       posQ.z * (1.0f / FU)};
     vec3f rel = pos - cam_.eye;
     float d = g3::length(rel);
     if (g3::dot(rel, viewDir_) < -2.0f) continue;
-    float s = sim::fragmentHalfSize(fp.sizeLog2) / (float)FU;
-    float px = s * focalPx_ / (d > 0.1f ? d : 0.1f);
+    const int32_t sUnits = sim::fragmentHalfSize(fp.sizeLog2);
+    float px = (sUnits / (float)FU) * focalPx_ / (d > 0.1f ? d : 0.1f);
     if (px < 1.0f) {
-      putPoint3(pos, edible ? pointColor : whitePoint, palette_[PAL_LINE]);
+      putPointQ(posQ, edible ? pointColor : whitePoint, palette_[PAL_LINE]);
       continue;
     }
     // Tangent frame spun by the fragment's own angle, tilted a little
-    // towards the camera like the entities
-    vec3f toCam = rel * (-1.0f / (d > 0.1f ? d : 0.1f));
-    float elev = std::fabs(g3::dot(toCam, up));
-    float t = (0.55f - elev) / 0.55f;
-    if (t > 0) up = g3::normalize(up + toCam * ((t > 1 ? 1 : t) * 0.8f));
-    vec3f helper = std::fabs(up.x) < 0.9f ? vec3f{1, 0, 0} : vec3f{0, 1, 0};
-    vec3f a = g3::normalize(g3::cross(up, helper));
-    vec3f b = g3::cross(up, a);
-    vec3f dir = a * (sim::cosQ30(fp.spin) * (1.0f / (float)(1 << 30))) +
-                b * (sim::sinQ30(fp.spin) * (1.0f / (float)(1 << 30)));
-    vec3f perp = g3::cross(up, dir);
-    putKite(pos, dir, perp, s, s * 2.5f, m);
+    // towards the camera like the entities. All in Q30.
+    using sim::Vec3;
+    Vec3 up = fp.n;
+    const Vec3 toCam = sim::normalizeQ30(eyeQ_ - posQ);
+    int32_t elev = sim::dotQ30(toCam, up);
+    if (elev < 0) elev = -elev;
+    constexpr int32_t ELEV0 = (int32_t)(0.55 * (1 << 30));
+    constexpr int32_t K_MAX = (int32_t)(0.8 * (1 << 30));
+    constexpr int32_t K_PER = (int32_t)(0.8 / 0.55 * (1 << 30));  // 0.8 / 0.55
+    if (elev < ELEV0) {
+      int32_t k = sim::mulQ30(ELEV0 - elev, K_PER);
+      if (k > K_MAX) k = K_MAX;
+      up = sim::normalizeQ30(up + sim::scaleQ30(toCam, k));
+    }
+    const int32_t ux = up.x < 0 ? -up.x : up.x;
+    const Vec3 helper = ux < (int32_t)(0.9 * (1 << 30))
+                            ? Vec3{sim::Q30_ONE, 0, 0}
+                            : Vec3{0, sim::Q30_ONE, 0};
+    const Vec3 a = sim::normalizeQ30(sim::crossQ30(up, helper));
+    const Vec3 b = sim::crossQ30(up, a);
+    const Vec3 dir = sim::scaleQ30(a, sim::cosQ30(fp.spin)) +
+                     sim::scaleQ30(b, sim::sinQ30(fp.spin));
+    const Vec3 perp = sim::crossQ30(up, dir);
+    putKiteQ(posQ, dir, perp, sUnits, sUnits * 5 / 2, m);
   }
 }
 
@@ -594,19 +707,20 @@ void Renderer::drawBullets() {
     if (!b.alive) continue;
     if (sim::dotQ30(b.frame.n, camQ_.unit) < camQ_.cosHorizon - HORIZON_Q01)
       continue;
-    vec3f up = q30ToF(b.frame.n);
-    vec3f pos = toLocal(sim::scaleToLength(b.frame.n, b.r));
+    const sim::Vec3 posQ = sim::scaleToLength(b.frame.n, b.r) - origin_;
+    const vec3f pos = {posQ.x * (1.0f / FU), posQ.y * (1.0f / FU),
+                       posQ.z * (1.0f / FU)};
     vec3f rel = pos - cam_.eye;
     if (g3::dot(rel, viewDir_) < -2.0f) continue;
-    vec3f fwd = q30ToF(b.frame.t);
-    vec3f right = g3::cross(fwd, up);
-    float base = sim::fragmentHalfSize(sim::log2Floor(b.ownerSize)) / (float)FU;
+    const sim::Vec3 fwd = b.frame.t;
+    const sim::Vec3 right = sim::crossQ30(fwd, b.frame.n);
+    const int32_t base = sim::fragmentHalfSize(sim::log2Floor(b.ownerSize));
     switch (b.kind) {
       case sim::Weapon::VULCAN: {
         const g3::Material &m =
             palette_[b.fromPlayer ? PAL_BULLET_PLAYER : PAL_BULLET_ENEMY];
-        float s = base * 0.3f + 0.08f;
-        putKite(pos, fwd, right, s, s * 2.2f, m);
+        const int32_t s = base * 3 / 10 + FU * 8 / 100;  // 0.3 base + 0.08 FU
+        putKiteQ(posQ, fwd, right, s, s * 11 / 5, m);
         break;
       }
       case sim::Weapon::LASER: {
@@ -616,19 +730,19 @@ void Renderer::drawBullets() {
         // the distance flown so far (so it grows out of the muzzle instead
         // of appearing behind the shooter)
         const sim::WeaponSpec &ws = sim::WEAPON_SPECS[(int)b.kind];
-        float flown = (float)(ws.lifetime - b.life) * b.speed / (float)FU;
-        float len = base * 24.0f + 8.0f;
+        const int32_t flown = (int32_t)(ws.lifetime - b.life) * b.speed;
+        int32_t len = base * 24 + 8 * FU;
         if (len > flown) len = flown;
-        if (len < 0.5f) len = 0.5f;
-        putQuad(pos - fwd * (len * 0.5f), fwd, right, len * 0.5f,
-                base * 0.12f + 0.06f, m);
+        if (len < FU / 2) len = FU / 2;
+        putQuadQ(posQ - sim::scaleToLength(fwd, len / 2), fwd, right, len / 2,
+                 base * 12 / 100 + FU * 6 / 100, m);
         break;
       }
       case sim::Weapon::MISSILE: {
         const g3::Material &m =
             palette_[b.fromPlayer ? PAL_BULLET_PLAYER : PAL_BULLET_ENEMY];
-        float s = base * 0.45f + 0.1f;
-        putKite(pos, fwd, right, s, s * 2.5f, m);
+        const int32_t s = base * 9 / 20 + FU / 10;
+        putKiteQ(posQ, fwd, right, s, s * 5 / 2, m);
         break;
       }
     }
@@ -1044,13 +1158,15 @@ void Renderer::buildScene() {
       continue;
     }
     float bodyR = c.bodyRadius / (float)FU;
-    vec3f pos = toLocal(sim::scaleToLength(c.frame.n, c.r));
+    const sim::Vec3 posQ = sim::scaleToLength(c.frame.n, c.r) - origin_;
+    const vec3f pos = {posQ.x * (1.0f / FU), posQ.y * (1.0f / FU),
+                       posQ.z * (1.0f / FU)};
     vec3f rel = pos - cam_.eye;
     float d = g3::length(rel);
     if (g3::dot(rel, viewDir_) < -bodyR) continue;
     float px = bodyR * focalPx_ / (d > 0.1f ? d : 0.1f);
     if (px < 0.8f) {
-      putPoint3(pos, colorForEntity(c), palette_[PAL_LINE]);
+      putPointQ(posQ, colorForEntity(c), palette_[PAL_LINE]);
       continue;
     }
     // insertion sort by distance
@@ -1087,10 +1203,12 @@ void Renderer::buildScene() {
     int fullTris = (1 + 2 * c.fragmentCount) * 2;
     bool full = vis_[k].px >= 6.0f && triBudget >= fullTris;
     triBudget -= full ? fullTris : 6;
-    vec3f pos = toLocal(sim::scaleToLength(c.frame.n, c.r));
+    const sim::Vec3 posQ = sim::scaleToLength(c.frame.n, c.r) - origin_;
+    const vec3f pos = {posQ.x * (1.0f / FU), posQ.y * (1.0f / FU),
+                       posQ.z * (1.0f / FU)};
     bool blink =
         c.invincible > 0 && ((g.tickCount() / (sim::TICK_RATE / 8)) & 1);
-    drawEntity(c, pos, vis_[k].px, full, blink);
+    drawEntity(c, posQ, vis_[k].px, full, blink);
     // Health gauge over enemies
     if (!c.isPlayer && vis_[k].px >= 2.5f && gaugeCount_ < MAX_GAUGES) {
       float bodyR = c.bodyRadius / (float)FU;
