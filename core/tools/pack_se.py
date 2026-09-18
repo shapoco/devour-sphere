@@ -129,7 +129,11 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("src", type=Path, help="directory of the wav files")
     ap.add_argument("-o", "--out", type=Path, default=Path("se.bin"))
-    ap.add_argument("-r", "--rate", type=int, default=22050)
+    # 24 kHz everywhere: the ESP32S3's PCM-to-PDM hardware interpolates by
+    # 960 / (rate / 100), which has to be an integer (24000 -> 4, 48000 -> 2;
+    # 22050 -> 4.36 comes out garbled), and one rate keeps the browser's pack
+    # usable there as it is
+    ap.add_argument("-r", "--rate", type=int, default=24000)
     ap.add_argument("--pwm", type=int, metavar="WRAP",
                     help="write PWM levels 0..WRAP+1 instead of signed PCM")
     ap.add_argument("--ramp", type=float, default=2.0, metavar="MS",

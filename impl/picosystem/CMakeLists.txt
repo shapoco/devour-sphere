@@ -94,9 +94,11 @@ target_compile_definitions(shapogfx PRIVATE
 # --- The sound pack --------------------------------------------------------
 # materials/se/*.wav as PWM levels (core/tools/pack_se.py --pwm; needs ffmpeg
 # and python3), linked into flash by src/se_data.S. The PWM period is one
-# sample, so the wrap follows the system clock: 250 MHz / 22050 Hz - 1.
+# sample, so the wrap follows the system clock: 250 MHz / 24000 Hz - 1.
+# 24 kHz is the one rate every build uses (the ESP32S3's PDM hardware wants
+# 960 / (rate / 100) to be an integer; see impl/xiamocon/SPEC.md).
 option(DS_OVERCLOCK "Run at 250 MHz (0: the stock 125 MHz)" ON)
-set(SE_RATE 22050)
+set(SE_RATE 24000)
 if(DS_OVERCLOCK)
     set(DS_SYS_CLOCK_HZ 250000000)
 else()

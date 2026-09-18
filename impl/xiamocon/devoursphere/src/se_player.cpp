@@ -158,8 +158,19 @@ bool backendInit(const Config &cfg) {
   chan.dma_frame_num = CHUNK;
   chan.auto_clear = true;  // zeros, not a repeat, if the task ever falls behind
   if (i2s_new_channel(&chan, &g_i2s, nullptr) != ESP_OK) return false;
+  // The PCM-to-PDM hardware interpolates by fp / fs with fp = 960 and, in
+  // the DAC configuration, fs = rate / 100, while the sigma-delta stage is
+  // told the integer quotient: the two only agree when 960 / (rate / 100)
+  // is an integer (24000 -> 4, 48000 -> 2). 22050 (fs = 220, 4.36 against 4)
+  // came out as a garbled squeal on the board. The packs are 24 kHz for this
+  // reason; any other rate takes the other configuration the header offers
+  // (fs = 480, the PDM clock 128 x rate), which is at least consistent.
+  i2s_pdm_tx_clk_config_t clk = I2S_PDM_TX_CLK_DAC_DEFAULT_CONFIG(g_pack.rate);
+  if (g_pack.rate % 100 != 0 || 960 % (g_pack.rate / 100) != 0) {
+    clk = I2S_PDM_TX_CLK_DEFAULT_CONFIG(g_pack.rate);
+  }
   i2s_pdm_tx_config_t tx = {
-      .clk_cfg = I2S_PDM_TX_CLK_DAC_DEFAULT_CONFIG(g_pack.rate),
+      .clk_cfg = clk,
       .slot_cfg = I2S_PDM_TX_SLOT_DAC_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT,
                                                      I2S_SLOT_MODE_MONO),
       .gpio_cfg =

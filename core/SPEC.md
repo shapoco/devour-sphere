@@ -260,6 +260,7 @@ library.json              PlatformIO から `core/` をライブラリとして�
   間隔のカウンタは sim の状態の一部だが、乱数や物理には触れないので
   決定性テストの状態ハッシュには影響しない。
 - 波形の並び (core/tools/pack_se.py、docs/play/se.bin) は `SoundKind` の順と一致させる。
+  サンプルレートは全プラットフォーム 24 kHz (ESP32S3 の PDM ハードウェアの都合。impl/xiamocon/SPEC.md)。
   種類を足すときは `SoundKind`、`SOUND_MIN_GAP_TICKS`、`SOUND_KINDS`、pack_se.py の `SOUNDS`、
   play.js の `SE_NAMES` をすべて揃える (`static_assert` で個数は縛ってある)。
 

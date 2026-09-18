@@ -33,7 +33,7 @@ all: $(OUT) $(SE_OUT)
 se: $(SE_OUT)
 
 $(SE_OUT): $(wildcard $(SE_DIR)/*.wav) $(SE_PACK)
-	python3 $(SE_PACK) -o $@ $(SE_DIR)
+	python3 $(SE_PACK) -r 24000 -o $@ $(SE_DIR)
 
 $(OUT): $(SRCS) $(HDRS) Makefile
 	$(EMCC) $(CXXFLAGS) $(SRCS) --no-entry -sSTANDALONE_WASM=1 \

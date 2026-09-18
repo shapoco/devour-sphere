@@ -116,12 +116,14 @@ target_sources(${APP_NAME} PRIVATE
 # and python3), linked into flash by asm/se_data.S. The amplifier sits behind
 # a 7 kHz low-pass, so the PWM runs at 244 kHz (wrap 1023 at 250 MHz: the
 # carrier is 60 dB down by the time it reaches it) and a DMA pacing timer
-# delivers the samples at 22050 Hz. No ramps: the output rests at the middle
+# delivers the samples at 24000 Hz (the one rate every build uses; the
+# ESP32S3's PDM hardware wants 960 / (rate / 100) to be an integer, see
+# ../SPEC.md). No ramps: the output rests at the middle
 # level and the amplifier is AC coupled. Out of PlatformIO's reach (asm/, not
 # src/): the ESP32S3 build embeds the browser's PCM pack instead (see
 # platformio.ini and se_player.cpp).
 set(SE_PWM_WRAP 1023)
-set(SE_RATE 22050)
+set(SE_RATE 24000)
 set(SE_SRC_DIR ${DS_ROOT}/materials/se)
 set(SE_PACK_PY ${DS_ROOT}/core/tools/pack_se.py)
 set(SE_PACK ${CMAKE_CURRENT_BINARY_DIR}/se_pwm.bin)
