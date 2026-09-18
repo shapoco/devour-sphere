@@ -23,7 +23,6 @@ static constexpr float MARKER_MAX_ANGLE = 75.0f * PI / 180.0f;
 static constexpr float MARKER_MIN_BRIGHTNESS = 0.25f;
 // With this rank or better, markers of every bigger enemy are always shown
 static constexpr int MARKER_ALWAYS_RANK = 5;
-static constexpr float TILT_MAX = 35.0f * PI / 180.0f;  // fragment dihedral
 
 static g3::colorf toColorf(g2::Color c) {
   return {g2::colorR(c) / 255.0f, g2::colorG(c) / 255.0f,
