@@ -48,7 +48,7 @@ PicoSystem (RP2040) 版 (pico-sdk のみ):
 ```sh
 cd impl/picosystem
 cmake -S . -B build -DPICO_SDK_PATH=~/path/to/pico-sdk
-cmake --build build -j         # build/devoursphere.uf2
+cmake --build build -j         # build/devoursphere.uf2 (効果音のパックに ffmpeg と python3 が要る)
 ```
 
 ## License

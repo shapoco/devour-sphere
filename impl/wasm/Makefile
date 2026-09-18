@@ -9,6 +9,7 @@ OUT_DIR := $(REPO_ROOT)/docs/play
 OUT := $(OUT_DIR)/devoursphere.wasm
 # Sound effects: materials/se/*.wav packed into one PCM file (needs ffmpeg)
 SE_DIR := $(REPO_ROOT)/materials/se
+SE_PACK := $(REPO_ROOT)/core/tools/pack_se.py
 SE_OUT := $(OUT_DIR)/se.bin
 
 SRCS := main.cpp \
@@ -31,8 +32,8 @@ all: $(OUT) $(SE_OUT)
 
 se: $(SE_OUT)
 
-$(SE_OUT): $(wildcard $(SE_DIR)/*.wav) pack_se.py
-	python3 pack_se.py -o $@ $(SE_DIR)
+$(SE_OUT): $(wildcard $(SE_DIR)/*.wav) $(SE_PACK)
+	python3 $(SE_PACK) -o $@ $(SE_DIR)
 
 $(OUT): $(SRCS) $(HDRS) Makefile
 	$(EMCC) $(CXXFLAGS) $(SRCS) --no-entry -sSTANDALONE_WASM=1 \

@@ -24,7 +24,7 @@ impl/wasm/
   main.cpp         C API (WASM エクスポート) とネイティブ確認用の main()
   Makefile         Emscripten ビルド (docs/play/devoursphere.wasm と se.bin を生成)
   CMakeLists.txt   ネイティブビルド (1 フレームを PPM に書き出す)
-  pack_se.py       materials/se/*.wav を docs/play/se.bin に詰める (ffmpeg が必要)
+core/tools/pack_se.py  materials/se/*.wav を docs/play/se.bin に詰める (ffmpeg が必要。PicoSystem 版と共用)
 materials/se/      効果音の素材 (wav)。出典は materials/se/README.md
 docs/
   style.css        サイト共通スタイル
@@ -115,7 +115,7 @@ cmake --build build
 core/SPEC.md の「効果音」のとおり、sim は tick ごとに「鳴らす音」のビットを出すだけで、
 波形と再生はこちらが持つ。
 
-- 波形は docs/play/se.bin 1 本にまとめる。impl/wasm/pack_se.py が materials/se/*.wav を
+- 波形は docs/play/se.bin 1 本にまとめる。core/tools/pack_se.py が materials/se/*.wav を
   ffmpeg でモノラル 22.05 kHz 16 bit に変換し、両端の無音 (-50 dB 以下、末尾は 20 ms 残す) を
   切って連結する。形式は先頭に "DSSE"、サンプルレート、個数、総サンプル数、
   各音の (先頭サンプル, サンプル数) の表、続けて s16le の PCM (すべてリトルエンディアン)。

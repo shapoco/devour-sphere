@@ -169,6 +169,7 @@ src/sim/                  fixed.cpp entities.cpp game.cpp entity.cpp combat.cpp
 src/render/               renderer.cpp sphere.cpp hud.cpp
 test/                     sim_test.cpp (ctest), sim_bench.cpp (バランス・負荷計測)
 tools/gen_tables.py       sin テーブル (src/sim/sin_table.inc) の生成
+tools/pack_se.py          効果音の素材 (materials/se/) を 1 本のパックにする (wasm と PicoSystem で共用)
 library.json              PlatformIO から `core/` をライブラリとして参照するための宣言
 ```
 
@@ -240,7 +241,7 @@ library.json              PlatformIO から `core/` をライブラリとして�
   吸収では大きさが移る tick ごとに要求されるので、そのままだと連打になる。
   間隔のカウンタは sim の状態の一部だが、乱数や物理には触れないので
   決定性テストの状態ハッシュには影響しない。
-- 波形の並び (impl/wasm/pack_se.py、docs/play/se.bin) は `SoundKind` の順と一致させる。
+- 波形の並び (core/tools/pack_se.py、docs/play/se.bin) は `SoundKind` の順と一致させる。
   種類を足すときは `SoundKind`、`SOUND_MIN_GAP_TICKS`、`SOUND_KINDS`、pack_se.py の `SOUNDS`、
   play.js の `SE_NAMES` をすべて揃える (`static_assert` で個数は縛ってある)。
 

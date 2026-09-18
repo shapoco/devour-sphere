@@ -13,7 +13,7 @@
 ## ファイル
 
 ファイル名は core の `sim::SoundKind` (core/include/devoursphere/sim/game.hpp) に対応します。
-impl/wasm/pack_se.py がこれらを 1 本のパック (docs/play/se.bin) に変換します。
+core/tools/pack_se.py がこれらを 1 本のパック (docs/play/se.bin、PicoSystem 版は PWM 値の se_pwm.bin) に変換します。
 
 | ファイル | 鳴るとき |
 |---|---|

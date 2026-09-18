@@ -16,6 +16,7 @@
 #include <pico/multicore.h>
 #include <pico/stdlib.h>
 
+#include "audio.hpp"
 #include "devoursphere/devoursphere.hpp"
 #include "devoursphere/profile.hpp"
 #include "display.hpp"
@@ -141,6 +142,7 @@ void core1Main() {
       // The events of a tick are cleared by the next one, so each tick has
       // to be polled or the frame would only show the last one's explosions
       g_renderer.pollEffects(g_game);
+      audio::request(g_game.sounds());
     }
     g_simTickUs = (uint32_t)time_us_64() - t0;
     g_simRan = g_simWanted;
@@ -381,6 +383,7 @@ void frame() {
   for (int i = 0; i < ticks; i++) {
     g_game.tick(buttons);
     g_renderer.pollEffects(g_game);
+    audio::request(g_game.sounds());
   }
   g_prof.tickUs = (uint32_t)time_us_64() - tick0;
   g_prof.ticks = ticks;
@@ -420,6 +423,7 @@ int main() {
   initLed();
   initButtons();
   g_display.init();
+  audio::init();  // before core1, which is the one that plays
 
   g_game.reset(ds::randomSeed());
   g_renderer.setControlHints(render::ControlHints{

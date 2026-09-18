@@ -59,6 +59,13 @@ add_compile_definitions(
 # --- The shared game core -----------------------------------------------
 add_subdirectory(${DS_ROOT}/submodule/shapo-gfx shapogfx)
 add_subdirectory(${DS_ROOT}/core devoursphere_core)
+# The simulation runs from RAM (DS_RAM_CODE below), so its code size is RAM.
+# The SDK's Release default is -O3; -O2 makes the sim 10.6 KB smaller
+# (50.9 KB against 61.6 KB of RAM code in all), which is what lets the sound
+# effects and the flight cinematic fit in the 256 KB. The tick cost of -O2
+# against -O3 is to be read on the device (../SPEC.md, "メモリ配分").
+set(DS_SIM_OPT "-O2" CACHE STRING "Optimization level of the simulation library")
+target_compile_options(devoursphere_sim PRIVATE ${DS_SIM_OPT})
 
 # Only RGB565BE is ever drawn. The panel is written in its 16-bit mode over
 # the hardware SPI, and the DMA byte-swaps each 16-bit word on the way out,
@@ -84,11 +91,42 @@ target_compile_definitions(shapogfx PRIVATE
     "SHAPOGFX3D_HOT_ATTR=__attribute__((section(\".time_critical.gfx3d\")))"
     SHAPOGFX3D_HOT_INSTANTIATE=1)
 
+# --- The sound pack --------------------------------------------------------
+# materials/se/*.wav as PWM levels (core/tools/pack_se.py --pwm; needs ffmpeg
+# and python3), linked into flash by src/se_data.S. The PWM period is one
+# sample, so the wrap follows the system clock: 250 MHz / 22050 Hz - 1.
+option(DS_OVERCLOCK "Run at 250 MHz (0: the stock 125 MHz)" ON)
+set(SE_RATE 22050)
+if(DS_OVERCLOCK)
+    set(DS_SYS_CLOCK_HZ 250000000)
+else()
+    set(DS_SYS_CLOCK_HZ 125000000)
+endif()
+math(EXPR SE_PWM_WRAP "${DS_SYS_CLOCK_HZ} / ${SE_RATE} - 1")
+set(SE_SRC_DIR ${DS_ROOT}/materials/se)
+set(SE_PACK_PY ${DS_ROOT}/core/tools/pack_se.py)
+set(SE_PACK ${CMAKE_CURRENT_BINARY_DIR}/se_pwm.bin)
+file(GLOB SE_WAVS ${SE_SRC_DIR}/*.wav)
+add_custom_command(
+    OUTPUT ${SE_PACK}
+    COMMAND python3 ${SE_PACK_PY} --pwm ${SE_PWM_WRAP} -r ${SE_RATE}
+            -o ${SE_PACK} ${SE_SRC_DIR}
+    DEPENDS ${SE_PACK_PY} ${SE_WAVS}
+    COMMENT "Packing the sound effects (PWM wrap ${SE_PWM_WRAP})"
+    VERBATIM
+)
+set_source_files_properties(src/se_data.S PROPERTIES
+    COMPILE_DEFINITIONS "SE_PACK_PATH=\"${SE_PACK}\""
+    OBJECT_DEPENDS ${SE_PACK}
+)
+
 # --- The firmware --------------------------------------------------------
 add_executable(${APP_NAME}
     src/main.cpp
     src/display.cpp
     src/platform.cpp
+    src/audio.cpp
+    src/se_data.S
     # The timing overlay is the Xiamocon one, compiled from its own tree: it
     # only needs ds_config.hpp / ds_platform.hpp, which this front end
     # provides under the same names.
@@ -105,6 +143,8 @@ target_compile_features(${APP_NAME} PRIVATE cxx_std_17)
 target_compile_options(${APP_NAME} PRIVATE -Wall -Wextra)
 # The timing overlay (X cycles off / FPS / full); 0 compiles it out entirely.
 target_compile_definitions(${APP_NAME} PRIVATE DS_PROFILE=1)
+# The clock (ds_config.hpp reads it; the sound pack above was built for it)
+target_compile_definitions(${APP_NAME} PRIVATE DS_OVERCLOCK=$<BOOL:${DS_OVERCLOCK}>)
 # No -O2 here: the pico SDK defaults CMAKE_BUILD_TYPE to Release (-O3).
 
 # No stdio at all: USB would cost RAM and interrupt load, and the UART pins
@@ -118,6 +158,7 @@ target_link_libraries(${APP_NAME} PRIVATE
     pico_rand                 # get_rand_32(), to seed the game
     hardware_spi
     hardware_dma
+    hardware_pwm              # the piezo (src/audio.cpp)
     hardware_vreg             # the 250 MHz overclock needs 1.20 V
     devoursphere::render      # pulls in devoursphere::sim and shapoco::gfx
 )

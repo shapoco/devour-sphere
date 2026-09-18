@@ -19,7 +19,8 @@ SDK から必要なのは ST7789 の初期化列、ボタンのピン、250MHz �
 - 画面は 240x240 (ST7789)。16 ビット (RGB565) モードで、ハードウェア SPI0 + DMA で帯ごとに書く。
 - フレームバッファを 1 枚も持たず、40 行の帯を 2 枚交互に使って描画・転送する。
 - シミュレーションは 30Hz 固定、描画は追いつける範囲で行う (可変フレームレート)。
-- 音は無し。ハイスコアのフラッシュ保存も無し (電源を切るまでは保持する)。
+- 効果音はピエゾスピーカー (GPIO 11) に 1 音。フラッシュの PCM を DMA で PWM に流し、CPU は使わない (後述)。
+- ハイスコアのフラッシュ保存は無し (電源を切るまでは保持する)。
 - 動的確保はしない。`Game` (95KB) は `.bss` に置く。
 
 ## ファイル構成
@@ -33,10 +34,13 @@ impl/picosystem/
     ds_config.hpp      帯の高さ、アリーナサイズ、tick 周期、クロックなどの定数
     ds_platform.hpp    乱数シードとスタック計測の宣言
     display.hpp        ST7789 ドライバ
+    audio.hpp          効果音 (init / request)
   src/
     main.cpp           クロック、ボタン、フレームループ、帯バッファ、2 コアの分担
     display.cpp        ST7789 の初期化、帯の窓設定、DMA 転送
     platform.cpp       乱数シードとスタック計測
+    audio.cpp          ピエゾの PWM + DMA 再生、優先度
+    se_data.S          効果音のパック (ビルド時に生成される build/se_pwm.bin) を .incbin でフラッシュに置く
 ```
 
 計測オーバーレイ (`profiler.hpp` / `profiler.cpp`) は Xiamocon 版のものを
@@ -55,6 +59,8 @@ cmake --build build -j                  # build/devoursphere.uf2
 
 `build.sh` は上の 2 行をまとめたもの (PICO_SDK_PATH は環境変数か既存の build/ のキャッシュに任せる)。
 
+- 効果音のパック (build/se_pwm.bin) は CMake がビルド時に core/tools/pack_se.py で
+  materials/se/*.wav から作るので、**ffmpeg と python3 が要る**。`make_release.sh` も同様。
 - pico-sdk 2.x は picotool を要求する。手元にビルド済みのものがあれば
   `-Dpicotool_DIR=<picotoolConfig.cmake のあるディレクトリ>` で指す
   (無ければ SDK が GitHub から取得してビルドする)。
@@ -86,6 +92,14 @@ RP2040 の SRAM は 264KB だが、リンカ領域の `RAM` は 256KB (`.data` +
 
 フラッシュ側は `.text` + `.rodata` + `.data` の初期値で約 238KB (16MB のうち)。RAM の空きは約 3KB。
 
+上の表は 2D 線分・点の配列 (`DEVOURSPHERE_MAX_LINES2D` / `POINTS2D`、4.6KB) と飛行演出より前の値。
+2026-09-18 の効果音の時点で `.bss` は 199,876、`Renderer` は 26,144 になり、sim を -O3 のままにすると
+RAM が 1.6KB あふれる (効果音なしの直前のコミットでも 720B あふれていた)。
+そこで **sim ライブラリだけ -O2 でビルドする** (`DS_SIM_OPT`、CMake、既定 `-O2`) ようにした。
+RAM に置くコードが 61,604 → 50,948 と 10.6KB 減り、空きは約 9KB になる。
+-O2 と -O3 の tick 時間の差は実機で読む (未計測。`DS_SIM_OPT=-O3` で戻せる)。
+効果音の再生状態は数十バイトで、波形 (約 600KB) はフラッシュにあり RAM を使わない。
+
 - `Game` は配列の上限を実測ピークに合わせて 136,512 から 95,360 になった (core/SPEC.md の
   メモリの項)。上限を絞る前は Xiamocon 版と同じ構成で 259,888 バイト必要で、
   256KB に載らなかった。
@@ -114,6 +128,48 @@ SDK の `hardware.cpp` のものをそのまま使っている。コマンドは
   tick と `beginFrame()` に重なる。Xiamocon 版と同じ。
 - ST7789 の書き込みは窓の原点から始まるので帯ごとに窓を設定する。
 
+## 効果音
+
+core/SPEC.md「効果音」のとおり、sim は tick ごとに「鳴らす音」のビット (`Game::sounds()`) を出すだけで、
+波形と再生はここが持つ。PicoSystem のピエゾ (面実装、`PICOSYSTEM_AUDIO_PIN` = GPIO 11、
+PWM スライス 5 チャネル B) を次の構成で鳴らす。
+
+- **波形はフラッシュ、再生は DMA、CPU は発音の瞬間だけ。** core/tools/pack_se.py の `--pwm` モードが
+  materials/se/*.wav をモノラル 22.05kHz の PWM 値 (0〜wrap+1、無音は中央値) に変換し、
+  各音の先頭に 0 → 中央、末尾に中央 → 0 の 2ms のランプを付けて 1 本 (build/se_pwm.bin、約 600KB) にする。
+  src/se_data.S が `.incbin` で `.rodata` に置く。CMake のカスタムコマンドが生成するので
+  リポジトリには入らない。
+- **PWM の周期 = サンプル周期。** wrap は sysclk / 22050 − 1 (250MHz で 11,336) で、CMake が
+  `DS_OVERCLOCK` から計算してパックに埋め、audio.cpp はパックのヘッダから読んで同じ値を PWM に設定する。
+  DMA はスライスのラップ DREQ でペーシングされ、1 周期に 1 サンプルを CC レジスタのチャネル B 側
+  (上位 16 ビット) に 16 ビット幅で書く。分解能は 13 ビット強。キャリアをサンプルレートと同じ 22kHz に
+  したのは、ピエゾが容量負荷なので高いキャリアほど GPIO の駆動電流が増える (244kHz なら
+  推定 16mA と定格 12mA を超える) ため。22kHz なら 1〜2mA。
+- **読み出しは XIP の非キャッシュ・非割り当てエイリアス** (`XIP_NOCACHE_NOALLOC_BASE`、0x13000000)。
+  キャッシュ経由で流すと 16KB の XIP キャッシュが 0.4 秒で総入れ替えになり、両コアが取り合っている
+  コードを追い出す。フラッシュ直読みの帯域は 44KB/s (QSPI の 0.4%)、サンプルあたりのレイテンシは
+  0.2µs で、45µs のサンプル間隔に対して問題にならない。
+- **無音時はデューティ 0** (ピンは Low、スイッチングなし)。鳴り終わりは末尾のランプで 0 に戻る。
+  音の途中で別の音に切り替わるときは、レベルが中央付近にあるので先頭のランプを飛ばして始める。
+- **1 音、優先度付き。** `audio::request(bits)` は tick の直後に sim を回すコア (core1) から呼ばれ、
+  同じ tick に複数の要求があれば最も優先度の高い 1 つを選ぶ。再生中の音より優先度が低い要求は、
+  再生中の音が `HOLD_US` (400ms) を過ぎるまで捨てる。それを過ぎればどの音でも取って代わる
+  (2 秒の撃破音が鳴り終わるまで発射音が全部消えないように)。同じ優先度は鳴り直し。
+  再生中かどうかは DMA チャネルの busy で判定し、割り込みは使わない。
+  audio の状態を触るのは 1 つのコアだけなのでロックは無い。
+
+| 優先度 | 音 |
+|---|---|
+| 5 | player_killed |
+| 4 | launch, arrive |
+| 3 | enemy_killed_big, get_upgrade |
+| 2 | enemy_killed_small, menu_start |
+| 1 | hit_player, get_fragment |
+| 0 | shot_vulcan / laser / missile, hit_enemy, menu_select |
+
+実機での音量、歪み、ピンの発熱、22kHz の漏れは未確認 (2026-09-18 時点)。
+ピエゾは低域が出ないので、撃破や LAUNCH の重い音は軽く聞こえるはず。
+
 ## 入力
 
 ボタンは GPIO 16〜23、内部プルアップでアクティブ Low。フレームの先頭で `gpio_get_all()` を
@@ -132,7 +188,8 @@ Xiamocon には FUNC があるが PicoSystem には無いので、X を計測表
 ## クロック
 
 PicoSystem SDK と同じく、コア電圧を 1.20V に上げてから 250MHz にする
-(`DS_OVERCLOCK=0` で定格 125MHz。すべての時間が 2 倍になる)。
+(`DS_OVERCLOCK=0` で定格 125MHz。すべての時間が 2 倍になる。CMake のオプションで、
+効果音のパックの PWM 周期もこれに合わせて計算される)。
 ボード定義のフラッシュ分周 2 で QSPI は 125MHz になるが、SDK が出荷時からこの設定で動いている。
 
 **`clk_peri` は自分で `clk_sys` に戻す。** pico-sdk 2.x の `set_sys_clock_pll()` は
