@@ -84,8 +84,8 @@ struct UiMetrics {
 // owns the storage: pass string literals or something that outlives the
 // renderer.
 struct ControlHints {
-  const char *move = "MOVE: ARROWS / WASD    A: SPACE / IJKL";
-  const char *moveAlt = "ARROWS: MOVE   SPACE: FIRE";
+  const char *move = "MOVE: ARROWS / WASD   FIRE: SPACE / J L   DODGE: I K / C-M";
+  const char *moveAlt = "ARROWS: MOVE  SPACE: FIRE  I/K: DODGE";
   const char *dash = "UP: DASH   DOWN: BRAKE";
   const char *dashAlt = "UP / DOWN: DASH / BRAKE";
   // The pause screen (what resumes, and DOWN for the mute)
@@ -108,6 +108,7 @@ struct HudState {
   int selectedWeapon = 0, playerWeapon = 0;
   int cores = 0;
   int upgradeLevel[sim::UPGRADE_KINDS] = {};
+  int dodgeReadyQ8 = 256;  // emergency dodge: 256 = ready
   sim::GameState state = sim::GameState::TITLE;
   bool debugMode = false;
   bool paused = false;

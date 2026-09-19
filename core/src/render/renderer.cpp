@@ -1540,6 +1540,7 @@ void Renderer::beginFrame(const sim::Game &game, float dt) {
   hud_.cores = game.cores();
   for (int k = 0; k < sim::UPGRADE_KINDS; k++)
     hud_.upgradeLevel[k] = game.upgradeLevel((sim::UpgradeKind)(k + 1));
+  hud_.dodgeReadyQ8 = game.dodgeReadyQ8();
   hud_.state = game.state();
   hud_.debugMode = game.debugMode();
   hud_.paused = game.paused();

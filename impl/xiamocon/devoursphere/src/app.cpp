@@ -111,8 +111,8 @@ bool core1Task() {
 
 #endif  // DS_SIM_ON_CORE1
 
-// The buttons Xiamocon has, in the bits the simulation takes. A, B and Y
-// fire, so the thumb does not have to find a particular one; X pauses.
+// The buttons Xiamocon has, in the bits the simulation takes: A and Y fire,
+// B is the emergency dodge, X pauses.
 uint8_t mapButtons(xmc::input::Button b) {
   using B = xmc::input::Button;
   auto down = [&](B m) { return (b & m) != B::NONE; };
@@ -121,7 +121,8 @@ uint8_t mapButtons(xmc::input::Button b) {
   if (down(B::RIGHT)) out |= sim::Button::RIGHT;
   if (down(B::UP)) out |= sim::Button::UP;
   if (down(B::DOWN)) out |= sim::Button::DOWN;
-  if (down(B::A) || down(B::B) || down(B::Y)) out |= sim::Button::A;
+  if (down(B::A) || down(B::Y)) out |= sim::Button::A;
+  if (down(B::B)) out |= sim::Button::B;
   if (down(B::X)) out |= sim::Button::PAUSE;
   return out;
 }
@@ -204,8 +205,8 @@ void xmcAppSetup(void) {
   }
   g_game->reset(ds::randomSeed());
   g_renderer.setControlHints(render::ControlHints{
-      "MOVE: D-PAD    A/B/Y: FIRE    X: PAUSE",
-      "D-PAD: MOVE   A: FIRE   X: PAUSE",
+      "MOVE: D-PAD   A/Y: FIRE   B: DODGE   X: PAUSE",
+      "D-PAD: MOVE  A: FIRE  B: DODGE",
       // The dash line already describes this device correctly
       render::ControlHints{}.dash,
       render::ControlHints{}.dashAlt,

@@ -111,7 +111,7 @@
     pointer-events: none;
     z-index: 1;
   }
-  #abtn {
+  #abtn, #bbtn {
     width: 96px;
     height: 96px;
     border-radius: 50%;
@@ -126,6 +126,19 @@
     touch-action: none;
   }
   #abtn.down { background: #b0405a; }
+  /* B (dodge): smaller, to the left of and above A */
+  #bbtn {
+    width: 72px;
+    height: 72px;
+    font-size: 22px;
+    background: #1a2438;
+    border-color: #4a80c0;
+    color: #d0e4ff;
+    margin-right: 10px;
+    align-self: flex-start;
+  }
+  #bbtn.down { background: #4a80c0; }
+  #btns { display: flex; align-items: flex-end; }
   #dpad.down { border-color: var(--accent); }
 
   /* --- Phone layout: the page becomes the game console ------------------
@@ -187,7 +200,7 @@
       align-items: flex-end;
       pointer-events: none;
     }
-    body.mobile #dpad, body.mobile #abtn {
+    body.mobile #dpad, body.mobile #btns {
       pointer-events: auto;
       opacity: 0.55;
     }
@@ -219,7 +232,7 @@
   <div id="game"><canvas id="screen" width="480" height="320"></canvas></div>
   <div id="pad">
     <div id="dpad"><div class="knob"></div></div>
-    <div id="abtn">A</div>
+    <div id="btns"><div id="bbtn">B</div><div id="abtn">A</div></div>
   </div>
 </div>
 <div id="toolbar">

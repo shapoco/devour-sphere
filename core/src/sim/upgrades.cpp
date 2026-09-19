@@ -138,6 +138,7 @@ void Game::updateShieldRegen() {
 int32_t Game::enemyDamagePct() const {
   int lv = sphereLevel_ > 1 ? sphereLevel_ - 1 : 0;
   int64_t spherePct = 100 + (int64_t)DIFF_DAMAGE_PCT_PER_SPHERE * lv;
+  if (spherePct > DIFF_DAMAGE_PCT_SPHERE_MAX) spherePct = DIFF_DAMAGE_PCT_SPHERE_MAX;
   int64_t upgradePct = 100 + DIFF_DAMAGE_PCT_PER_LEVEL * totalUpgradeLevel();
   return (int32_t)(spherePct * upgradePct / 100);
 }
@@ -162,6 +163,7 @@ bool Game::respawnPlayer() {
   syncFragments(p, 0, 0);
   p.hp = p.hpMax;
   p.invincible = RESPAWN_INVINCIBLE_TICKS;
+  resetPlayerTimers();
   // Best of several random spots: the one farthest from the nearest enemy
   Frame best = p.frame;
   int32_t bestR = p.r;

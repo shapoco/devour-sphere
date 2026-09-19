@@ -33,6 +33,7 @@ constexpr uint32_t PLAYER_MERGED = 1 << 6;
 constexpr uint32_t PLAYER_HEALED = 1 << 7;     // a heal-only (white) fragment
 constexpr uint32_t PLAYER_UPGRADED = 1 << 8;   // took an upgrade
 constexpr uint32_t PLAYER_RESPAWNED = 1 << 9;  // lost a core and came back
+constexpr uint32_t PLAYER_DODGED = 1 << 10;    // started an emergency dodge
 }  // namespace Event
 
 // Sound effects requested during the last tick (cleared every tick), one bit
@@ -82,6 +83,9 @@ struct EffectEvent {
 // Counters for tuning and tests (never reset except by reset())
 struct DebugStats {
   uint32_t shots, hits, kills, absorbs, fragmentsEaten, fragmentsHealed, crits;
+  // Enemy fire that reached the player's gauge: hits, and the sum of the
+  // fractions of the gauge they took (Q8: 256 = one full gauge)
+  uint32_t playerHits, playerDamageQ8;
 };
 
 extern const int LAUNCH_TICKS;  // length of the LAUNCH state
@@ -209,6 +213,21 @@ class Game {
   }
   int cores() const { return cores_; }
   UpgradeKind lastUpgradeKind() const { return lastUpgradeKind_; }
+  // Emergency dodge: ticks left of the roll, and how ready the next one is
+  // (Q8: 256 = ready now, for the HUD)
+  int dodgeTicks() const { return dodgeTicks_; }
+  int dodgeReadyQ8() const {
+    return dodgeCooldown_ <= 0
+               ? 256
+               : 256 - (int)((int64_t)dodgeCooldown_ * 256 / DODGE_COOLDOWN_TICKS);
+  }
+  // The enemies' behaviour on this sphere
+  const AiTier &aiTier() const {
+    int i = sphereLevel_ - 1;
+    if (i < 0) i = 0;
+    if (i >= AI_TIER_LEVELS) i = AI_TIER_LEVELS - 1;
+    return AI_TIERS[i];
+  }
   // Ticks until the player respawns (0 when alive or game over)
   int respawnDelay() const { return respawnDelay_; }
 
@@ -242,6 +261,18 @@ class Game {
   int32_t regenAccQ8_ = 0;
   UpgradeKind lastUpgradeKind_ = UpgradeKind::NONE;
   int respawnDelay_ = 0;
+  // Player only (so the Entity does not grow): mercy ticks after a hit,
+  // and the emergency dodge
+  int16_t playerMercy_ = 0;
+  int16_t dodgeTicks_ = 0;
+  int16_t dodgeCooldown_ = 0;
+  int8_t dodgeDir_ = 1;  // +1 right, -1 left
+  void startDodge(uint8_t buttons);
+  void resetPlayerTimers() {
+    playerMercy_ = 0;
+    dodgeTicks_ = 0;
+    dodgeCooldown_ = 0;
+  }
   void resetUpgrades();
   void assignUpgrades();
   void releaseUpgrade(int idx);
@@ -296,7 +327,7 @@ class Game {
   void addFragmentToEntity(Entity &c, int sizeLog2, int32_t lx, int32_t ly);
   void enforceFragmentLimit(Entity &c);
 
-  void updatePlayerControls(uint8_t buttons);
+  void updatePlayerControls(uint8_t buttons, uint8_t pressed);
   void updateAi(int idx);
   void moveEntity(Entity &c);
   void updateLayout(Entity &c);

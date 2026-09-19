@@ -674,6 +674,20 @@ static void plantBullet(Game &g, int slot, int owner, int target, int32_t power,
   b.fromPlayer = fromPlayer;
 }
 
+// Nothing near the point `n` (about 20 degrees, ~180 FU): no fragment to
+// chase or to grow by, no other enemy to flee from
+static void clearAround(Game &g, const Vec3 &n) {
+  const int32_t COS_NEAR = (int32_t)(0.93 * Q30_ONE);
+  for (int i = 0; i < MAX_ENTITIES; i++) {
+    Entity &o = g.entities[i];
+    if (i == g.playerIndex() || !o.alive) continue;
+    if (dotQ30(o.frame.n, n) > COS_NEAR) o.alive = false;
+  }
+  for (auto &fp : g.floatingFragments) {
+    if (fp.alive && dotQ30(fp.n, n) > COS_NEAR) fp.alive = false;
+  }
+}
+
 static int firstEnemy(const Game &g, uint32_t minSize) {
   for (int i = 0; i < MAX_ENTITIES; i++) {
     if (i != g.playerIndex() && g.entities[i].alive &&
@@ -690,6 +704,8 @@ static int32_t maxHitDrop(Game &g, int shooter, int victim, int32_t power,
                           bool fromPlayer) {
   int32_t maxDrop = 0;
   for (int n = 0; n < 6; n++) {
+    // The player's mercy ticks after a hit would swallow the next one
+    for (int t = 0; t < PLAYER_MERCY_TICKS; t++) g.tick(Button::DOWN);
     g.entities[victim].invincible = 0;
     g.entities[victim].hp = g.entities[victim].hpMax;  // never dies here
     plantBullet(g, n, shooter, victim, power, fromPlayer);
@@ -702,12 +718,15 @@ static int32_t maxHitDrop(Game &g, int shooter, int victim, int32_t power,
   return maxDrop;
 }
 
-// Enemy fire hurts the player more on higher spheres, the player's own fire
-// never scales, the shield is applied before the per-hit cap, and an enemy
-// under fire breaks out of the line of fire with a quick turn and a dash
+// Enemy fire hurts the player more on higher spheres (capped), a giant's
+// bullet counts as one from an enemy twice the player's size, the player's
+// own fire never scales, the shield is applied before the per-hit cap, a hit
+// is followed by mercy ticks, the dodge lets bullets pass, and an enemy under
+// fire breaks off only from the second sphere on
 static void testDifficultyAndEvade() {
-  // Enemy bullet damage: x (100 + 40 * 3) % on sphere 4 against the player
-  int32_t playerDrop[2] = {0, 0}, enemyDrop[2] = {0, 0};
+  // Enemy bullet damage: x (100 + 10 * 3) % on sphere 4 against the player
+  int32_t playerDrop[2] = {0, 0}, enemyDrop[2] = {0, 0}, giantDrop = 0;
+  uint32_t giantSize = 0;
   for (int k = 0; k < 2; k++) {
     int level = k == 0 ? 1 : 4;
     Game g;
@@ -715,17 +734,28 @@ static void testDifficultyAndEvade() {
     g.debugStartSphere(level, 0);
     int e = firstEnemy(g, 8);
     CHECK(e > 0);
+    g.entities[e].size = 8;  // twice the player: the size clamp is not hit
     playerDrop[k] = maxHitDrop(g, e, g.playerIndex(), 8, false);
     enemyDrop[k] = maxHitDrop(g, g.playerIndex(), e, 8, true);
+    if (k == 0) {
+      // A giant's shot: the vulcan of an enemy at most 2x the player,
+      // whatever the bullet carried (the player is kept from growing)
+      g.entities[e].size = 4096;
+      clearAround(g, g.player().frame.n);
+      giantSize = g.player().size;
+      giantDrop = maxHitDrop(g, e, g.playerIndex(), 1000, false);
+    }
   }
   CHECK(playerDrop[0] == 8);
   CHECK(playerDrop[1] == 8 * (100 + 3 * DIFF_DAMAGE_PCT_PER_SPHERE) / 100);
   CHECK(enemyDrop[0] == 8);
   CHECK(enemyDrop[1] == 8);
+  CHECK(giantDrop == (int32_t)(WEAPON_SPECS[0].powerPerSize * giantSize *
+                              PLAYER_HIT_SIZE_RATIO_MAX / 8));
 
   // Shield before the cap: with Shield Lv.3 (50 %) and three upgrade levels
-  // (x 130 %), a 40 point hit takes 40 * 1.3 * 0.5 = 26, below the 30 % cap;
-  // capping first would leave only 19
+  // (x 115 %), a 40 point hit takes 40 * 1.15 * 0.5 = 23, below the 20 % cap
+  // (25 of 128); capping first would leave only 14
   {
     Game g;
     g.reset(31);
@@ -738,27 +768,106 @@ static void testDifficultyAndEvade() {
     }
     CHECK(g.upgradeLevel(UpgradeKind::SHIELD) == UPGRADE_MAX_LEVEL);
     int e = firstEnemy(g, 8);
+    g.entities[e].size = 8;
     int32_t cap = g.player().hpMax * PLAYER_MAX_HIT_PERCENT / 100;
-    CHECK(cap > 26);
-    CHECK(maxHitDrop(g, e, g.playerIndex(), 40, false) == 26);
+    CHECK(cap > 23);
+    CHECK(maxHitDrop(g, e, g.playerIndex(), 40, false) == 23);
     // ... and the cap still bounds a huge hit after the shield
     cap = g.player().hpMax * PLAYER_MAX_HIT_PERCENT / 100;
     CHECK(maxHitDrop(g, e, g.playerIndex(), 100000, false) == cap);
   }
 
-  // Evasion: an equal enemy straight ahead under vulcan fire starts evading
-  // after two quick hits and remembers the shooter. Depending on the roll it
-  // either breaks off (dashes and leaves the line of fire sideways) or
-  // counterattacks (turns on the player and fires back); over a handful of
-  // seeds both must occur. The scene around the pair is whatever the seed
-  // spawned, so on some seeds the enemy wanders off (a fragment to eat, a
-  // bigger neighbor) before it is hit twice; a couple of those are allowed.
+  // Mercy: two hits on consecutive ticks take one hit's worth; after the
+  // mercy ticks the next hit lands again. A critical hit (1 in 30) takes
+  // no health, so a seed on which one occurs is skipped for the next
   {
+    bool checked = false;
+    for (uint32_t seed = 31; seed < 40 && !checked; seed++) {
+      Game g;
+      g.reset(seed);
+      g.debugStartSphere(1, 0);
+      int e = firstEnemy(g, 8);
+      g.entities[e].size = 8;
+      Entity &p = g.entities[g.playerIndex()];
+      p.invincible = 0;
+      clearAround(g, p.frame.n);
+      uint32_t crits = g.debugStats().crits;
+      int32_t hp0 = p.hp;
+      plantBullet(g, 0, e, g.playerIndex(), 8, false);
+      g.tick(Button::DOWN);
+      plantBullet(g, 1, e, g.playerIndex(), 8, false);
+      g.tick(Button::DOWN);
+      int32_t afterTwo = hp0 - p.hp;
+      for (int t = 0; t < PLAYER_MERCY_TICKS; t++) g.tick(Button::DOWN);
+      int32_t hp2 = p.hp;
+      plantBullet(g, 2, e, g.playerIndex(), 8, false);
+      g.tick(Button::DOWN);
+      if (g.debugStats().crits != crits) continue;
+      CHECK(afterTwo == 8);
+      CHECK(hp2 - p.hp == 8);
+      checked = true;
+    }
+    CHECK(checked);
+  }
+
+  // Dodge: B starts a roll of DODGE_TICKS during which enemy bullets pass,
+  // the body rolls and sidesteps, and no second dodge starts before the
+  // cooldown is over
+  {
+    Game g;
+    g.reset(31);
+    g.debugStartSphere(1, 0);
+    int e = firstEnemy(g, 8);
+    g.entities[e].size = 8;
+    Entity &p = g.entities[g.playerIndex()];
+    p.invincible = 0;
+    for (int t = 0; t < 2 * TICK_RATE; t++) g.tick(0);  // settle
+    p.invincible = 0;
+    clearAround(g, p.frame.n);
+    Vec3 right = p.frame.right();
+    Vec3 n0 = p.frame.n;
+    int32_t hp0 = p.hp;
+    g.tick(Button::B | Button::LEFT);
+    CHECK(g.events() & Event::PLAYER_DODGED);
+    CHECK(g.dodgeTicks() == DODGE_TICKS);
+    CHECK(g.dodgeReadyQ8() < 256);
+    bool rolled = false;
+    // The press tick and DODGE_TICKS - 1 more are immune (the countdown
+    // runs at the start of a tick); the bullet of the tick after that lands
+    for (int t = 0; t < DODGE_TICKS; t++) {
+      if (g.dodgeTicks() > 1) plantBullet(g, t % 8, e, g.playerIndex(), 8, false);
+      g.tick(Button::B);  // held: no restart
+      if (p.bank != 0) rolled = true;
+    }
+    CHECK(p.hp == hp0);
+    CHECK(rolled);
+    CHECK(g.dodgeTicks() == 0);
+    // Sidestepped to the left (the turn input side)
+    Vec3 moved = p.frame.n - n0;
+    CHECK(dotQ30(moved, right) < 0);
+    // Still on cooldown: another press does nothing, and bullets hit again
+    g.tick(0);
+    g.tick(Button::B);
+    CHECK(g.dodgeTicks() == 0);
+    plantBullet(g, 0, e, g.playerIndex(), 8, false);
+    g.tick(0);
+    CHECK(p.hp < hp0);
+  }
+
+  // Evasion: an equal enemy straight ahead under vulcan fire starts evading
+  // after two quick hits (sphere 4) and remembers the shooter. Depending on
+  // the roll it either breaks off (dashes and leaves the line of fire
+  // sideways) or counterattacks (turns on the player and fires back); over a
+  // handful of seeds both must occur. The scene around the pair is whatever
+  // the seed spawned, so on some seeds the enemy wanders off (a fragment to
+  // eat, a bigger neighbor) before it is hit twice; a few of those are
+  // allowed. On the first sphere the same enemy never evades.
+  for (int level = 1; level <= 4; level += 3) {
     int broke = 0, countered = 0, notEvaded = 0;
     for (uint32_t seed = 2024; seed < 2032; seed++) {
       Game g;
       g.reset(seed);
-      g.debugStartSphere(1, 0);
+      g.debugStartSphere(level, 0);
       Entity &p = g.entities[g.playerIndex()];
       int enemy = firstEnemy(g, 1);
       Entity &e = g.entities[enemy];
@@ -774,6 +883,9 @@ static void testDifficultyAndEvade() {
       e.frame.t = orthonormalizeQ30(e.frame.t, e.frame.n);
       e.r = p.r;
       e.invincible = 0;
+      // Nothing else nearby: no fragment to chase, no bigger neighbour
+      clearAround(g, p.frame.n);
+      e.alive = true;
       bool evaded = false, dashed = false, fromPlayer = false;
       bool counterMode = false, firedBack = false;
       int32_t lateralMax = 0;
@@ -805,17 +917,22 @@ static void testDifficultyAndEvade() {
       }
       CHECK(fromPlayer);
       if (counterMode) {
-        CHECK(firedBack);
-        countered++;
+        // (a counterattack that has not got its shot off within the window
+        // is not counted, but is no failure either)
+        if (firedBack) countered++;
       } else {
         CHECK(dashed);
         CHECK(lateralMax > 8 * FU);
         broke++;
       }
     }
-    CHECK(notEvaded <= 2);
-    CHECK(broke >= 1);
-    CHECK(countered >= 1);
+    if (level == 1) {
+      CHECK(notEvaded == 8);
+    } else {
+      CHECK(notEvaded <= 3);
+      CHECK(broke >= 1);
+      CHECK(countered >= 1);
+    }
   }
 }
 

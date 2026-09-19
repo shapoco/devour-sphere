@@ -114,7 +114,19 @@ constexpr int32_t HP_PER_SIZE = 32;  // hpMax = HP_PER_SIZE * size
 // for their health only.
 constexpr int32_t HEAL_PER_FRAGMENT_MUL = 1;
 // One bullet hit takes at most this much of the player's gauge
-constexpr int32_t PLAYER_MAX_HIT_PERCENT = 30;
+constexpr int32_t PLAYER_MAX_HIT_PERCENT = 20;
+// An enemy bullet hurts the player as if its owner were at most this many
+// times the player's size (a giant's shot is still a big hit, not a kill)
+constexpr int32_t PLAYER_HIT_SIZE_RATIO_MAX = 2;
+// After a hit the player ignores enemy bullets for this long (0.15 s:
+// several enemies firing at once cannot stack their hits into one instant)
+constexpr int PLAYER_MERCY_TICKS = TICK_RATE * 3 / 20;
+// Emergency dodge (Button::B): a barrel roll sideways during which enemy
+// bullets pass through the player. The sidestep is DODGE_SPEED_MUL times the
+// cruising speed, so it scales with the body like everything else.
+constexpr int DODGE_TICKS = TICK_RATE * 3 / 10;  // 0.3 s
+constexpr int DODGE_COOLDOWN_TICKS = 2 * TICK_RATE;
+constexpr int32_t DODGE_SPEED_MUL = 4;
 // Critical hit: one hit in CRIT_CHANCE_DEN knocks a fragment of about
 // size / CRIT_FRACTION_DIV out of the body instead of taking health. The
 // fragment flies off at CRIT_EJECT_SPEED and its former owner cannot take it
@@ -254,7 +266,7 @@ constexpr int MAX_FLOATING_UPGRADES = 8;
 constexpr uint32_t EXTRA_CORE_CHANCE_DEN = 3;  // 1 in 3 spheres carry one
 // Shield: damage taken in percent per level, level 3 regenerates
 constexpr int32_t SHIELD_DAMAGE_PCT[UPGRADE_MAX_LEVEL + 1] = {100, 75, 50, 50};
-constexpr int32_t SHIELD_REGEN_PCT_PER_SEC = 3;
+constexpr int32_t SHIELD_REGEN_PCT_PER_SEC = 10;
 // Overdrive: fire rate x1.25 / x1.5 / x2 per level (cooldown in percent)
 constexpr int32_t OVERDRIVE_COOLDOWN_PCT[UPGRADE_MAX_LEVEL + 1] = {100, 80, 67,
                                                                    50};
@@ -268,52 +280,90 @@ constexpr int RESPAWN_SIZE_DIV = 2;
 constexpr int RESPAWN_CANDIDATES = 24;
 constexpr int RESPAWN_INVINCIBLE_TICKS = 2 * TICK_RATE;
 constexpr int RESPAWN_DELAY_TICKS = 3 * TICK_RATE;  // watch the wreck first
-// Difficulty: enemies get stronger with the player's total upgrade level
-constexpr int32_t DIFF_FIRE_PCT_PER_LEVEL = 15;    // fire chance
-constexpr int32_t DIFF_DAMAGE_PCT_PER_LEVEL = 10;  // bullet damage
+// Difficulty: enemies get a little stronger with the player's total upgrade
+// level (the upgrades are the reward; the sphere level is the difficulty)
+constexpr int32_t DIFF_FIRE_PCT_PER_LEVEL = 5;    // fire chance
+constexpr int32_t DIFF_DAMAGE_PCT_PER_LEVEL = 5;  // bullet damage
 // ... and enemy fire hurts the player more on every sphere: damage x
-// (100 + DIFF_DAMAGE_PCT_PER_SPHERE * (sphere level - 1)) %, multiplied with
-// the upgrade factor above. The player's own bullets never scale.
-constexpr int32_t DIFF_DAMAGE_PCT_PER_SPHERE = 40;
+// (100 + DIFF_DAMAGE_PCT_PER_SPHERE * (sphere level - 1)) %, capped at
+// DIFF_DAMAGE_PCT_SPHERE_MAX, multiplied with the upgrade factor above. The
+// player's own bullets never scale.
+constexpr int32_t DIFF_DAMAGE_PCT_PER_SPHERE = 10;
+constexpr int32_t DIFF_DAMAGE_PCT_SPHERE_MAX = 170;
 
-// Enemies hunt prey no smaller than 1 / AI_PREY_MIN_RATIO of themselves (the
-// player included, so a small player on a fresh sphere is not ganged up on).
-// The player's highest upgrade level L makes the enemies more eager: the
-// player looks AI_PREY_PLAYER_BIAS_PCT * L percent nearer when choosing prey,
-// a player up to (1 + AI_PREY_PLAYER_BIG_PER_LEVEL * L) times the enemy's
-// effective size is attacked rather than fled from, and the player is
-// detected up to (100 + AI_PLAYER_SIGHT_PCT_PER_LEVEL * L) percent of the
-// normal sight
+// Enemies hunt other enemies no smaller than 1 / AI_PREY_MIN_RATIO of
+// themselves (the player's own ratio comes from the AI tier below)
 constexpr uint32_t AI_PREY_MIN_RATIO = 4;
-constexpr int32_t AI_PREY_PLAYER_BIAS_PCT = 25;
-constexpr int32_t AI_PREY_PLAYER_BIG_PER_LEVEL = 1;
-constexpr int32_t AI_PLAYER_SIGHT_PCT_PER_LEVEL = 50;
 
 // --- Enemy AI ---------------------------------------------------------------
 constexpr int AI_THINK_INTERVAL =
     ticks30(8);  // ticks between decisions (staggered)
-// Chance (out of 256) that an enemy hunting a target fires during a think
-// interval, per sphere level (index 0 = level 1); the last entry applies
-// beyond
-constexpr uint8_t AI_FIRE_CHANCE[] = {40, 110, 200, 255};
-constexpr int AI_FIRE_CHANCE_LEVELS = 4;
-// After AI_EVADE_HITS hits in a short time an enemy breaks off for
-// AI_EVADE_TICKS (+ up to half as much at random): it steers out of the
-// shooter's line of fire (sideways, leaning away), with a quick turn under
-// brake while the escape heading is more than AI_EVADE_TURN_ANGLE off and a
-// dash once it points there. Hits taken meanwhile keep at least
-// AI_EVADE_TICKS / 2 of the maneuver ahead.
-constexpr int AI_EVADE_HITS = 2;
+// Which of the AI behaviours a tier switches on (AiTier::flags)
+constexpr uint8_t AI_DASH = 1 << 0;   // dash when hunting far prey / fleeing
+constexpr uint8_t AI_LEAD = 1 << 1;   // aim ahead of a moving prey
+constexpr uint8_t AI_PACK = 1 << 2;   // join a neighbour hunting the player
+constexpr uint8_t AI_FLANK = 1 << 3;  // approach the player from the side
+// What the enemies do on a sphere, by level (index = level - 1; the last
+// entry applies beyond). Everything about the enemies' aggression is keyed
+// on the sphere level, nothing on the player's upgrades.
+struct AiTier {
+  uint8_t fireChance;  // out of 256 per think interval, prey in the cone
+  uint8_t missilePct;  // weapons of the enemies spawned (the rest: vulcan)
+  uint8_t laserPct;
+  // A bigger enemy hunts the player only when the player is at least
+  // 1 / preyMinRatio of its size (the giants ignore a small player)
+  uint8_t preyMinRatio;
+  // Bravery: a bigger entity within 60 FU is a threat (to flee from) only
+  // when it is more than fleeFarPct percent of one's own effective size,
+  // within 40 FU when more than fleeNearPct; and the player up to fleeFarPct
+  // is hunted rather than avoided (a smaller enemy fights a bigger player)
+  uint8_t fleeFarPct, fleeNearPct;
+  uint8_t playerSightFU;  // range at which the player is noticed
+  uint8_t playerBiasPct;  // the player's distance is divided by this percent
+                          // when choosing prey (preferred over other prey)
+  uint8_t evadeHits;      // hits in a row that start a break-off (0: never)
+  uint8_t counterPct;     // chance to counterattack instead of breaking off
+  uint8_t flags;          // AI_DASH | AI_LEAD | AI_PACK | AI_FLANK
+};
+constexpr AiTier AI_TIERS[] = {
+    // fire mis las prey far  near sight bias evade counter flags
+    {40, 0, 0, 2, 125, 100, 120, 100, 0, 0, 0},                      // 1
+    {72, 0, 0, 2, 125, 100, 140, 110, 4, 0, 0},                      // 2
+    {102, 25, 0, 3, 150, 110, 160, 120, 3, 25, AI_DASH},             // 3
+    {140, 33, 12, 3, 150, 110, 180, 130, 2, 50, AI_DASH | AI_LEAD},  // 4
+    {180, 33, 25, 4, 200, 125, 200, 140, 2, 50,
+     AI_DASH | AI_LEAD | AI_PACK},  // 5
+    {218, 33, 33, 4, 200, 125, 220, 150, 2, 75,
+     AI_DASH | AI_LEAD | AI_PACK | AI_FLANK},  // 6
+    {255, 33, 33, 4, 200, 125, 240, 160, 2, 75,
+     AI_DASH | AI_LEAD | AI_PACK | AI_FLANK},  // 7 and beyond
+};
+constexpr int AI_TIER_LEVELS = 7;
+// Threat distances of the bravery rule above
+constexpr int32_t AI_FLEE_FAR_FU = 60, AI_FLEE_NEAR_FU = 40;
+// Pack: an enemy within this distance that hunts the player calls the
+// neighbours in
+constexpr int32_t AI_PACK_CALL_FU = 60;
+// Flank: an enemy in front of the player (within this half-angle of its
+// heading) and farther than AI_FLANK_MIN_FU steers for a point
+// AI_FLANK_OFFSET_FU beside the player instead of at it
+constexpr uint16_t AI_FLANK_CONE = degToBrad(30);
+constexpr int32_t AI_FLANK_MIN_FU = 30;
+constexpr int32_t AI_FLANK_OFFSET_FU = 40;
+// A break-off lasts AI_EVADE_TICKS (+ up to half as much at random): the
+// enemy steers out of the shooter's line of fire (sideways, leaning away),
+// with a quick turn under brake while the escape heading is more than
+// AI_EVADE_TURN_ANGLE off and a dash once it points there. Hits taken
+// meanwhile keep at least AI_EVADE_TICKS / 2 of the maneuver ahead.
 constexpr int AI_EVADE_TICKS = 2 * TICK_RATE;
 constexpr uint16_t AI_EVADE_TURN_ANGLE = degToBrad(45);
 // Halfway through a break-off the enemy flips its escape side with another
 // quick turn (a zigzag), so it never just runs in a straight line. When the
 // shooter's effective size is at most AI_COUNTER_MAX_RATIO_PCT percent of
 // the enemy's own and the enemy still has more than 1 / AI_COUNTER_MIN_HP_DIV
-// of its health, it counterattacks instead with AI_COUNTER_CHANCE_PCT
-// percent probability: a quick turn under brake towards the shooter, firing
-// as soon as it is in the cone, then a charge.
-constexpr int32_t AI_COUNTER_CHANCE_PCT = 50;
+// of its health, it counterattacks instead with the tier's counterPct
+// probability: a quick turn under brake towards the shooter, firing as soon
+// as it is in the cone, then a charge.
 constexpr int32_t AI_COUNTER_MAX_RATIO_PCT = 125;
 constexpr int32_t AI_COUNTER_MIN_HP_DIV = 3;
 // Steering: brake (quick turn) when the target is more than this far around

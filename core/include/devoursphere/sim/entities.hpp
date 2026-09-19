@@ -16,6 +16,7 @@ constexpr uint8_t UP = 1 << 2;    // dash
 constexpr uint8_t DOWN = 1 << 3;  // brake
 constexpr uint8_t A = 1 << 4;      // fire / confirm
 constexpr uint8_t PAUSE = 1 << 5;  // pause / resume (PLAYING, LAUNCH, ARRIVE)
+constexpr uint8_t B = 1 << 6;      // emergency dodge (PLAYING)
 }  // namespace Button
 
 // Kite half-size (units) of a fragment of size 2^sizeLog2 (area grows with
@@ -103,12 +104,13 @@ struct Entity {
   uint32_t seed;  // per-entity random seed (visual variation)
 };
 
-// Effective size for absorption and color: size * (0.5 + 0.5 * hp / hpMax),
-// in Q8 (so a weakened entity can be devoured by a slightly smaller one)
+// Effective size for absorption and color: size * (0.25 + 0.75 * hp / hpMax)
+// in Q8, so a weakened entity can be devoured by a smaller one: a 1.5x
+// opponent once it is below 5/9 of its health, a 2x one below 1/3
 static inline int64_t effectiveSizeQ8(const Entity &e) {
   int64_t hpTerm = e.hpMax > 0 ? (int64_t)e.hp * 256 / e.hpMax : 256;
   if (hpTerm < 0) hpTerm = 0;
-  return (int64_t)e.size * (256 + hpTerm) / 2;
+  return (int64_t)e.size * (64 + hpTerm * 3 / 4);
 }
 
 struct FloatingFragment {

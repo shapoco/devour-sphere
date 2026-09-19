@@ -168,7 +168,16 @@ void Game::updateBullets() {
       int32_t along = dotQ30(gap, o.frame.n);
       gap = gap - scaleToLength(o.frame.n, along);
       if (length2_64(gap) >= (int64_t)reach * reach) continue;
-      damageEntity(j, b.power, b.owner);
+      int32_t power = b.power;
+      if (o.isPlayer && !b.fromPlayer) {
+        // A giant's bullet hurts the player like one from an enemy at most
+        // PLAYER_HIT_SIZE_RATIO_MAX times its size
+        uint32_t lim = o.size * PLAYER_HIT_SIZE_RATIO_MAX;
+        if (b.ownerSize > lim) {
+          power = (int32_t)(((int64_t)ws.powerPerSize * lim) / 8);
+        }
+      }
+      damageEntity(j, power, b.owner);
       stats_.hits++;
       b.alive = false;
       break;
@@ -204,6 +213,11 @@ void Game::damageEntity(int idx, int32_t dmg, int attacker, bool allowCrit) {
   if (c.isPlayer && playerFrozen()) return;
   bool enemyAttacker = attacker >= 0 && attacker < MAX_ENTITIES &&
                        !entities[attacker].isPlayer;
+  if (c.isPlayer && enemyAttacker) {
+    // Just hit (mercy) or rolling through the dodge: the bullet passes
+    if (playerMercy_ > 0 || dodgeTicks_ > 0) return;
+    playerMercy_ = (int16_t)PLAYER_MERCY_TICKS;
+  }
   if (c.isPlayer) {
     // Enemy fire scales with the sphere level and the player's upgrades
     // (difficulty), then the shield reduces it; the per-hit cap comes last
@@ -239,6 +253,11 @@ void Game::damageEntity(int idx, int32_t dmg, int attacker, bool allowCrit) {
   if (dmg > c.hp) dmg = c.hp;
   c.hp -= dmg;
   if (c.isPlayer) {
+    if (enemyAttacker) {
+      stats_.playerHits++;
+      stats_.playerDamageQ8 +=
+          (uint32_t)((int64_t)dmg * 256 / (c.hpMax > 0 ? c.hpMax : 1));
+    }
     events_ |= Event::PLAYER_HIT;
     pushSound(SoundKind::HIT_PLAYER);
     pushEffect(EffectKind::PLAYER_HIT, idx, c.frame.n, c.r, dmg);
@@ -247,11 +266,13 @@ void Game::damageEntity(int idx, int32_t dmg, int attacker, bool allowCrit) {
     pushEffect(EffectKind::ENEMY_HIT, idx, c.frame.n, c.r, dmg);
   }
   // Enemies that keep getting hit break off, out of the shooter's line of
-  // fire (see updateAi)
-  if (!c.isPlayer) {
+  // fire (see updateAi); how many hits it takes, and whether they fight
+  // back, is the sphere's AI tier (nothing at all on the first sphere)
+  const AiTier &tier = aiTier();
+  if (!c.isPlayer && tier.evadeHits > 0) {
     if (c.evadeTicks == 0) {
       if (c.hitStreak < 255) c.hitStreak++;
-      if (c.hitStreak >= AI_EVADE_HITS) {
+      if (c.hitStreak >= tier.evadeHits) {
         c.hitStreak = 0;
         c.evadeTicks =
             (int16_t)(AI_EVADE_TICKS + rng_.range(0, AI_EVADE_TICKS / 2));
@@ -265,7 +286,7 @@ void Game::damageEntity(int idx, int32_t dmg, int attacker, bool allowCrit) {
         if (known && c.hp * AI_COUNTER_MIN_HP_DIV > c.hpMax &&
             effectiveSizeQ8(entities[attacker]) * 100 <=
                 effectiveSizeQ8(c) * AI_COUNTER_MAX_RATIO_PCT &&
-            (int32_t)rng_.below(100) < AI_COUNTER_CHANCE_PCT) {
+            (int32_t)rng_.below(100) < tier.counterPct) {
           c.evadeMode = (uint8_t)EvadeMode::COUNTER;
         }
       }

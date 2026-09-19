@@ -6,8 +6,9 @@ Firmware for Xiamocon (a XIAO RP2350 / ESP32S3 handheld) and for PicoSystem
 (Pimoroni, RP2040). The browser version needs no download: see docs/play/ on
 the project page.
 
-Controls (all three): LEFT / RIGHT turn, UP dashes, DOWN brakes, A / B / Y
-fire and confirm, X pauses. On the title or pause screen DOWN toggles mute
+Controls (all three): LEFT / RIGHT turn, UP dashes, DOWN brakes, A / Y
+fire and confirm, B is the emergency dodge (a 0.3 s barrel roll that enemy
+bullets pass through, once every 2 s), X pauses. On the title or pause screen DOWN toggles mute
 and UP toggles the timing overlay (Xiamocon: FUNC toggles it any time).
 
 xiamocon-rp2350/  - for XIAO RP2350

@@ -13,7 +13,8 @@
 
 'use strict';
 
-const BTN_LEFT = 1, BTN_RIGHT = 2, BTN_UP = 4, BTN_DOWN = 8, BTN_A = 16, BTN_PAUSE = 32;
+const BTN_LEFT = 1, BTN_RIGHT = 2, BTN_UP = 4, BTN_DOWN = 8, BTN_A = 16, BTN_PAUSE = 32,
+  BTN_B = 64;
 
 // RGB565BE -> RGBA8888 lookup. The frame buffer is read as native (little
 // endian) 16-bit words, so the table is indexed by the byte-swapped value and
@@ -320,8 +321,10 @@ const KEY_MAP = {
   ArrowRight: BTN_RIGHT, KeyD: BTN_RIGHT,
   ArrowUp: BTN_UP, KeyW: BTN_UP,
   ArrowDown: BTN_DOWN, KeyS: BTN_DOWN,
-  Space: BTN_A, KeyI: BTN_A, KeyJ: BTN_A, KeyK: BTN_A, KeyL: BTN_A,
-  Enter: BTN_A,
+  Space: BTN_A, KeyJ: BTN_A, KeyL: BTN_A, Enter: BTN_A,
+  // Dodge: I / K, and the row next to the space bar
+  KeyI: BTN_B, KeyK: BTN_B,
+  KeyC: BTN_B, KeyV: BTN_B, KeyB: BTN_B, KeyN: BTN_B, KeyM: BTN_B,
   Escape: BTN_PAUSE, KeyP: BTN_PAUSE,
 };
 
@@ -362,26 +365,29 @@ function pollGamepad(input) {
     if (pressed(15)) bits |= BTN_RIGHT;
     if (pressed(12)) bits |= BTN_UP;
     if (pressed(13)) bits |= BTN_DOWN;
-    if (pressed(0) || pressed(1) || pressed(2) || pressed(3) || pressed(7)) bits |= BTN_A;
+    if (pressed(0) || pressed(2) || pressed(3) || pressed(7)) bits |= BTN_A;
+    if (pressed(1) || pressed(4) || pressed(5)) bits |= BTN_B;  // B, shoulders
     if (pressed(9)) bits |= BTN_PAUSE;  // Start
   }
   input.pad = bits;
 }
 
 // Virtual game pad: a direction disc (diagonals allowed, so dash + turn
-// works) and an A button. Shown on touch devices, or with the toggle button.
+// works), an A button (fire) and a B button (dodge). Shown on touch devices,
+// or with the toggle button.
 function setupTouchPad(input) {
   const dpad = document.getElementById('dpad');
   const abtn = document.getElementById('abtn');
+  const bbtn = document.getElementById('bbtn');
   const knob = dpad ? dpad.querySelector('.knob') : null;
-  if (!dpad || !abtn) return;
+  if (!dpad || !abtn || !bbtn) return;
 
   const coarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
   if (coarse || 'ontouchstart' in window) document.body.classList.add('touch');
 
-  let dir = 0, fire = 0;
+  let dir = 0, fire = 0, dodge = 0;
   let dpadPointer = null;
-  function update() { input.touch = dir | fire; }
+  function update() { input.touch = dir | fire | dodge; }
 
   function dirFromEvent(e) {
     const r = dpad.getBoundingClientRect();
@@ -439,7 +445,18 @@ function setupTouchPad(input) {
   abtn.addEventListener('pointerup', aUp);
   abtn.addEventListener('pointercancel', aUp);
   abtn.addEventListener('lostpointercapture', aUp);
-  for (const el of [dpad, abtn]) {
+  bbtn.addEventListener('pointerdown', (e) => {
+    dodge = BTN_B;
+    bbtn.classList.add('down');
+    bbtn.setPointerCapture(e.pointerId);
+    update();
+    e.preventDefault();
+  });
+  const bUp = () => { dodge = 0; bbtn.classList.remove('down'); update(); };
+  bbtn.addEventListener('pointerup', bUp);
+  bbtn.addEventListener('pointercancel', bUp);
+  bbtn.addEventListener('lostpointercapture', bUp);
+  for (const el of [dpad, abtn, bbtn]) {
     el.addEventListener('contextmenu', (e) => e.preventDefault());
   }
 }

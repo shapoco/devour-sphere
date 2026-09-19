@@ -67,9 +67,8 @@ void initButtons() {
 
 bool down(uint32_t gpio, uint pin) { return (gpio & (1u << pin)) == 0; }
 
-// The buttons the PicoSystem has, in the five bits the simulation takes. The
-// three remaining face buttons fire, so the thumb does not have to find a
-// particular one.
+// The buttons the PicoSystem has, in the bits the simulation takes: A and Y
+// fire, B is the emergency dodge, X pauses.
 uint8_t mapButtons(uint32_t gpio) {
   uint8_t out = 0;
   if (down(gpio, PICOSYSTEM_SW_LEFT_PIN)) out |= sim::Button::LEFT;
@@ -77,10 +76,10 @@ uint8_t mapButtons(uint32_t gpio) {
   if (down(gpio, PICOSYSTEM_SW_UP_PIN)) out |= sim::Button::UP;
   if (down(gpio, PICOSYSTEM_SW_DOWN_PIN)) out |= sim::Button::DOWN;
   if (down(gpio, PICOSYSTEM_SW_X_PIN)) out |= sim::Button::PAUSE;
-  if (down(gpio, PICOSYSTEM_SW_A_PIN) || down(gpio, PICOSYSTEM_SW_B_PIN) ||
-      down(gpio, PICOSYSTEM_SW_Y_PIN)) {
+  if (down(gpio, PICOSYSTEM_SW_A_PIN) || down(gpio, PICOSYSTEM_SW_Y_PIN)) {
     out |= sim::Button::A;
   }
+  if (down(gpio, PICOSYSTEM_SW_B_PIN)) out |= sim::Button::B;
   return out;
 }
 
@@ -438,8 +437,8 @@ int main() {
 
   g_game.reset(ds::randomSeed());
   g_renderer.setControlHints(render::ControlHints{
-      "MOVE: D-PAD    A/B/Y: FIRE    X: PAUSE",
-      "D-PAD: MOVE   A: FIRE   X: PAUSE",
+      "MOVE: D-PAD   A/Y: FIRE   B: DODGE   X: PAUSE",
+      "D-PAD: MOVE  A: FIRE  B: DODGE",
       render::ControlHints{}.dash,
       render::ControlHints{}.dashAlt,
       "X: RESUME    DOWN: SOUND    UP: STATS",

@@ -304,6 +304,18 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
                               : (fill > gw / 5 ? g2::makeColor(240, 200, 60)
                                                : g2::makeColor(240, 70, 60));
       if (fill > 0) g.fillRect(gx, gy, fill, gh, hpColor);
+      // Dodge readiness: a thin bar under the gauge that refills over the
+      // cooldown (dim while charging, bright when ready)
+      {
+        const int by = gy + gh + gb + ui(2, 1), bh = ui(2, 1);
+        int ready = hud.dodgeReadyQ8;
+        if (ready < 0) ready = 0;
+        if (ready > 256) ready = 256;
+        int bw = (int)(((int64_t)gw * ready) >> 8);
+        g2::Color dodgeColor = ready >= 256 ? g2::makeColor(120, 200, 255)
+                                           : g2::makeColor(50, 80, 110);
+        if (bw > 0) g.fillRect(gx, by, bw, bh, dodgeColor);
+      }
 
       // Score (top center): the shown value rolls up towards the real one
       setHudFont(g, HudFont::MEDIUM);

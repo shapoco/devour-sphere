@@ -33,6 +33,7 @@ void Game::reset(uint32_t seed) {
   resetUpgrades();
   lastUpgradeKind_ = UpgradeKind::NONE;
   respawnDelay_ = 0;
+  resetPlayerTimers();
   playerClimb_ = 0;
   switchPending_ = false;
   effectCount_ = 0;
@@ -262,13 +263,12 @@ void Game::spawnPlayer() {
 
 void Game::spawnEnemy(int index, int sizeLog2, bool farFromPlayer) {
   Entity &c = entities[index];
-  // Weapons available to enemies depend on the sphere level
-  Weapon w = Weapon::VULCAN;
-  if (sphereLevel_ >= 4) {
-    w = (Weapon)rng_.below(WEAPON_COUNT);
-  } else if (sphereLevel_ >= 3) {
-    w = rng_.below(2) ? Weapon::MISSILE : Weapon::VULCAN;
-  }
+  // The weapon mix of the sphere's AI tier
+  const AiTier &tier = aiTier();
+  uint32_t roll = rng_.below(100);
+  Weapon w = roll < tier.laserPct                    ? Weapon::LASER
+             : roll < (uint32_t)tier.laserPct + tier.missilePct ? Weapon::MISSILE
+                                                     : Weapon::VULCAN;
   initEntity(c, sizeLog2, w);
   c.hue = ENEMY_HUES[rng_.below(ENEMY_HUE_COUNT)];
   c.invincible = TICK_RATE;
@@ -515,8 +515,11 @@ void Game::tick(uint8_t buttons) {
     p.frame.t = orthonormalizeQ30(p.frame.t, p.frame.n);
     p.bank = (int16_t)(p.bank - (p.bank >> 3));
   }
+  if (playerMercy_ > 0) playerMercy_--;
+  if (dodgeTicks_ > 0) dodgeTicks_--;
+  if (dodgeCooldown_ > 0) dodgeCooldown_--;
   if (state_ == GameState::PLAYING && p.alive && !autoPlayer_) {
-    updatePlayerControls(buttons);
+    updatePlayerControls(buttons, pressed);
   } else if (state_ == GameState::LAUNCH || state_ == GameState::ARRIVE) {
     // Dashing through the flight; the dash ramps down over the last second
     // of the arrival so that the player lands at cruising speed and the
@@ -642,7 +645,9 @@ uint32_t Game::stateHash() const {
       (uint32_t)state_,       tickCount_,         (uint32_t)stateTimer_,
       (uint32_t)sphereLevel_, rng_.state(),       (uint32_t)playerIndex_,
       displayScaleLog2_,      (uint32_t)scoreQ8_, (uint32_t)(scoreQ8_ >> 32),
-      (uint32_t)sphereTicks_, (uint32_t)cores_,   (uint32_t)switchPending_};
+      (uint32_t)sphereTicks_, (uint32_t)cores_,   (uint32_t)switchPending_,
+      (uint32_t)playerMercy_, (uint32_t)dodgeTicks_,
+      (uint32_t)dodgeCooldown_, (uint32_t)dodgeDir_};
   h = fnv(h, scalars, sizeof(scalars));
   return h;
 }

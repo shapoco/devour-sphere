@@ -6,8 +6,10 @@ namespace devoursphere::sim {
 
 // cos(15 degrees) in Q30: firing cone
 static constexpr int32_t COS_FIRE_CONE = (int32_t)(0.9659 * Q30_ONE);
+// cos(AI_FLANK_CONE): in front of the player
+static constexpr int32_t COS_FLANK_CONE = (int32_t)(0.8660 * Q30_ONE);
 
-void Game::updatePlayerControls(uint8_t buttons) {
+void Game::updatePlayerControls(uint8_t buttons, uint8_t pressed) {
   Entity &c = entities[playerIndex_];
   c.turn = 0;
   if (buttons & Button::LEFT) c.turn -= 1;
@@ -16,6 +18,37 @@ void Game::updatePlayerControls(uint8_t buttons) {
   c.dashing =
       (buttons & Button::UP) != 0 && !c.braking && c.hp > (c.hpMax >> 3);
   c.firing = (buttons & Button::A) != 0;
+  if ((pressed & Button::B) && dodgeCooldown_ == 0 && dodgeTicks_ == 0) {
+    startDodge(buttons);
+  }
+}
+
+// Emergency dodge: a barrel roll sideways. The side is the turn input, else
+// away from the nearest enemy bullet nearby, else to the right
+void Game::startDodge(uint8_t buttons) {
+  const Entity &c = entities[playerIndex_];
+  int dir = 0;
+  if (buttons & Button::LEFT) dir -= 1;
+  if (buttons & Button::RIGHT) dir += 1;
+  if (dir == 0) {
+    constexpr int64_t NEAR2 = (int64_t)(60 * FU) * (60 * FU);
+    int64_t best = NEAR2;
+    Vec3 center = worldPos(c.frame.n, c.r);
+    Vec3 right = c.frame.right();
+    for (const Bullet &b : bullets) {
+      if (!b.alive || b.fromPlayer) continue;
+      Vec3 rel = worldPos(b.frame.n, b.r) - center;
+      int64_t d2 = length2_64(rel);
+      if (d2 >= best) continue;
+      best = d2;
+      dir = dotQ30(rel, right) > 0 ? -1 : 1;
+    }
+  }
+  if (dir == 0) dir = 1;
+  dodgeDir_ = (int8_t)dir;
+  dodgeTicks_ = (int16_t)DODGE_TICKS;
+  dodgeCooldown_ = (int16_t)DODGE_COOLDOWN_TICKS;
+  events_ |= Event::PLAYER_DODGED;
 }
 
 // Direction from `from` towards `to` projected on the tangent plane at `from`
@@ -59,6 +92,7 @@ static bool wantsQuickTurn(int16_t err, int64_t d2) {
 
 void Game::updateAi(int idx) {
   Entity &c = entities[idx];
+  const AiTier &tier = aiTier();
   const int32_t sight = AI_SIGHT_FU * FU;
   c.aiMode = AiMode::WANDER;
   c.aiTarget = -1;
@@ -70,14 +104,24 @@ void Game::updateAi(int idx) {
   int threat = -1;
   int64_t threatD2 = INT64_MAX;
   int prey = -1;
-  int64_t preyD2 = INT64_MAX;
-  // The player's best upgrade level makes every enemy more eager: seen from
-  // farther away, attacked even when bigger, preferred over other prey
-  int playerLevel = maxUpgradeLevel();
-  int32_t playerSight =
-      sight * (100 + AI_PLAYER_SIGHT_PCT_PER_LEVEL * playerLevel) / 100;
-  int32_t scanSight = playerSight > sight ? playerSight : sight;
+  int64_t preyD2 = INT64_MAX;  // weighted: the player looks nearer (bias)
+  int64_t preyRealD2 = 0;
+  // The pack (AI_PACK): a neighbour already hunting the player calls us in,
+  // and the player becomes the prey whatever else is around
+  bool packCall = false;
+  int packPrey = -1;
+  int64_t packPreyD2 = 0;
+  // The player is noticed from farther away on higher spheres
+  const int32_t playerSight = (int32_t)tier.playerSightFU * FU;
+  const int32_t scanSight = playerSight > sight ? playerSight : sight;
   int64_t sightDz = (int64_t)scanSight << (Q30_SHIFT - SPHERE_RADIUS_SHIFT);
+  const int64_t ec = effectiveSizeQ8(c);
+  constexpr int64_t NEAR2 =
+      (int64_t)(AI_FLEE_NEAR_FU * FU) * (AI_FLEE_NEAR_FU * FU);
+  constexpr int64_t FLEE2 =
+      (int64_t)(AI_FLEE_FAR_FU * FU) * (AI_FLEE_FAR_FU * FU);
+  constexpr int64_t PACK2 =
+      (int64_t)(AI_PACK_CALL_FU * FU) * (AI_PACK_CALL_FU * FU);
   for (int k = entityLowerBound(c.frame.n.z - sightDz); k < entityOrderCount_;
        k++) {
     int j = entityOrder_[k];
@@ -91,35 +135,42 @@ void Game::updateAi(int idx) {
                          d2)) {
       continue;
     }
-    int64_t preyLimit = effectiveSizeQ8(c);
-    if (o.isPlayer) {
-      preyLimit *= 1 + AI_PREY_PLAYER_BIG_PER_LEVEL * playerLevel;
+    if ((tier.flags & AI_PACK) && !o.isPlayer && !c.isPlayer && d2 < PACK2 &&
+        o.aiMode == AiMode::HUNT_ENTITY && o.aiTarget == playerIndex_) {
+      packCall = true;
     }
-    if (effectiveSizeQ8(o) > preyLimit) {
-      // Bigger attackers are a threat in sight (when they can attack);
-      // absorbers only when close
-      constexpr int64_t NEAR2 = (int64_t)(40 * FU) * (40 * FU);
+    const int64_t eo = effectiveSizeQ8(o);
+    if (eo > ec) {
       // Bigger entities are a threat only when close (everything is bigger
       // than somebody; fleeing from every giant in sight would paralyze the
-      // small ones): 1.25x within 60 FU, anything bigger within 40 FU
-      constexpr int64_t FLEE2 = (int64_t)(60 * FU) * (60 * FU);
-      int64_t ec = effectiveSizeQ8(c), eo = effectiveSizeQ8(o);
-      bool dangerous =
-          (eo * 4 > ec * 5 && d2 < FLEE2) || (eo > ec && d2 < NEAR2);
-      if (dangerous && d2 < threatD2) threat = j, threatD2 = d2;
-    } else {
-      // Equal or smaller (but not tiny): fair game. An upgraded player is
-      // preferred among the valid prey (but a much smaller player is left
-      // alone like anyone else, so a fresh sphere does not gang up on it)
-      uint32_t ratio = AI_PREY_MIN_RATIO;
-      int64_t weighted = d2;
-      if (o.isPlayer) {
-        weighted = d2 * 100 / (100 + AI_PREY_PLAYER_BIAS_PCT * playerLevel);
-      }
-      if ((uint64_t)o.size * ratio >= c.size && weighted < preyD2) {
-        prey = j, preyD2 = weighted;
+      // small ones), and only beyond the tier's bravery
+      bool dangerous = (eo * 100 > ec * tier.fleeFarPct && d2 < FLEE2) ||
+                       (eo * 100 > ec * tier.fleeNearPct && d2 < NEAR2);
+      if (dangerous) {
+        if (d2 < threatD2) threat = j, threatD2 = d2;
+        continue;
       }
     }
+    // Prey: no bigger than oneself (the player: up to the bravery limit) and
+    // not tiny. The player is preferred among the valid prey (bias), but a
+    // much smaller player is left alone like anyone else, so a fresh sphere
+    // does not gang up on it
+    int64_t limit = ec;
+    uint32_t ratio = AI_PREY_MIN_RATIO;
+    int64_t weighted = d2;
+    if (o.isPlayer) {
+      limit = ec * tier.fleeFarPct / 100;
+      ratio = tier.preyMinRatio;
+      weighted = d2 * 100 / tier.playerBiasPct;
+    }
+    if (eo > limit || (uint64_t)o.size * ratio < c.size) continue;
+    if (o.isPlayer) packPrey = j, packPreyD2 = d2;
+    if (weighted < preyD2) prey = j, preyD2 = weighted, preyRealD2 = d2;
+  }
+  if (packCall && packPrey >= 0) {
+    prey = packPrey;
+    preyD2 = 0;  // beats any fragment
+    preyRealD2 = packPreyD2;
   }
   // Food: nearest floating fragment in sight (z-band query)
   int food = -1;
@@ -214,7 +265,7 @@ void Game::updateAi(int idx) {
     c.aiMode = AiMode::FLEE;
     c.aiTarget = (int16_t)threat;
     c.turn = steerTowards(c, entities[threat].frame.n, true);
-    c.dashing = sphereLevel_ >= 3 && c.hp > (c.hpMax >> 1) &&
+    c.dashing = (tier.flags & AI_DASH) && c.hp > (c.hpMax >> 1) &&
                 threatD2 < (int64_t)(30 * FU) * (30 * FU);
     return;
   }
@@ -231,27 +282,52 @@ void Game::updateAi(int idx) {
     c.aiMode = AiMode::HUNT_ENTITY;
     c.aiTarget = (int16_t)prey;
     const Entity &o = entities[prey];
-    int16_t err;
-    c.turn = steerTowards(c, o.frame.n, false, &err);
-    Vec3 d = tangentTowards(c.frame.n, o.frame.n);
-    Vec3 dn = normalizeQ30(d);
-    // Prey far around and close by: quick turn under brake
-    c.braking = wantsQuickTurn(err, preyD2);
     const WeaponSpec &ws = WEAPON_SPECS[(int)c.weapon];
+    // Where to fly: beside the player when flanking (AI_FLANK: out of its
+    // line of fire, in from the side), ahead of a moving prey (AI_LEAD:
+    // the bullet's flight time times the prey's velocity), else at it
+    Vec3 goal = o.frame.n;
+    bool flanking = false;
+    if (o.isPlayer && (tier.flags & AI_FLANK) &&
+        preyRealD2 > (int64_t)(AI_FLANK_MIN_FU * FU) * (AI_FLANK_MIN_FU * FU)) {
+      Vec3 toMe = normalizeQ30(tangentTowards(o.frame.n, c.frame.n));
+      if (dotQ30(o.frame.t, toMe) > COS_FLANK_CONE) {
+        Vec3 right = o.frame.right();
+        int32_t ang = (int32_t)(((int64_t)(AI_FLANK_OFFSET_FU * FU)
+                                 << Q30_SHIFT) /
+                                o.r);
+        if (dotQ30(right, toMe) < 0) ang = -ang;
+        goal = normalizeQ30(o.frame.n + scaleQ30(right, ang));
+        flanking = true;
+      }
+    }
+    if (!flanking && (tier.flags & AI_LEAD) && o.speed > 0) {
+      uint32_t dist = isqrt64((uint64_t)preyRealD2);
+      int32_t bs = bulletSpeed(ws, c.size);
+      int32_t flight = bs > 0 ? (int32_t)(dist / (uint32_t)bs) : 0;  // ticks
+      if (flight > 3 * TICK_RATE) flight = 3 * TICK_RATE;
+      int64_t travel = (int64_t)o.speed * flight;  // units
+      int32_t ang = (int32_t)((travel << Q30_SHIFT) / o.r);
+      goal = normalizeQ30(o.frame.n + scaleQ30(o.frame.t, ang));
+    }
+    int16_t err;
+    c.turn = steerTowards(c, goal, false, &err);
+    // Prey far around and close by: quick turn under brake
+    c.braking = wantsQuickTurn(err, preyRealD2);
+    // Fire when the aim point is in the cone and the prey within range
+    Vec3 dn = normalizeQ30(tangentTowards(c.frame.n, flanking ? o.frame.n : goal));
     int64_t range = (int64_t)bulletSpeed(ws, c.size) * ws.lifetime;
-    if (dotQ30(c.frame.t, dn) > COS_FIRE_CONE && preyD2 < range * range) {
-      // Enemies fire more eagerly on higher level spheres; the AI-driven
-      // player always fires
-      int lv = sphereLevel_ - 1;
-      if (lv >= AI_FIRE_CHANCE_LEVELS) lv = AI_FIRE_CHANCE_LEVELS - 1;
-      if (lv < 0) lv = 0;
-      int32_t chance = AI_FIRE_CHANCE[lv] *
+    if (dotQ30(c.frame.t, dn) > COS_FIRE_CONE && preyRealD2 < range * range) {
+      // The tier's chance, a little higher with the player's upgrades; the
+      // AI-driven player always fires
+      int32_t chance = tier.fireChance *
                        (100 + DIFF_FIRE_PCT_PER_LEVEL * totalUpgradeLevel()) /
                        100;
       if (chance > 255) chance = 255;
       c.firing = c.isPlayer || (int32_t)rng_.below(256) < chance;
     }
-    c.dashing = sphereLevel_ >= 3 && preyD2 > (int64_t)(40 * FU) * (40 * FU) &&
+    c.dashing = (tier.flags & AI_DASH) &&
+                preyRealD2 > (int64_t)(40 * FU) * (40 * FU) &&
                 c.hp > (c.hpMax >> 1);
     return;
   }
@@ -317,6 +393,11 @@ void Game::moveEntity(Entity &c) {
   }
   if (rollAt >= 0 && rollAt <= FLIGHT_ROLL_TICKS) {
     c.bank = (int16_t)(uint16_t)((int64_t)rollAt * 65536 / FLIGHT_ROLL_TICKS);
+  } else if (c.isPlayer && dodgeTicks_ > 0) {
+    // Emergency dodge: one barrel roll towards the dodge side
+    int elapsed = DODGE_TICKS - dodgeTicks_;
+    int32_t roll = (int32_t)((int64_t)elapsed * 65536 / DODGE_TICKS);
+    c.bank = (int16_t)(uint16_t)(dodgeDir_ > 0 ? roll : -roll);
   } else {
     int32_t bankTarget =
         ((int32_t)(c.braking ? BANK_MAX_BRAKE : BANK_MAX) * c.turnLevel) >> 8;
@@ -329,6 +410,14 @@ void Game::moveEntity(Entity &c) {
   if (c.speed > 0) {
     int32_t ang = (int32_t)(((int64_t)c.speed << Q30_SHIFT) / c.r);
     c.frame.n = normalizeQ30(c.frame.n + scaleQ30(c.frame.t, ang));
+    c.frame.t = orthonormalizeQ30(c.frame.t, c.frame.n);
+  }
+  if (c.isPlayer && dodgeTicks_ > 0 && !flying) {
+    // ... and the sidestep of the dodge, DODGE_SPEED_MUL times the cruise
+    int32_t lat = cruise * DODGE_SPEED_MUL;
+    int32_t ang = (int32_t)(((int64_t)lat << Q30_SHIFT) / c.r);
+    if (dodgeDir_ < 0) ang = -ang;
+    c.frame.n = normalizeQ30(c.frame.n + scaleQ30(c.frame.right(), ang));
     c.frame.t = orthonormalizeQ30(c.frame.t, c.frame.n);
   }
 
