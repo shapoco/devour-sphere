@@ -1,10 +1,53 @@
 #include "ds_platform.hpp"
 
+#include <hardware/flash.h>
+#include <hardware/sync.h>
+#include <pico/flash.h>
 #include <pico/rand.h>
+
+#include <cstring>
+
+#include "devoursphere/sim/high_score_record.hpp"
+#include "ds_config.hpp"
 
 namespace ds {
 
 uint32_t randomSeed() { return get_rand_32(); }
+
+namespace {
+// The last sector; the firmware ends near 240 KB
+constexpr uint32_t RECORD_OFFSET = PICO_FLASH_SIZE_BYTES - FLASH_SECTOR_SIZE;
+// flash_range_program() takes whole 256-byte pages. Static: the stacks are
+// 4 KB and the ROM's flash routines run on this one
+alignas(4) uint8_t g_page[FLASH_PAGE_SIZE];
+
+void program(void *) {
+  flash_range_erase(RECORD_OFFSET, FLASH_SECTOR_SIZE);
+  flash_range_program(RECORD_OFFSET, g_page, FLASH_PAGE_SIZE);
+}
+}  // namespace
+
+bool readHighScoreRecord(uint8_t *out) {
+  std::memcpy(out, (const uint8_t *)(XIP_BASE + RECORD_OFFSET),
+              devoursphere::sim::HIGH_SCORE_RECORD_BYTES);
+  return true;
+}
+
+bool writeHighScoreRecord(const uint8_t *in) {
+  std::memset(g_page, 0xFF, sizeof(g_page));
+  std::memcpy(g_page, in, devoursphere::sim::HIGH_SCORE_RECORD_BYTES);
+#if DS_SIM_ON_CORE1
+  // Interrupts off here, core1 parked in RAM (its lockout handler), then
+  // the ROM erases and programs with the XIP away
+  return flash_safe_execute(program, nullptr, 1000) == PICO_OK;
+#else
+  // One core: nothing else executes from flash while interrupts are off
+  const uint32_t irq = save_and_disable_interrupts();
+  program(nullptr);
+  restore_interrupts(irq);
+  return true;
+#endif
+}
 
 namespace {
 constexpr uint32_t PAINT = 0xC1C1C1C1u;

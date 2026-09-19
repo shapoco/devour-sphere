@@ -153,6 +153,7 @@ target_link_libraries(${APP_NAME} PRIVATE
     pico_rand                 # get_rand_32(), to seed the game
     hardware_pwm              # the speaker (src/se_player.cpp)
     hardware_dma
+    hardware_flash            # FLASH_PAGE_SIZE (the high score record)
     devoursphere::render      # pulls in devoursphere::sim and shapoco::gfx
 )
 

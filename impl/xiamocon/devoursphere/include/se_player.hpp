@@ -46,7 +46,12 @@ void request(uint32_t bits);
 // muted anyway; this cuts a sound already playing)
 void setMuted(bool muted);
 
-// Whether a sound is playing (for the overlay / debugging)
+// Whether a sound is playing (for the overlay, and for the flash write)
 bool playing();
+
+// Cut the sound that plays, if any; the next request starts one as usual.
+// For the flash write: on the RP2 chips the DMA reads the pack straight from
+// the flash, which the write takes away (high_score_store.hpp)
+void stop();
 
 }  // namespace audio

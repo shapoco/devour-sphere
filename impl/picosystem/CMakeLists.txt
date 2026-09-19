@@ -167,6 +167,8 @@ pico_enable_stdio_uart(${APP_NAME} 0)
 target_link_libraries(${APP_NAME} PRIVATE
     pico_stdlib
     pico_multicore            # the simulation runs on core1
+    pico_flash                # flash_safe_execute(): the high score record
+    hardware_flash
     pico_rand                 # get_rand_32(), to seed the game
     hardware_spi
     hardware_dma

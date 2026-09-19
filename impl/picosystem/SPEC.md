@@ -20,7 +20,7 @@ SDK から必要なのは ST7789 の初期化列、ボタンのピン、250MHz �
 - フレームバッファを 1 枚も持たず、40 行の帯を 2 枚交互に使って描画・転送する。
 - シミュレーションは 30Hz 固定、描画は追いつける範囲で行う (可変フレームレート)。
 - 効果音はピエゾスピーカー (GPIO 11) に 1 音。フラッシュの PCM を DMA で PWM に流し、CPU は使わない (後述)。
-- ハイスコアのフラッシュ保存は無し (電源を切るまでは保持する)。
+- ハイスコアはフラッシュの最終セクタに保存する (「ハイスコアの保存」参照)。
 - 動的確保はしない。`Game` (95KB) は `.bss` に置く。
 
 ## ファイル構成
@@ -32,17 +32,18 @@ impl/picosystem/
   pico_sdk_import.cmake  pico-sdk の external/ のコピー
   include/
     ds_config.hpp      帯の高さ、アリーナサイズ、tick 周期、クロックなどの定数
-    ds_platform.hpp    乱数シードとスタック計測の宣言
+    ds_platform.hpp    乱数シード、スタック計測、ハイスコアのレコードの読み書きの宣言
     display.hpp        ST7789 ドライバ
   src/
     main.cpp           クロック、ボタン、フレームループ、帯バッファ、2 コアの分担
     display.cpp        ST7789 の初期化、帯の窓設定、DMA 転送
-    platform.cpp       乱数シードとスタック計測
+    platform.cpp       乱数シード、スタック計測、ハイスコアのレコードの読み書き (pico_flash)
     se_data.S          効果音のパック (ビルド時に生成される build/se_pwm.bin) を .incbin でフラッシュに置く
 ```
 
 効果音の再生 (`se_player.hpp` / `se_player.cpp`) は計測オーバーレイと同じく Xiamocon 版のものを
 そのディレクトリから直接コンパイルして共有する (ボードごとの違いは `audio::Config` で渡す)。
+ハイスコアをいつ書くか (`high_score_store.hpp`) も Xiamocon 版のヘッダをそのまま使う。
 
 計測オーバーレイ (`profiler.hpp` / `profiler.cpp`) は Xiamocon 版のものを
 そのディレクトリから直接コンパイルして共有する。そのために両者は
@@ -194,6 +195,27 @@ pack_se.py の PWM 用オプションを CMake の変数で渡す:
 - 音は正常に再生され、音質と優先度の感触に違和感なし (2026-09-18、`SE_GAIN` 導入前)。
 - sim を -O2 にした後の `TCK` は 16〜17ms で、13 回目 (-O3、17.3 / 16.3) と変わらない。-O2 のまま。
 - ソフトウェアミキシング (複数音) は当面不要と判断。
+
+## ハイスコアの保存
+
+レコード (core/SPEC.md「バージョン」の 16 バイト) と「いつ書くか」(`high_score_store.hpp`:
+1 プレイに 1 回、ゲームオーバー画面で死亡音が鳴り終わったとき。詳しくは impl/xiamocon/SPEC.md
+「ハイスコアの保存」) は Xiamocon 版と共通。ここにあるのはフラッシュそのもの (`platform.cpp`)。
+
+- **置き場所**は 16 MB の最終 4 KB セクタ (`PICO_FLASH_SIZE_BYTES - FLASH_SECTOR_SIZE`)。
+  ファームウェアは 240 KB 程度で終わる。読み出しは XIP の窓 (`XIP_BASE + offset`) をそのまま読む。
+- **書き込みは pico-sdk の `pico_flash` (`flash_safe_execute()`)**。core1 はフラッシュ実行の
+  ループ (`core1Main()`、`pollEffects()`) で回っているので、書いている間は止めなければならない。
+  core1 が起動直後に `flash_safe_execute_core_init()` で multicore lockout の victim になり
+  (FIFO 割り込みのハンドラは RAM)、core0 は割り込みを止めて core1 を RAM のハンドラに閉じ込めてから
+  消去 (典型 45 ms、最悪 400 ms) とページ書き込みをする。main.cpp は SIO FIFO を使っていない
+  (受け渡しは atomic の 1 語) ので lockout と競合しない。`DS_SIM_ON_CORE1=0` のときは core1 が無いので
+  割り込み禁止だけで書く。
+- **効果音の DMA はフラッシュを直読みしている** (「効果音」)。書き込み中は XIP が使えないので、
+  `HighScoreStore` は鳴り終わりを待ってから書き、待てないときは `audio::stop()` で止めてから書く。
+- 256 バイトのページバッファは静的 (スタックは 4 KB しかなく、ROM のフラッシュルーチンもその上で動く)。
+  この機能で `.data` + `.bss` は 812 バイト増えた (2026-09-19、`.text` は +1.5 KB)。
+- 電源スイッチは物理なので、プレイ中に切った記録は残らない (Xiamocon と違ってフックが無い)。
 
 ## 入力
 

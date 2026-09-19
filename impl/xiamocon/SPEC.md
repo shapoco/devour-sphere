@@ -17,7 +17,7 @@ SDK からは表示転送・DMA・入力・電源管理といった足回りだ�
 - シミュレーションは 60Hz 固定、描画は追いつける範囲で行う (可変フレームレート)。
 - 効果音は両ターゲット。SDK のオーディオは使わず、RP2350 はフラッシュの PCM を DMA で PWM に流し、
   ESP32S3 は I2S の PDM にタスクが PCM を流し込む (後述)。
-- ハイスコアのフラッシュ保存は無し (電源を切るまでは保持する)。
+- ハイスコアはフラッシュに保存する (RP2350 は最終セクタ、ESP32S3 は NVS。「ハイスコアの保存」参照)。
 - ターゲットは XIAO RP2350 と XIAO ESP32S3 の両方。ソースは共通で、違いは下記の数点のみ。
 
 ## ファイル構成
@@ -34,10 +34,11 @@ impl/xiamocon/
     run_rp2350.sh
     include/
       ds_config.hpp    帯の高さ、アリーナサイズ、tick 周期などの定数
-      ds_platform.hpp  2 つのターゲットで異なる部分の宣言
+      ds_platform.hpp  2 つのターゲットで異なる部分の宣言 (ハイスコアのレコードの読み書きを含む)
       band_writer.hpp
+      high_score_store.hpp  ハイスコアをいつフラッシュに書くか (PicoSystem 版と共有)
       profiler.hpp
-      se_player.hpp    効果音 (init / request / setMuted。PicoSystem 版と共有)
+      se_player.hpp    効果音 (init / request / setMuted / stop。PicoSystem 版と共有)
     asm/
       se_data.S        RP2350: 効果音のパック (ビルド時に生成される .cmake/se_pwm.bin) を .incbin でフラッシュに置く。
                        src/ の外にあるのは PlatformIO (ESP32S3) に拾わせないため
@@ -46,7 +47,7 @@ impl/xiamocon/
     src/
       app.cpp          xmcApp* エントリ、静的領域、フレームループ、入力変換
       band_writer.cpp  帯の ping-pong と DMA 転送
-      ds_platform.cpp  乱数シードとスタック計測 (ターゲットごとの実装)
+      ds_platform.cpp  乱数シード、スタック計測、ハイスコアのレコードの読み書き (ターゲットごとの実装)
       profiler.cpp     計測とオーバーレイ (PicoSystem 版 impl/picosystem/ と共有。
                        そのため ds_config.hpp / ds_platform.hpp を <...> でインクルードする)
       se_player.cpp    効果音の 1 音再生と優先度 (PicoSystem 版と共有)。選択ロジックは共通で、
@@ -469,6 +470,7 @@ BGN + RAS = 19.5ms はフレームレートに依らない固定費なので、
 | 乱数シード | `get_rand_32()` (pico-sdk) | `esp_random()` |
 | スタック計測 | スタックを塗って走査 | `uxTaskGetStackHighWaterMark()` |
 | 失敗時のトレース | 無し (シリアル未設定) | `Serial` (USB CDC) |
+| ハイスコアの保存先 | フラッシュ最終セクタ (`xmc::flash`) | **NVS** (`Preferences`) |
 
 ESP32S3 はリンカがアプリに **320KB** しか与えない。`Game` を PSRAM に追い出して
 内部 DRAM を 136KB 空け、残りからアリーナ (静的) と、帯バッファ・SPI ドライバの
@@ -651,6 +653,47 @@ core/SPEC.md「効果音」のとおり、sim は tick ごとに「鳴らす音�
 - RAM: I2S の DMA リング 1 KB + チャンク 256 B + タスクスタック 3 KB。実測 RAM 133,340 / 327,680 (40.7 %)。
   フラッシュは 629 KB → 1,225 KB (パックの 594 KB)。
 - 実機未確認 (2026-09-18 時点)。
+
+## ハイスコアの保存
+
+レコードは core/SPEC.md「バージョン」の 16 バイト (magic、メジャー、到達スフィア、スコア、CRC-32)。
+読み書きの実体は `ds_platform.cpp` の `readHighScoreRecord()` / `writeHighScoreRecord()`、
+「いつ書くか」は `high_score_store.hpp` の `HighScoreStore` で、PicoSystem 版と共有する。
+
+**書くのは 1 プレイに 1 回、ゲームオーバー画面で死亡音が鳴り終わったとき**
+(`poll()`、`keepHighScore()` と同じ場所、つまり core0 が `Game` を持っている batch の合間に呼ぶ)。
+死亡音が終わる前に A でタイトルに戻ったらそのときに音を切って書く (`audio::stop()`)。
+電源ボタンは `xmcAppTerminate()` で `flush()` する (core1 の batch 完了と帯の DMA を待った後) ので、
+プレイ中に電源を切っても記録は残る。書き込みに失敗しても同じプレイ内では再試行しない
+(毎フレーム止まるのを避ける)。タイトルデモはハイスコアにならないので (core/SPEC.md)、
+書く必要が生じるのはプレイからだけ。
+
+この待ち方にする理由:
+
+- **書き込み中は両コアと割り込みが止まる。** セクタ消去が典型 45 ms、最悪で数百 ms。
+  ゲームオーバー画面なら 1〜2 コマ止まるだけで、溜まった tick は追いつき上限で捨てられる。
+- **RP2350 の効果音は DMA がフラッシュを直読みしている** (「効果音」)。書き込み中は XIP が使えず、
+  鳴っている最中に書くと DMA が読むのはゴミ。だから鳴り終わりを待ち、待てないときは先に止める。
+  `request()` を呼ぶ core1 は止まっているので、書いている間に新しい音が始まることはない。
+- ESP32S3 の I2S DMA は書き込み中も回るが補充されない (GDMA の ISR は IRAM に無い)。
+  数 ms の書き込みならリング (128 サンプル x 記述子数) の中で済む。
+
+ターゲットごと:
+
+- **RP2350**: 4 MB の最終 4 KB セクタ (`xmc::flash::getRange()` の末尾)。SDK の `xmc::flash::erase()` /
+  `write()` が、SDK の core1 ループを victim にした multicore lockout と割り込み禁止を内部で行う。
+  `write()` は 256 バイトのページ境界を検査しないので、レコードは 1 ページに 0xFF で埋めて渡す。
+  読み出しは `mmap()` (XIP アドレス)。SDK はフラッシュ内に自分のレイアウトを持たないので衝突しない。
+  1 プレイに 1 消去で、10 万回の消去保証はゲーム 10 万回ぶん。
+- **ESP32S3**: ボード既定のパーティション表にある NVS (20 KB) を Arduino の `Preferences`
+  (namespace `devoursphere`、key `highscore`) で使う。NVS 自体が CRC とウェアレベリングを持つので、
+  レコードの CRC とバージョン検査はその上に乗る二重の検査になる。書き込み中は IDF がキャッシュを止めて
+  もう一方のコアを IRAM のループに閉じ込めるので、sim タスクも音声タスクも自動的に止まる。
+  Preferences のぶんフラッシュが約 10 KB 増える。
+
+初回起動時 (レコードなし) はどちらも `decodeHighScoreRecord()` が「記録なし」を返して 0 のまま。
+ESP32S3 は namespace が無いうちは `Preferences::begin()` の読み取り専用オープン自体が失敗するので、
+それも「記録なし」扱い。
 
 ## デバッグ表示
 

@@ -306,6 +306,10 @@ void init(const Config &cfg) {
 
 bool playing() { return g_ready && backendBusy(); }
 
+void stop() {
+  if (g_ready && backendBusy()) backendStop();
+}
+
 void setMuted(bool muted) {
   if (!g_ready || muted == g_muted) return;
   g_muted = muted;

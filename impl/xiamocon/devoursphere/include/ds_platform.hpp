@@ -51,6 +51,18 @@ void trace(const char *what, uint32_t value);
 void frameIdle();
 void transferIdle();
 
+// The high score record in flash (sim::HIGH_SCORE_RECORD_BYTES bytes; when
+// it is read and written is high_score_store.hpp). read: false when the
+// platform has nothing to give (never written reads as blank flash, which
+// fails to decode instead). write: blocks for as long as it takes -- up to a
+// few hundred milliseconds for the sector erase -- with the other core held
+// and interrupts off; call it with the Game idle on the other core and no
+// sound playing. RP2350: the last sector of the 4 MB through xmc::flash
+// (which does the lockout). ESP32S3: the NVS partition through Preferences
+// (the IDF halts the other core itself).
+bool readHighScoreRecord(uint8_t *out);
+bool writeHighScoreRecord(const uint8_t *in);
+
 // A seed that differs from boot to boot. Not xmc::randomU32(): that is an
 // unseeded newlib rand(), so it yields the same sequence every time.
 uint32_t randomSeed();

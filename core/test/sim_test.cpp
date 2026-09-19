@@ -10,6 +10,7 @@
 
 #include "devoursphere/render/renderer.hpp"
 #include "devoursphere/sim/game.hpp"
+#include "devoursphere/sim/high_score_record.hpp"
 
 using namespace devoursphere::sim;
 
@@ -1063,6 +1064,44 @@ static void testGrudgeAndScatter() {
 // apart and, after the wreck has been watched, the same sphere starts over
 // from the arrival with a core and an upgrade level less (game over when
 // no core is left). The score multiplier grows 10 % per sphere.
+// The flash record the handhelds keep: a round trip, then everything that
+// must read as "no record"
+static void testHighScoreRecord() {
+  uint8_t rec[HIGH_SCORE_RECORD_BYTES];
+  uint32_t score = 0;
+  int sphere = 0;
+  encodeHighScoreRecord(rec, 123456789u, 7);
+  CHECK(decodeHighScoreRecord(rec, &score, &sphere));
+  CHECK(score == 123456789u && sphere == 7);
+  // zlib's crc32("123456789") is 0xCBF43926: the polynomial and the
+  // reflection are the standard ones
+  CHECK(crc32((const uint8_t *)"123456789", 9) == 0xCBF43926u);
+  // Blank flash
+  uint8_t blank[HIGH_SCORE_RECORD_BYTES];
+  std::memset(blank, 0xFF, sizeof(blank));
+  CHECK(!decodeHighScoreRecord(blank, &score, &sphere));
+  std::memset(blank, 0x00, sizeof(blank));
+  CHECK(!decodeHighScoreRecord(blank, &score, &sphere));
+  // One bit wrong anywhere
+  for (size_t i = 0; i < HIGH_SCORE_RECORD_BYTES; i++) {
+    uint8_t bad[HIGH_SCORE_RECORD_BYTES];
+    std::memcpy(bad, rec, sizeof(bad));
+    bad[i] ^= 0x10;
+    CHECK(!decodeHighScoreRecord(bad, &score, &sphere));
+  }
+  // Another major version, with a CRC that matches it
+  uint8_t old[HIGH_SCORE_RECORD_BYTES];
+  std::memcpy(old, rec, sizeof(old));
+  old[4] = (uint8_t)(VERSION_MAJOR + 1);
+  const uint32_t c = crc32(old, 12);
+  for (int i = 0; i < 4; i++) old[12 + i] = (uint8_t)(c >> (8 * i));
+  CHECK(!decodeHighScoreRecord(old, &score, &sphere));
+  // The largest score survives
+  encodeHighScoreRecord(rec, 0xFFFFFFFFu, 65535);
+  CHECK(decodeHighScoreRecord(rec, &score, &sphere));
+  CHECK(score == 0xFFFFFFFFu && sphere == 65535);
+}
+
 static void testTimeLimitAndScore() {
   {
     Game g;
@@ -1273,6 +1312,7 @@ int main() {
   testCombatAndLayout();
   testDifficultyAndEvade();
   testTimeLimitAndScore();
+  testHighScoreRecord();
   testLargestEnemy();
   testGrudgeAndScatter();
   testDeterminism();

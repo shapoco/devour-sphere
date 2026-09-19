@@ -14,6 +14,7 @@
 #include "devoursphere/devoursphere.hpp"
 #include "ds_config.hpp"
 #include "ds_platform.hpp"
+#include "high_score_store.hpp"
 #include "profiler.hpp"
 #include "se_player.hpp"
 #include "xmc/input.hpp"
@@ -34,6 +35,7 @@ namespace {
 
 sim::Game *g_game = nullptr;  // see ds::allocGame()
 render::Renderer g_renderer;
+ds::HighScoreStore g_store;  // the high score in flash
 uint8_t g_arena[ds::ARENA_SIZE];
 ds::BandWriter g_bands;
 ds::Profiler g_prof;
@@ -160,11 +162,14 @@ int ticksDue() {
   return n;
 }
 
-// Nothing is written to flash, but the high score still survives a restart
-// for as long as the power is on, because Game::reset() leaves it alone.
-// The Game decides whether the score counts (not the title demo's).
-// Only safe while the Game belongs to this core.
-void keepHighScore() { g_game->keepHighScore(); }
+// The Game decides whether the score counts (not the title demo's); the
+// store decides when it reaches the flash (once per run, on the game over
+// screen, after the death sound). Only safe while the Game belongs to this
+// core.
+void keepHighScore() {
+  g_game->keepHighScore();
+  g_store.poll(*g_game);
+}
 
 // Draw the state the simulation has reached, and push it a band at a time
 void drawFrame(int ticks) {
@@ -201,6 +206,7 @@ void xmcAppSetup(void) {
     return;  // xmcAppLoop() bails out too
   }
   g_game->reset(ds::randomSeed());
+  g_store.load(*g_game);  // before core1, which has no business in the flash
   g_renderer.setControlHints(render::ControlHints{
       "MOVE: D-PAD   A/Y: FIRE   B: DODGE   X: PAUSE",
       "D-PAD: MOVE  A: FIRE  B: DODGE",
@@ -341,5 +347,8 @@ XmcStatus xmcAppTerminate(xmc::system::ShutdownReason reason) {
   while (simLoad() == Sim::RUN) xmc::tightLoopContents();
 #endif
   g_bands.drain();
+  // A run cut short by the power button still keeps its record (the Game is
+  // ours now, and the band is out of the DMA)
+  if (g_game) g_store.flush(*g_game);
   return XMC_OK;
 }

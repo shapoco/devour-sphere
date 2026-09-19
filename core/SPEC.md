@@ -165,6 +165,7 @@ include/devoursphere/
   sim/config.hpp          定数 (スケール、上限、速度、武器、AI)
   sim/entities.hpp        Entity, Fragment, FloatingFragment, Bullet, Spark, Button
   sim/game.hpp            Game: 状態機械と tick()、Event / EffectKind / SoundKind
+  sim/high_score_record.hpp  ハンドヘルドがフラッシュに置くハイスコアの 16 バイト (「バージョン」の節)
   render/renderer.hpp     Renderer: beginFrame() / renderBand() / endFrame()
                           setControlHints() / pollEffects() はプラットフォームから呼ぶ
 src/sim/                  fixed.cpp entities.cpp game.cpp entity.cpp combat.cpp
@@ -1002,7 +1003,15 @@ core は `VERSION_MAJOR` / `VERSION_MINOR` / `VERSION_STRING` (config.hpp) を�
 ハイスコアの比較が成り立たなくなるゲームシステムの変更 (スコアの式、制限時間、難易度の構造など) で上げ、
 それ以外の変更ではマイナーバージョンを上げる。** ハイスコアを保存するプラットフォーム (WASM 版の
 localStorage) はメジャーバージョンと到達スフィアをスコアと一緒に記録し、読み出したときにメジャーが
-違えば (バージョンの無い古い記録も) 破棄する。ハンドヘルドは保存しないので電源を切れば消える。
+違えば (バージョンの無い古い記録も) 破棄する。
+
+ハンドヘルド (Xiamocon 2 種と PicoSystem) はフラッシュに保存する。バイト列は `high_score_record.hpp`
+(ヘッダのみ) が決める 16 バイトのレコードで、リトルエンディアンに magic `"DSHS"`、`VERSION_MAJOR` (u16)、
+到達スフィア (u16)、スコア (u32)、その 12 バイトの CRC-32 (zlib と同じ多項式・反転) の順。
+`decodeHighScoreRecord()` は magic・CRC・メジャーのどれかが合わなければ「記録なし」を返すので、
+未書き込みのフラッシュ (0xFF 埋め)、壊れた記録、旧メジャーの記録はどれも同じ扱いになる
+(`testHighScoreRecord`)。いつ書くかはプラットフォーム側
+(impl/xiamocon/devoursphere/include/high_score_store.hpp、両ハンドヘルド共通) が決める。
 タイトル画面の右下にバージョンを表示する (HUD の節)。1.0 は制限時間とスコアの式を入れた 2026-09-19 の版。
 
 ### テスト

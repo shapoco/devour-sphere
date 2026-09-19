@@ -13,6 +13,7 @@
 #include <hardware/clocks.h>
 #include <hardware/gpio.h>
 #include <hardware/vreg.h>
+#include <pico/flash.h>
 #include <pico/multicore.h>
 #include <pico/stdlib.h>
 
@@ -21,6 +22,7 @@
 #include "display.hpp"
 #include "ds_config.hpp"
 #include "ds_platform.hpp"
+#include "high_score_store.hpp"
 #include "profiler.hpp"
 #include "se_player.hpp"
 
@@ -32,6 +34,7 @@ namespace {
 
 sim::Game g_game;
 render::Renderer g_renderer;
+ds::HighScoreStore g_store;  // the high score in flash
 uint8_t g_arena[ds::ARENA_SIZE];
 ds::Display g_display;
 ds::Profiler g_prof;
@@ -131,6 +134,8 @@ void simStore(Sim s) {
 
 void core1Main() {
   ds::stackWatchInitCore1();
+  // Let core0 park this core (in RAM) while it writes the flash
+  flash_safe_execute_core_init();
   for (;;) {
     if (simLoad() != Sim::RUN) {
       tight_loop_contents();
@@ -164,11 +169,14 @@ int ticksDue() {
   return n;
 }
 
-// Nothing is written to flash, but the high score still survives a restart
-// for as long as the power is on, because Game::reset() leaves it alone.
-// The Game decides whether the score counts (not the title demo's).
-// Only safe while the Game belongs to this core.
-void keepHighScore() { g_game.keepHighScore(); }
+// The Game decides whether the score counts (not the title demo's); the
+// store decides when it reaches the flash (once per run, on the game over
+// screen, after the death sound). Only safe while the Game belongs to this
+// core.
+void keepHighScore() {
+  g_game.keepHighScore();
+  g_store.poll(g_game);
+}
 
 // --- Phase breakdown on the overlay ---------------------------------------
 // Integer formatting only (see profiler.cpp for why not printf)
@@ -433,6 +441,7 @@ int main() {
                             false});
 
   g_game.reset(ds::randomSeed());
+  g_store.load(g_game);  // before core1, which has no business in the flash
   g_renderer.setControlHints(render::ControlHints{
       "MOVE: D-PAD   A/Y: FIRE   B: DODGE   X: PAUSE",
       "D-PAD: MOVE  A: FIRE  B: DODGE",

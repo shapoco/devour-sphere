@@ -1,13 +1,16 @@
 #include "ds_platform.hpp"
 
+#include <cstring>
 #include <new>
 
 #include "devoursphere/sim/game.hpp"
+#include "devoursphere/sim/high_score_record.hpp"
 #include "ds_config.hpp"
 
 #if defined(ESP32)
 
 #include <Arduino.h>
+#include <Preferences.h>
 #include <esp_heap_caps.h>
 #include <esp_random.h>
 #include <freertos/FreeRTOS.h>
@@ -44,6 +47,35 @@ uint16_t *allocBandBuffer(size_t bytes) {
 
 uint32_t freeInternalRam() {
   return (uint32_t)heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+}
+
+// NVS, which the Arduino core has initialized by now (20 KB partition on
+// the board's default table). NVS keeps its own CRC and wear leveling; the
+// record's own CRC and version check come on top. A write of one small key
+// takes a few milliseconds, plus a sector erase when an NVS page fills.
+namespace {
+const char *const PREF_NAMESPACE = "devoursphere";
+const char *const PREF_KEY = "highscore";
+}  // namespace
+
+bool readHighScoreRecord(uint8_t *out) {
+  Preferences p;
+  // Read only: fails while the namespace does not exist yet, i.e. before
+  // the first write
+  if (!p.begin(PREF_NAMESPACE, true)) return false;
+  const size_t n = p.getBytes(PREF_KEY, out,
+                              devoursphere::sim::HIGH_SCORE_RECORD_BYTES);
+  p.end();
+  return n == devoursphere::sim::HIGH_SCORE_RECORD_BYTES;
+}
+
+bool writeHighScoreRecord(const uint8_t *in) {
+  Preferences p;
+  if (!p.begin(PREF_NAMESPACE, false)) return false;
+  const size_t n = p.putBytes(PREF_KEY, in,
+                              devoursphere::sim::HIGH_SCORE_RECORD_BYTES);
+  p.end();
+  return n == devoursphere::sim::HIGH_SCORE_RECORD_BYTES;
 }
 
 void trace(const char *what, uint32_t value) {
@@ -88,13 +120,51 @@ uint32_t stackUsedCore1() {
 
 #else  // RP2350
 
+#include <hardware/flash.h>
 #include <pico/rand.h>
 
+#include "xmc/flash.hpp"
 #include "xmc/xmc_common.hpp"
 
 namespace ds {
 
 uint32_t randomSeed() { return get_rand_32(); }
+
+// The last 4 KB sector of the flash. The SDK's flash API spans the whole
+// chip (getRange() gives 0..4 MB, the program included) and reserves nothing
+// itself; the firmware ends near 1 MB. xmc::flash::erase() / write() hold
+// core1 through the multicore lockout (the SDK's core1 loop registered as a
+// victim) and disable interrupts for the duration.
+namespace {
+uint32_t recordOffset() {
+  size_t base = 0, size = 0;
+  xmc::flash::getRange(&base, &size);
+  return (uint32_t)(base + size - xmc::flash::getSectorSize());
+}
+}  // namespace
+
+bool readHighScoreRecord(uint8_t *out) {
+  void *handle = nullptr;
+  const uint8_t *p = nullptr;
+  if (xmc::flash::mmap(recordOffset(), devoursphere::sim::HIGH_SCORE_RECORD_BYTES,
+                       &handle, &p) != XMC_OK) {
+    return false;
+  }
+  std::memcpy(out, p, devoursphere::sim::HIGH_SCORE_RECORD_BYTES);
+  xmc::flash::munmap(handle);
+  return true;
+}
+
+bool writeHighScoreRecord(const uint8_t *in) {
+  // flash_range_program() takes whole 256-byte pages, and xmc::flash::write()
+  // passes the size on unchecked: pad the record to one page
+  alignas(4) static uint8_t page[FLASH_PAGE_SIZE];
+  std::memset(page, 0xFF, sizeof(page));
+  std::memcpy(page, in, devoursphere::sim::HIGH_SCORE_RECORD_BYTES);
+  const uint32_t off = recordOffset();
+  return xmc::flash::erase(off, xmc::flash::getSectorSize()) == XMC_OK &&
+         xmc::flash::write(off, page, sizeof(page)) == XMC_OK;
+}
 
 void frameIdle() { xmc::tightLoopContents(); }
 void transferIdle() { xmc::tightLoopContents(); }
