@@ -112,8 +112,12 @@ void Game::updateAi(int idx) {
   bool packCall = false;
   int packPrey = -1;
   int64_t packPreyD2 = 0;
+  // A grudge (sustained fire from the player): the player is the prey
+  // wherever and whatever size it is, threats and the tier be damned
+  const bool provoked = !c.isPlayer && c.grudge >= GRUDGE_ON;
   // The player is noticed from farther away on higher spheres
-  const int32_t playerSight = (int32_t)tier.playerSightFU * FU;
+  const int32_t playerSight =
+      provoked ? GRUDGE_SIGHT_FU * FU : (int32_t)tier.playerSightFU * FU;
   const int32_t scanSight = playerSight > sight ? playerSight : sight;
   int64_t sightDz = (int64_t)scanSight << (Q30_SHIFT - SPHERE_RADIUS_SHIFT);
   const int64_t ec = effectiveSizeQ8(c);
@@ -141,6 +145,11 @@ void Game::updateAi(int idx) {
       packCall = true;
     }
     const int64_t eo = effectiveSizeQ8(o);
+    if (o.isPlayer && provoked) {
+      prey = j, preyD2 = 0, preyRealD2 = d2;  // beats anything else
+      packPrey = j, packPreyD2 = d2;
+      continue;
+    }
     if (eo > ec) {
       // Bigger entities are a threat only when close (everything is bigger
       // than somebody; fleeing from every giant in sight would paralyze the
@@ -198,6 +207,7 @@ void Game::updateAi(int idx) {
     }
   }
 
+  const bool provokedAtPlayer = provoked && prey == playerIndex_;
   if (c.hitStreak > 0) c.hitStreak--;
   if (c.evadeTicks > 0) {
     // Under sustained fire (see EvadeMode)
@@ -262,7 +272,7 @@ void Game::updateAi(int idx) {
     c.dashing = !c.braking;
     return;
   }
-  if (threat >= 0) {
+  if (threat >= 0 && !provokedAtPlayer) {
     c.aiMode = AiMode::FLEE;
     c.aiTarget = (int16_t)threat;
     c.turn = steerTowards(c, entities[threat].frame.n, true);
@@ -325,9 +335,14 @@ void Game::updateAi(int idx) {
                        (100 + DIFF_FIRE_PCT_PER_LEVEL * totalUpgradeLevel()) /
                        100;
       if (chance > 255) chance = 255;
-      c.firing = c.isPlayer || (int32_t)rng_.below(256) < chance;
+      c.firing = c.isPlayer || provokedAtPlayer ||
+                 (int32_t)rng_.below(256) < chance;
     }
-    c.dashing = (tier.flags & AI_DASH) &&
+    // Dash after far prey, once roughly pointed at it (the dash slows the
+    // turn: dashing through a U-turn would take longer than turning first)
+    const int32_t aerr = err < 0 ? -err : err;
+    c.dashing = ((tier.flags & AI_DASH) || provokedAtPlayer) &&
+                aerr <= (int32_t)AI_EVADE_TURN_ANGLE &&
                 preyRealD2 > (int64_t)(40 * FU) * (40 * FU) &&
                 c.hp > (c.hpMax >> 1);
     return;
@@ -467,6 +482,7 @@ void Game::moveEntity(Entity &c) {
   if (c.invincible > 0) c.invincible--;
   if (c.absorbGuard > 0) c.absorbGuard--;
   if (c.evadeTicks > 0) c.evadeTicks--;
+  if (c.grudge > 0) c.grudge--;
 }
 
 // Add the force between a fragment at (px, py) and a point (qx, qy) with the

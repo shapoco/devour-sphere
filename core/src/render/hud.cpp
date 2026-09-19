@@ -530,12 +530,12 @@ void Renderer::drawVersion(g2::Graphics2D &g, int oy) {
   const int vw = g.measureText(sim::VERSION_STRING);
   const int lineH = g.lineAdvance() + ui(6, 2);
   const int x = (w_ - vw) / 2;
-  if (hud.state != sim::GameState::TITLE &&
-      hud.state != sim::GameState::WEAPON_SELECT) {
-    int leftEnd, rightStart;
-    upgradeStatusExtents(leftEnd, rightStart);
-    if (x < leftEnd + ui_.margin || x + vw > rightStart - ui_.margin) return;
-  }
+  // On a screen size where the upgrade status leaves no room for it (the
+  // layout does not depend on the levels: 240x240), the title alone
+  int leftEnd, rightStart;
+  upgradeStatusExtents(leftEnd, rightStart);
+  const bool fits = x >= leftEnd + ui_.margin && x + vw <= rightStart - ui_.margin;
+  if (hud.state != sim::GameState::TITLE && !fits) return;
   g.setTextColor(HUD_DIM);
   g.drawString(x, oy + h_ - ui_.margin - lineH, sim::VERSION_STRING);
 }

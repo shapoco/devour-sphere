@@ -238,6 +238,8 @@ class Game {
     return m;
   }
   int cores() const { return cores_; }
+  // Upgrades of a kind on the sphere: floating or carried by an enemy
+  int countUpgradeKind(UpgradeKind k) const;
   UpgradeKind lastUpgradeKind() const { return lastUpgradeKind_; }
   // Emergency dodge: ticks left of the roll, and how ready the next one is
   // (Q8: 256 = ready now, for the HUD)
@@ -306,6 +308,10 @@ class Game {
   void spawnFloatingUpgrade(UpgradeKind k, const Vec3 &n, int32_t r);
   void updateFloatingUpgrades();
   void takeUpgrade(UpgradeKind k);
+  // The levels lost on a death, one floating upgrade each on a circle of
+  // UPGRADE_SCATTER_FU around `center` (up to the per-kind cap)
+  void scatterLostUpgrades(const int lost[UPGRADE_KINDS], const Vec3 &center,
+                           int32_t r);
   void updateShieldRegen();
   bool respawnPlayer();
   // In flight (after clearing a sphere and until landing on the next) the

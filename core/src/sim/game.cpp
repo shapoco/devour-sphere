@@ -634,8 +634,9 @@ void Game::addScore(int64_t baseQ8) {
 // would have arrived with; the display scale stays, so it looks smaller
 void Game::restartSphereAfterTimeUp() {
   cores_--;
+  int lost[UPGRADE_KINDS] = {0, 0, 0};
   for (int i = 0; i < UPGRADE_KINDS; i++) {
-    if (upgradeLevels_[i] > 0) upgradeLevels_[i]--;
+    if (upgradeLevels_[i] > 0) upgradeLevels_[i]--, lost[i] = 1;
   }
   timeUp_ = false;
   respawnDelay_ = 0;
@@ -653,6 +654,8 @@ void Game::restartSphereAfterTimeUp() {
     p.frame = f;
   }
   beginArrival();
+  // The lost levels lie around the landing point, like after a death
+  scatterLostUpgrades(lost, p.frame.n, SPHERE_RADIUS + ALTITUDE);
   updateRanks();
 }
 

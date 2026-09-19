@@ -291,6 +291,13 @@ constexpr int32_t SCORE_UPGRADE_BONUS_BASE = 500;
 constexpr int RESPAWN_SIZE_DIV = 2;
 constexpr int RESPAWN_CANDIDATES = 24;
 constexpr int RESPAWN_INVINCIBLE_TICKS = 2 * TICK_RATE;
+// The upgrade levels lost with the core are scattered around the respawn
+// point on a circle of this radius (about half the distance to the
+// horizon, ~111 FU at the cruising altitude): a chance to take them back
+// before the neighbours close in. At most UPGRADE_KIND_MAX_ON_SPHERE of a
+// kind exist on a sphere (floating or carried) when scattering
+constexpr int32_t UPGRADE_SCATTER_FU = 55;
+constexpr int UPGRADE_KIND_MAX_ON_SPHERE = 2;
 constexpr int RESPAWN_DELAY_TICKS = 3 * TICK_RATE;  // watch the wreck first
 // Difficulty: enemies get a little stronger with the player's total upgrade
 // level (the upgrades are the reward; the sphere level is the difficulty)
@@ -388,6 +395,16 @@ constexpr uint16_t AI_EVADE_TURN_ANGLE = degToBrad(45);
 // as it is in the cone, then a charge.
 constexpr int32_t AI_COUNTER_MAX_RATIO_PCT = 200;
 constexpr int32_t AI_COUNTER_MIN_HP_DIV = 4;
+// Grudge: every hit by the player adds GRUDGE_PER_HIT ticks to the enemy's
+// grudge (Entity::grudge, decaying one per tick, capped at GRUDGE_MAX). At
+// GRUDGE_ON or more the enemy hunts the player whatever its size, its tier
+// or the sight range (it looks for the player up to GRUDGE_SIGHT_FU),
+// ignores the player as a threat, fires whenever it can and dashes: no
+// picking off a giant from behind, out of its sight, with missiles
+constexpr int GRUDGE_PER_HIT = TICK_RATE;
+constexpr int GRUDGE_ON = 3 * TICK_RATE;
+constexpr int GRUDGE_MAX = 8 * TICK_RATE;
+constexpr int32_t GRUDGE_SIGHT_FU = 400;
 // Steering: brake (quick turn) when the target is more than this far around
 // and closer than AI_QUICK_TURN_FU
 constexpr uint16_t AI_QUICK_TURN_ANGLE = degToBrad(60);

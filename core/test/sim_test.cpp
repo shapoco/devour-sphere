@@ -969,6 +969,95 @@ static void testLargestEnemy() {
   CHECK(g.debugStats().crits == crits);  // no fragment knocked off
 }
 
+// A death scatters the lost upgrade levels around the respawn point (up to
+// two of a kind on the sphere), and an enemy under sustained fire from the
+// player turns on it whatever the distance or the size ratio
+static void testGrudgeAndScatter() {
+  {
+    Game g;
+    g.reset(12);
+    g.debugStartSphere(3, 0);
+    g.debugTakeUpgrade(UpgradeKind::SHIELD);
+    g.debugTakeUpgrade(UpgradeKind::SHIELD);
+    g.debugTakeUpgrade(UpgradeKind::OVERDRIVE);
+    g.debugTakeUpgrade(UpgradeKind::EXTRA_CORE);
+    Entity &p = g.entities[g.playerIndex()];
+    // Two shields already lie far away: the cap for that kind is reached
+    Vec3 far = {-p.frame.n.x, -p.frame.n.y, -p.frame.n.z};
+    for (int i = 0; i < 2; i++) {
+      g.floatingUpgrades[i] = {true, (uint8_t)UpgradeKind::SHIELD, far,
+                               SPHERE_RADIUS + ALTITUDE, {0, 0, 0}, 0};
+    }
+    for (int i = 0; i < MAX_ENTITIES; i++) {
+      if (i != g.playerIndex()) g.entities[i].upgrade = 0;
+    }
+    int overdrive0 = g.countUpgradeKind(UpgradeKind::OVERDRIVE);
+    CHECK(g.countUpgradeKind(UpgradeKind::SHIELD) == 2);
+    int e = firstEnemy(g, 8);
+    p.invincible = 0;
+    p.hp = 1;
+    plantBullet(g, 0, e, g.playerIndex(), 100, false);
+    bool respawned = false;
+    for (int t = 0; t < RESPAWN_DELAY_TICKS + 5 && !respawned; t++) {
+      g.tick(Button::DOWN);
+      if (g.events() & Event::PLAYER_RESPAWNED) respawned = true;
+    }
+    CHECK(respawned);
+    CHECK(g.upgradeLevel(UpgradeKind::SHIELD) == 1);
+    CHECK(g.upgradeLevel(UpgradeKind::OVERDRIVE) == 0);
+    CHECK(g.countUpgradeKind(UpgradeKind::SHIELD) == 2);  // capped
+    CHECK(g.countUpgradeKind(UpgradeKind::OVERDRIVE) == overdrive0 + 1);
+    int near = 0;
+    for (const FloatingUpgrade &u : g.floatingUpgrades) {
+      if (!u.alive || u.kind != (uint8_t)UpgradeKind::OVERDRIVE) continue;
+      int32_t d = dotQ30(u.n, p.frame.n);  // cos of the angle
+      // 55 FU around a 512 FU sphere: cos(0.107) = 0.9943
+      if (d > (int32_t)(0.990 * Q30_ONE) && d < (int32_t)(0.998 * Q30_ONE)) near++;
+    }
+    CHECK(near == 1);
+  }
+  {
+    Game g;
+    g.reset(12);
+    g.debugStartSphere(1, 0);
+    int top = g.largestEnemy();
+    Entity &e = g.entities[top];
+    Entity &p = g.entities[g.playerIndex()];
+    for (int i = 0; i < MAX_ENTITIES; i++) {
+      if (i != top && i != g.playerIndex()) g.entities[i].alive = false;
+    }
+    // The player 200 FU behind the giant: out of its sight and far too
+    // small to be its prey
+    p.frame.n = normalizeQ30(
+        e.frame.n -
+        scaleQ30(e.frame.t, (200 * FU) << (Q30_SHIFT - SPHERE_RADIUS_SHIFT)));
+    p.frame.t = orthonormalizeQ30(e.frame.t, p.frame.n);
+    CHECK(p.size * 8 < e.size);
+    // Eight hits over two seconds
+    for (int t = 0; t < 2 * TICK_RATE; t++) {
+      if (t % (TICK_RATE / 4) == 0) plantBullet(g, t % 8, g.playerIndex(), top, 1, true);
+      p.invincible = 2;
+      g.tick(Button::DOWN);
+    }
+    CHECK(e.grudge >= GRUDGE_ON);
+    bool hunted = false, fired = false;
+    for (int t = 0; t < 5 * TICK_RATE && e.alive; t++) {
+      p.invincible = 2;
+      g.tick(Button::DOWN);
+      if (e.aiMode == AiMode::HUNT_ENTITY && e.aiTarget == g.playerIndex()) hunted = true;
+      for (const Bullet &b : g.bullets)
+        if (b.alive && b.owner == top) fired = true;
+    }
+    CHECK(hunted);
+    CHECK(fired);
+    for (int t = 0; t < GRUDGE_MAX + 10 && e.alive; t++) {
+      p.invincible = 2;
+      g.tick(Button::DOWN);
+    }
+    CHECK(e.grudge == 0);
+  }
+}
+
 // The time limit: the clock runs only while the player plays alive, the
 // alarm sounds once a second over the last 30 s, at zero the player breaks
 // apart and, after the wreck has been watched, the same sphere starts over
@@ -1160,6 +1249,7 @@ int main() {
   testDifficultyAndEvade();
   testTimeLimitAndScore();
   testLargestEnemy();
+  testGrudgeAndScatter();
   testDeterminism();
   testGameplay();
   if (failures) {

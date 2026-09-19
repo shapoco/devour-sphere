@@ -226,6 +226,13 @@ void Game::damageEntity(int idx, int32_t dmg, int attacker, bool allowCrit) {
                     SHIELD_DAMAGE_PCT[upgradeLevel(UpgradeKind::SHIELD)] / 100);
   }
   if (dmg < 1) dmg = 1;
+  // Hits by the player build a grudge (see GRUDGE_* and updateAi); once it
+  // reaches GRUDGE_ON it is full, so the pursuit outlasts the last hit by
+  // GRUDGE_MAX - GRUDGE_ON
+  if (!c.isPlayer && attacker == playerIndex_) {
+    int grudge = c.grudge + GRUDGE_PER_HIT;
+    c.grudge = (int16_t)(grudge >= GRUDGE_ON ? GRUDGE_MAX : grudge);
+  }
   // Critical hit: knocks a fragment out instead of taking health. Never on
   // the largest enemy: chipping it would swap the top rank under the
   // player's nose and end the sphere without a real win
@@ -271,6 +278,8 @@ void Game::damageEntity(int idx, int32_t dmg, int attacker, bool allowCrit) {
   // Enemies that keep getting hit break off, out of the shooter's line of
   // fire (see updateAi); how many hits it takes, and whether they fight
   // back, is the sphere's AI tier (nothing at all on the first sphere)
+  // (the grudge does not stop this: the break-off or the counterattack
+  // runs first, the pursuit follows when the grudge is still there)
   const AiTier &tier = aiTier();
   if (!c.isPlayer && tier.evadeHits > 0) {
     if (c.evadeTicks == 0) {

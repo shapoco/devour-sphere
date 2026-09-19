@@ -144,11 +144,42 @@ int32_t Game::enemyDamagePct() const {
 }
 
 // Lost a core: come back smaller and weaker, where the enemies are sparse
+int Game::countUpgradeKind(UpgradeKind k) const {
+  int n = 0;
+  for (const FloatingUpgrade &u : floatingUpgrades) {
+    if (u.alive && u.kind == (uint8_t)k) n++;
+  }
+  for (const Entity &e : entities) {
+    if (e.alive && !e.isPlayer && e.upgrade == (uint8_t)k) n++;
+  }
+  return n;
+}
+
+void Game::scatterLostUpgrades(const int lost[UPGRADE_KINDS],
+                               const Vec3 &center, int32_t r) {
+  Vec3 helper = absI32(center.x) < absI32(center.y) ? Vec3{Q30_ONE, 0, 0}
+                                                    : Vec3{0, Q30_ONE, 0};
+  Vec3 t1 = normalizeQ30(crossQ30(center, helper));
+  Vec3 t2 = crossQ30(center, t1);
+  const int32_t tanQ30 = (int32_t)(
+      ((int64_t)(UPGRADE_SCATTER_FU * FU) << Q30_SHIFT) / SPHERE_RADIUS);
+  for (int i = 0; i < UPGRADE_KINDS; i++) {
+    UpgradeKind k = (UpgradeKind)(i + 1);
+    for (int n = 0; n < lost[i]; n++) {
+      if (countUpgradeKind(k) >= UPGRADE_KIND_MAX_ON_SPHERE) break;
+      uint16_t a = rng_.brad();
+      Vec3 dir = scaleQ30(t1, cosQ30(a)) + scaleQ30(t2, sinQ30(a));
+      spawnFloatingUpgrade(k, normalizeQ30(center + scaleQ30(dir, tanQ30)), r);
+    }
+  }
+}
+
 bool Game::respawnPlayer() {
   if (cores_ <= 0) return false;
   cores_--;
+  int lost[UPGRADE_KINDS] = {0, 0, 0};
   for (int i = 0; i < UPGRADE_KINDS; i++) {
-    if (upgradeLevels_[i] > 0) upgradeLevels_[i]--;
+    if (upgradeLevels_[i] > 0) upgradeLevels_[i]--, lost[i] = 1;
   }
   Entity &p = entities[playerIndex_];
   uint32_t size = p.size / RESPAWN_SIZE_DIV;
@@ -188,6 +219,7 @@ bool Game::respawnPlayer() {
   }
   p.frame = best;
   p.r = bestR;
+  scatterLostUpgrades(lost, p.frame.n, p.r);
   events_ |= Event::PLAYER_RESPAWNED;
   return true;
 }

@@ -94,7 +94,7 @@ struct Entity {
   // AI
   AiMode aiMode;
   int16_t aiTarget;  // index into entities or floating fragments (-1 = none)
-  int16_t aiTimer;
+  int16_t grudge;  // AI: ticks of grudge against the player (GRUDGE_*)
   uint16_t aiWanderAngle;
 
   uint8_t upgrade;  // UpgradeKind carried (released when the entity dies)
