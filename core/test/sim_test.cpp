@@ -943,6 +943,32 @@ static void testDifficultyAndEvade() {
   }
 }
 
+// The largest enemy is the biggest by size alone, and its hits never knock
+// fragments off (no critical hits), so shooting it cannot swap the top rank
+static void testLargestEnemy() {
+  Game g;
+  g.reset(9);
+  g.debugStartSphere(1, 0);
+  int top = g.largestEnemy();
+  CHECK(top >= 0 && top != g.playerIndex());
+  for (int i = 0; i < MAX_ENTITIES; i++) {
+    const Entity &c = g.entities[i];
+    if (c.alive && i != g.playerIndex()) CHECK(c.size <= g.entities[top].size);
+  }
+  // Only the pair is left (the crit counter is global: enemies shooting
+  // each other would count too), then 120 hits land on the top enemy
+  for (int i = 0; i < MAX_ENTITIES; i++) {
+    if (i != top && i != g.playerIndex()) g.entities[i].alive = false;
+  }
+  uint32_t crits = g.debugStats().crits;
+  for (int n = 0; n < 120 && g.entities[top].alive; n++) {
+    plantBullet(g, n % 8, g.playerIndex(), top, 1, true);
+    g.tick(Button::DOWN);
+  }
+  CHECK(g.entities[top].alive);
+  CHECK(g.debugStats().crits == crits);  // no fragment knocked off
+}
+
 // The time limit: the clock runs only while the player plays alive, the
 // alarm sounds once a second over the last 30 s, at zero the player breaks
 // apart and, after the wreck has been watched, the same sphere starts over
@@ -1133,6 +1159,7 @@ int main() {
   testCombatAndLayout();
   testDifficultyAndEvade();
   testTimeLimitAndScore();
+  testLargestEnemy();
   testDeterminism();
   testGameplay();
   if (failures) {

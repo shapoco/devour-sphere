@@ -223,22 +223,11 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
                         g2::makeColor(255, 120, 120));
       }
       int lineH = g.lineAdvance() + ui(6, 2);
-      drawCenteredFit(g, oy + h_ - margin - 2 * lineH, hints_.move,
+      // The two hint lines, above the version line at the bottom
+      drawCenteredFit(g, oy + h_ - margin - 3 * lineH, hints_.move,
                       hints_.moveAlt, HUD_DIM);
-      drawCenteredFit(g, oy + h_ - margin - lineH, hints_.dash, hints_.dashAlt,
-                      HUD_DIM);
-      // The core's version, in the bottom right corner beside the last hint
-      // line when there is room for both
-      {
-        const char *dash = textFits(g, hints_.dash) ? hints_.dash : hints_.dashAlt;
-        int vw = g.measureText(sim::VERSION_STRING);
-        if ((g.measureText(dash) + vw) / 2 + 2 * margin + vw < w_ / 2 + w_ / 2 - margin &&
-            g.measureText(dash) / 2 + vw + 2 * margin < w_ / 2) {
-          g.setTextColor(HUD_DIM);
-          g.drawString(w_ - margin - vw, oy + h_ - margin - lineH,
-                       sim::VERSION_STRING);
-        }
-      }
+      drawCenteredFit(g, oy + h_ - margin - 2 * lineH, hints_.dash,
+                      hints_.dashAlt, HUD_DIM);
       break;
     }
     case sim::GameState::WEAPON_SELECT: {
@@ -506,12 +495,49 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
                           g2::makeColor(255, 120, 120));
         }
         int lineH = g.lineAdvance() + ui(6, 2);
-        drawCenteredFit(g, oy + h_ - margin - lineH, hints_.pause,
+        drawCenteredFit(g, oy + h_ - margin - 2 * lineH, hints_.pause,
                         hints_.pauseAlt, HUD_DIM);
       }
       break;
     }
   }
+  drawVersion(g, oy);
+}
+
+// The extent of the upgrade status at the bottom: where the upgrade pips
+// end on the left and where the spare cores begin on the right
+void Renderer::upgradeStatusExtents(int &leftEnd, int &rightStart) const {
+  const int is = ui_.iconScale8;
+  const int half = 7 * is / 8;
+  const int pipPitch = ui(6, 3);
+  const int gap = ui(3, 1);
+  int pitch = half + gap + pipPitch * sim::UPGRADE_MAX_LEVEL + ui(10, 3);
+  if (pitch < ui(44)) pitch = ui(44);
+  leftEnd = ui(14, half + 2) + (sim::UPGRADE_KINDS - 1) * pitch +
+            ui(11, half + 1) + pipPitch * sim::UPGRADE_MAX_LEVEL;
+  int corePitch = half * 2 + ui(4, 2);
+  if (corePitch < ui(18)) corePitch = ui(18);
+  rightStart = w_ - ui(14, half + 2) - half - (sim::CORES_MAX - 1) * corePitch;
+}
+
+// The core's version at the bottom center of every screen (so that it is
+// in every screenshot), on the line below the hints; on the screens with
+// the upgrade status it is drawn only when it fits between the pips and
+// the cores
+void Renderer::drawVersion(g2::Graphics2D &g, int oy) {
+  const HudState &hud = hud_;
+  setHudFont(g, HudFont::SMALL);
+  const int vw = g.measureText(sim::VERSION_STRING);
+  const int lineH = g.lineAdvance() + ui(6, 2);
+  const int x = (w_ - vw) / 2;
+  if (hud.state != sim::GameState::TITLE &&
+      hud.state != sim::GameState::WEAPON_SELECT) {
+    int leftEnd, rightStart;
+    upgradeStatusExtents(leftEnd, rightStart);
+    if (x < leftEnd + ui_.margin || x + vw > rightStart - ui_.margin) return;
+  }
+  g.setTextColor(HUD_DIM);
+  g.drawString(x, oy + h_ - ui_.margin - lineH, sim::VERSION_STRING);
 }
 
 }  // namespace devoursphere::render

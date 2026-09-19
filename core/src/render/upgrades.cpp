@@ -73,12 +73,26 @@ void Renderer::drawFloatingUpgrades() {
     vec3f up = {u.n.x / 1073741824.0f, u.n.y / 1073741824.0f,
                 u.n.z / 1073741824.0f};
     g2::Color col = upgradeColor(u.kind);
-    if (g3::dot(up, camUnit_) < cosHorizon_ - 0.02f) {
-      // Beyond the horizon: a marker in the upgrade's color
+    const float cosDist = g3::dot(up, camUnit_);
+    if (cosDist < cosHorizon_ - 0.02f) {
+      // Beyond the horizon: a marker in the upgrade's color, fading with
+      // the distance like the enemies' markers (but never dropped)
       if (markerCount_ >= MAX_MARKERS) continue;
-      vec3f d = up - camUnit_ * g3::dot(up, camUnit_);
+      vec3f d = up - camUnit_ * cosDist;
       float len = g3::length(d);
       if (len < 1e-5f) continue;
+      const float ang = sim::atan2Brad((int32_t)(len * (1 << 30)),
+                                       (int32_t)(cosDist * (1 << 30))) *
+                        BRAD_TO_RAD;
+      float fade =
+          1.0f - (ang - horizonAngle_) / (MARKER_MAX_ANGLE - horizonAngle_);
+      if (fade < 0) fade = 0;
+      if (fade > 1) fade = 1;
+      const float k =
+          MARKER_MIN_BRIGHTNESS + (1.0f - MARKER_MIN_BRIGHTNESS) * fade;
+      col = g2::makeColor((int)(g2::colorR(col) * k),
+                          (int)(g2::colorG(col) * k),
+                          (int)(g2::colorB(col) * k));
       d = d * (1.0f / len);
       vec3f hp = camUnit_ * fastCos(horizonAngle_) + d * fastSin(horizonAngle_);
       vec3f world = sphereCenter_ + hp * ((float)sim::SPHERE_RADIUS / FU);

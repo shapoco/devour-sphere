@@ -40,6 +40,20 @@ struct Gauge2D {
 };
 
 // Marker on the horizon for an enemy beyond it
+// Build-time switch: with DEVOURSPHERE_SUPPRESS_ALPHA=1 nothing is blended
+// on the frame outside the 3D pipeline: the off-screen enemy auras become
+// solid triangles, the health warning shrinks, and the horizon markers and
+// the dash dust are drawn opaque instead of additively (the PicoSystem:
+// every blended pixel reads the frame back, a millisecond a fan there)
+#ifndef DEVOURSPHERE_SUPPRESS_ALPHA
+#define DEVOURSPHERE_SUPPRESS_ALPHA 0
+#endif
+
+// Horizon markers: shown up to this angle around the sphere from the camera
+// (75 degrees, about 670 FU along the surface), fading to this brightness
+constexpr float MARKER_MAX_ANGLE = 75.0f * 3.14159265358979f / 180.0f;
+constexpr float MARKER_MIN_BRIGHTNESS = 0.25f;
+
 struct Marker2D {
   int16_t x, y;
   g2::Color color;
@@ -406,11 +420,13 @@ class Renderer {
   // under the 3D layers (hidden by any body in front: the outlines, the
   // points) or over them (the effects, the marker outlines). There is no
   // depth test: a piece of debris behind a body shows through it.
-  enum Layer2D : uint8_t { L2D_UNDER = 0, L2D_OVER = 1 };
+  // L2D_ADD may be or-ed in: the line is added onto the frame (the dash
+  // dust) instead of overwriting it
+  enum Layer2D : uint8_t { L2D_UNDER = 0, L2D_OVER = 1, L2D_ADD = 2 };
   struct LineSeg {
     int16_t x0, y0, x1, y1;  // screen, 1/16 pixel, clipped to the screen
     uint8_t b0, b1;          // brightness at each end, 0..255 (255 = color)
-    uint8_t layer;           // Layer2D
+    uint8_t layer;           // Layer2D (bit 0), L2D_ADD (bit 1)
     uint16_t rgb565;         // the color (14 bytes an entry; RAM is short)
   };
   static uint16_t packRgb565(g2::Color c) {
@@ -447,6 +463,8 @@ class Renderer {
   void drawLines2D(const g2::Surface &dst, int y, int h, int dstY,
                    Layer2D layer);
   void drawMarkers2D(g2::Graphics2D &g, int oy);
+  void drawVersion(g2::Graphics2D &g, int oy);
+  void upgradeStatusExtents(int &leftEnd, int &rightStart) const;
   void queueMarkerOutlines();
   void drawWireSegment(const g2::Surface &dst, const WireSeg &s, int y, int h,
                        int dstY);

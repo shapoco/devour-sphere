@@ -667,11 +667,22 @@ void Renderer::drawLines2D(const g2::Surface &dst, int y, int h, int dstY,
   const g2::Color black = g2::makeColor(0, 0, 0);
   for (int i = 0; i < lineCount2D_; i++) {
     const LineSeg &s = lines_[i];
-    if (s.layer != layer) continue;
+    if ((s.layer & 1) != layer) continue;
     const int lo = s.y0 < s.y1 ? s.y0 : s.y1;
     const int hi = s.y0 < s.y1 ? s.y1 : s.y0;
     if ((hi >> 4) < y || (lo >> 4) >= y + h) continue;
     const g2::Color color = unpackRgb565(s.rgb565);
+    if (s.layer & L2D_ADD) {
+      // Added onto the frame, per pixel (the dust: a gradient to black,
+      // which under addition is a fade to transparent)
+      walkSegment(s.x0, s.y0, s.x1, s.y1, s.b0, s.b1, y, h, w_,
+                  [&](int px, int py, int b) {
+                    g.fillRect(px, py - y + dstY, 1, 1,
+                               g2::lerpColor(black, color, b),
+                               g2::BlendMode::ADD);
+                  });
+      continue;
+    }
     if (s.b0 == 255 && s.b1 == 255) {
       // Flat: one native word for the whole segment
       if (wide) {

@@ -142,6 +142,10 @@ class Game {
   uint32_t sphereSeed() const { return sphereSeed_; }
 
   int playerIndex() const { return playerIndex_; }
+  // The largest enemy alive (by size alone, like the ranks; -1 when none):
+  // the one to beat. Its hits never knock fragments off (no critical hits),
+  // so shooting it cannot hand the player the top rank by accident
+  int largestEnemy() const { return largestEnemy_; }
   const Entity &player() const { return entities[playerIndex_]; }
   int playerRank() const { return entities[playerIndex_].rank; }
   int aliveEntities() const { return aliveEntities_; }
@@ -272,6 +276,7 @@ class Game {
   Random rng_;
   int playerIndex_ = 0;
   int aliveEntities_ = 0;
+  int largestEnemy_ = -1;
   int respawnTimer_ = 0;
   int foodTimer_ = 0;
   uint32_t displayScaleLog2_ = 0;

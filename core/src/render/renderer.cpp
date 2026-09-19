@@ -17,10 +17,6 @@ static constexpr float Z_NEAR = 0.4f;    // FU
 static constexpr float Z_FAR = 1800.0f;  // FU
 static constexpr float SPHERE_R = (float)sim::SPHERE_RADIUS / FU;
 static constexpr float BRAD_TO_RAD = 2.0f * PI / 65536.0f;
-// Horizon markers: shown up to this angle around the sphere from the camera
-// (75 degrees, about 670 FU along the surface), fading to this brightness
-static constexpr float MARKER_MAX_ANGLE = 75.0f * PI / 180.0f;
-static constexpr float MARKER_MIN_BRIGHTNESS = 0.25f;
 // With this rank or better, markers of every bigger enemy are always shown
 static constexpr int MARKER_ALWAYS_RANK = 5;
 
@@ -418,8 +414,18 @@ bool Renderer::addPoint2D(const sim::Vec3 &p, g2::Color c) {
 }
 
 // A filled triangle in screen pixels (frame y; oy maps it into the band)
+// A filled triangle as one span per row (added onto the frame when
+// `additive`, else overwriting)
 static void fillTriangle2D(g2::Graphics2D &g, int oy, int ax, int ay, int bx,
-                           int by, int cx, int cy, g2::Color c) {
+                           int by, int cx, int cy, g2::Color c,
+                           bool additive) {
+  auto span = [&](int lo, int y, int n) {
+    if (additive) {
+      g.fillRect(lo, y, n, 1, c, g2::BlendMode::ADD);
+    } else {
+      g.fillRect(lo, y, n, 1, c);
+    }
+  };
   // Sort by y: a top, c bottom
   if (ay > by) {
     int t = ax;
@@ -448,7 +454,7 @@ static void fillTriangle2D(g2::Graphics2D &g, int oy, int ax, int ay, int bx,
   if (cy == ay) {
     int lo = ax < bx ? (ax < cx ? ax : cx) : (bx < cx ? bx : cx);
     int hi = ax > bx ? (ax > cx ? ax : cx) : (bx > cx ? bx : cx);
-    g.fillRect(lo, ay + oy, hi - lo + 1, 1, c);
+    span(lo, ay + oy, hi - lo + 1);
     return;
   }
   for (int y = ay; y <= cy; y++) {
@@ -463,11 +469,13 @@ static void fillTriangle2D(g2::Graphics2D &g, int oy, int ax, int ay, int bx,
                     : bx + (int)(((int64_t)(cx - bx) * (y - by)) / (cy - by));
     }
     const int lo = xl < xs ? xl : xs, hi = xl < xs ? xs : xl;
-    g.fillRect(lo, y + oy, hi - lo + 1, 1, c);
+    span(lo, y + oy, hi - lo + 1);
   }
 }
 
 void Renderer::drawMarkers2D(g2::Graphics2D &g, int oy) {
+  // Additive like the auras and the pickups unless blending is suppressed
+  const bool additive = !DEVOURSPHERE_SUPPRESS_ALPHA;
   for (int i = 0; i < markerCount_; i++) {
     const Marker2D &mk = markers_[i];
     const int ms = ui_.markerScale8;
@@ -487,7 +495,7 @@ void Renderer::drawMarkers2D(g2::Graphics2D &g, int oy) {
     if (n < 3) continue;
     if (n == 3) {
       fillTriangle2D(g, oy, pts[0].x, pts[0].y, pts[1].x, pts[1].y, pts[2].x,
-                     pts[2].y, mk.color);
+                     pts[2].y, mk.color, additive);
       continue;
     }
     // Fan from the center (every icon is star-shaped around it)
@@ -496,7 +504,7 @@ void Renderer::drawMarkers2D(g2::Graphics2D &g, int oy) {
     cx /= n, cy /= n;
     for (int k = 0; k < n; k++) {
       const g2::vec2i &p = pts[k], &q = pts[(k + 1) % n];
-      fillTriangle2D(g, oy, cx, cy, p.x, p.y, q.x, q.y, mk.color);
+      fillTriangle2D(g, oy, cx, cy, p.x, p.y, q.x, q.y, mk.color, additive);
     }
   }
 }
@@ -875,8 +883,14 @@ void Renderer::drawEntity(const sim::Entity &c, const sim::Vec3 &pos, float px,
     entitiesDrawn_++;
     return;
   }
-  bool carrier = !c.isPlayer && c.upgrade != (uint8_t)sim::UpgradeKind::NONE;
-  g2::Color outline = g2::makeColor(255, 255, 255);  // carriers: white
+  // The largest enemy (the one to beat) is outlined in yellow, a carrier
+  // of an upgrade in white
+  const bool top =
+      !c.isPlayer && (int)(&c - game_->entities) == game_->largestEnemy();
+  bool carrier = top || (!c.isPlayer &&
+                         c.upgrade != (uint8_t)sim::UpgradeKind::NONE);
+  g2::Color outline =
+      top ? g2::makeColor(255, 230, 80) : g2::makeColor(255, 255, 255);
   if (full) {
     // Dihedral: fragments tilt outwards (around the heading) the farther
     // they are from the body's axis, so the body looks like it has volume
@@ -1095,15 +1109,12 @@ void Renderer::drawStars() {
 // color fades from the enemy's color at the center to black at the rim,
 // added onto the frame). Nearer enemies get bigger and brighter auras.
 //
-// With DEVOURSPHERE_SIMPLE_AURAS the glow is a solid triangle in the
+// With DEVOURSPHERE_SUPPRESS_ALPHA the glow is a solid triangle in the
 // enemy's color instead, its tip on the screen edge pointing at the enemy,
 // bigger the nearer the enemy. A fan is thirteen vertices, twelve
 // Gouraud-shaded triangles and a few thousand additively blended pixels --
 // about a millisecond each on a Cortex-M0+, and up to twelve of them in a
 // crowd; the triangle is one flat, opaque primitive.
-#ifndef DEVOURSPHERE_SIMPLE_AURAS
-#define DEVOURSPHERE_SIMPLE_AURAS 0
-#endif
 void Renderer::drawPresenceAuras() {
   const sim::Game &g = *game_;
   if (g.state() != sim::GameState::PLAYING) return;
@@ -1154,7 +1165,7 @@ void Renderer::drawPresenceAuras() {
       float vy = (1.0f - py / h_ * 2.0f) * tanY * DEPTH;
       return cam_.eye + viewDir_ * DEPTH + right * vx + up * vy;
     };
-#if DEVOURSPHERE_SIMPLE_AURAS
+#if DEVOURSPHERE_SUPPRESS_ALPHA
     // A solid triangle: tip on the edge, base inwards, width across the
     // direction. 8..18 px long on the reference screen, 6..13 on 240x240
     // (it scales half as fast as the UI so it stays readable when small).
@@ -1206,7 +1217,7 @@ void Renderer::drawPresenceAuras() {
 // wider the closer the health gets to zero. Drawn last so it lies over
 // everything in the scene; the HUD is drawn on top of it.
 //
-// With DEVOURSPHERE_SIMPLE_AURAS only the top and bottom edges glow, and
+// With DEVOURSPHERE_SUPPRESS_ALPHA only the top and bottom edges glow, and
 // half as wide: the four bands are four Gouraud, additively blended quads
 // covering a third of the screen, which took a Cortex-M0+ from 28 to 15 fps
 // the moment the health dropped.
@@ -1227,8 +1238,8 @@ void Renderer::drawHealthWarning() {
   g2::Color edge = g2::makeColor((int)(255 * bright), (int)(24 * bright),
                                  (int)(16 * bright));
   g2::Color inner = g2::makeColor(0, 0, 0);
-  float band = h_ * (DEVOURSPHERE_SIMPLE_AURAS ? 0.05f : 0.1f);  // px
-  constexpr int BANDS = DEVOURSPHERE_SIMPLE_AURAS ? 2 : 4;
+  float band = h_ * (DEVOURSPHERE_SUPPRESS_ALPHA ? 0.05f : 0.1f);  // px
+  constexpr int BANDS = DEVOURSPHERE_SUPPRESS_ALPHA ? 2 : 4;
 
   constexpr float DEPTH = 2.0f;  // view-space distance of the quads
   ScreenPlane sp = screenPlane();

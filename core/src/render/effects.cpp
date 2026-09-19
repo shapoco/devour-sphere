@@ -234,9 +234,9 @@ void Renderer::drawEffects() {
     putLoop2Df(pts, 3, d.color, L2D_OVER, palette_[PAL_LINE]);
   }
 
-  // Dust: streaks along the player's motion, bright head, fading tail. As
-  // 2D lines the fade is towards black rather than additive to transparent;
-  // the sky behind them is black anyway
+  // Dust: streaks along the player's motion, bright head, fading tail,
+  // added onto the frame (with DEVOURSPHERE_SUPPRESS_ALPHA the 2D lines
+  // fade towards black and overwrite; the sky behind them is black anyway)
   const sim::Entity &p = game_->player();
   if (dustCount_ > 0) {
     vec3f fwd = {p.frame.t.x / 1073741824.0f, p.frame.t.y / 1073741824.0f,
@@ -260,7 +260,9 @@ void Renderer::drawEffects() {
     g2::Color tail = g2::makeColor(0, 0, 0);
     for (int i = 0; i < dustCount_; i++) {
       const Dust &d = dust_[i];
-      if (!addLine2Df(d.pos, d.pos + fwd * len, head, 255, 0, L2D_OVER)) {
+      const Layer2D layer =
+          (Layer2D)(L2D_OVER | (DEVOURSPHERE_SUPPRESS_ALPHA ? 0 : L2D_ADD));
+      if (!addLine2Df(d.pos, d.pos + fwd * len, head, 255, 0, layer)) {
         putLine3(d.pos, d.pos + fwd * len, head, tail, palette_[PAL_LINE_ADD]);
       }
     }

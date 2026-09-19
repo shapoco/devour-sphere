@@ -226,8 +226,11 @@ void Game::damageEntity(int idx, int32_t dmg, int attacker, bool allowCrit) {
                     SHIELD_DAMAGE_PCT[upgradeLevel(UpgradeKind::SHIELD)] / 100);
   }
   if (dmg < 1) dmg = 1;
-  // Critical hit: knocks a fragment out instead of taking health
-  if (allowCrit && rng_.below(CRIT_CHANCE_DEN) == 0 && c.size > 1) {
+  // Critical hit: knocks a fragment out instead of taking health. Never on
+  // the largest enemy: chipping it would swap the top rank under the
+  // player's nose and end the sphere without a real win
+  if (allowCrit && idx != largestEnemy_ && rng_.below(CRIT_CHANCE_DEN) == 0 &&
+      c.size > 1) {
     Vec3 from = attacker >= 0 && attacker < MAX_ENTITIES
                     ? entities[attacker].frame.n
                     : c.frame.n;

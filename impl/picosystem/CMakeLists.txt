@@ -51,9 +51,10 @@ add_compile_definitions(
     # not fit takes the 3D path. 14 and 8 bytes an entry.
     DEVOURSPHERE_MAX_LINES2D=256
     DEVOURSPHERE_MAX_POINTS2D=128
-    # Off-screen enemies as solid triangles rather than additive glow fans:
-    # a fan costs about a millisecond here and a crowd draws twelve
-    DEVOURSPHERE_SIMPLE_AURAS=1
+    # No blending outside the 3D pipeline: off-screen enemies as solid
+    # triangles rather than additive glow fans (a fan costs about a
+    # millisecond here and a crowd draws twelve), opaque markers and dust
+    DEVOURSPHERE_SUPPRESS_ALPHA=1
 )
 
 # --- The shared game core -----------------------------------------------

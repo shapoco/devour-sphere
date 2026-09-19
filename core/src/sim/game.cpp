@@ -343,15 +343,20 @@ void Game::rescalePlayerForNextSphere() {
   updateLayout(p);
 }
 
+// Ranks go by size alone (not by the health-weighted effective size)
 void Game::updateRanks() {
   Entity &p = entities[playerIndex_];
   int rank = 1;
   aliveEntities_ = 0;
+  largestEnemy_ = -1;
+  uint32_t largest = 0;
   for (int i = 0; i < MAX_ENTITIES; i++) {
     const Entity &c = entities[i];
     if (!c.alive) continue;
     aliveEntities_++;
-    if (i != playerIndex_ && c.size > p.size) rank++;
+    if (i == playerIndex_) continue;
+    if (c.size > p.size) rank++;
+    if (c.size > largest) largest = c.size, largestEnemy_ = i;
   }
   // The rank is frozen once the sphere is cleared
   if (state_ != GameState::LAUNCH) p.rank = (uint16_t)rank;
