@@ -328,21 +328,22 @@ struct AiTier {
 };
 constexpr AiTier AI_TIERS[] = {
     // fire mis las prey far  near sight bias evade counter flags hit
-    {40, 0, 0, 2, 125, 100, 120, 100, 0, 0, 0, 2},                      // 1
-    {80, 0, 0, 2, 125, 100, 140, 110, 4, 0, 0, 2},                      // 2
-    {120, 25, 0, 3, 150, 110, 160, 120, 3, 25, AI_DASH, 2},             // 3
-    {160, 33, 12, 3, 150, 110, 180, 130, 2, 50, AI_DASH | AI_LEAD, 2},  // 4
-    {200, 33, 25, 4, 200, 125, 200, 140, 2, 50,
-     AI_DASH | AI_LEAD | AI_PACK, 3},  // 5
-    {230, 33, 33, 4, 200, 125, 220, 150, 2, 75,
+    {48, 0, 0, 2, 150, 110, 130, 110, 0, 0, 0, 2},                       // 1
+    {96, 0, 0, 2, 150, 110, 150, 120, 3, 25, 0, 2},                      // 2
+    {140, 25, 10, 3, 200, 125, 170, 130, 2, 50, AI_DASH | AI_LEAD, 2},   // 3
+    {180, 33, 20, 4, 200, 125, 190, 140, 2, 60,
+     AI_DASH | AI_LEAD | AI_PACK, 3},  // 4
+    {220, 33, 33, 4, 250, 150, 210, 150, 2, 75,
+     AI_DASH | AI_LEAD | AI_PACK | AI_FLANK, 3},  // 5
+    {255, 33, 40, 6, 250, 150, 230, 160, 1, 85,
      AI_DASH | AI_LEAD | AI_PACK | AI_FLANK, 3},  // 6
-    {255, 33, 33, 4, 250, 150, 240, 160, 2, 75,
-     AI_DASH | AI_LEAD | AI_PACK | AI_FLANK, 3},  // 7
-    {255, 33, 40, 6, 250, 150, 250, 170, 2, 90,
+    {255, 33, 45, 6, 300, 175, 250, 175, 1, 100,
+     AI_DASH | AI_LEAD | AI_PACK | AI_FLANK, 4},  // 7
+    {255, 30, 50, 8, 300, 200, 250, 190, 1, 100,
      AI_DASH | AI_LEAD | AI_PACK | AI_FLANK, 4},  // 8
-    {255, 30, 45, 6, 300, 150, 250, 180, 1, 90,
+    {255, 25, 50, 8, 350, 200, 250, 200, 1, 100,
      AI_DASH | AI_LEAD | AI_PACK | AI_FLANK, 4},  // 9
-    {255, 25, 50, 8, 300, 175, 250, 200, 1, 100,
+    {255, 25, 50, 8, 400, 250, 250, 220, 1, 100,
      AI_DASH | AI_LEAD | AI_PACK | AI_FLANK, 4},  // 10 and beyond
 };
 constexpr int AI_TIER_LEVELS = 10;
@@ -350,7 +351,7 @@ constexpr int AI_TIER_LEVELS = 10;
 constexpr int32_t AI_FLEE_FAR_FU = 60, AI_FLEE_NEAR_FU = 40;
 // Pack: an enemy within this distance that hunts the player calls the
 // neighbours in
-constexpr int32_t AI_PACK_CALL_FU = 60;
+constexpr int32_t AI_PACK_CALL_FU = 90;
 // Flank: an enemy in front of the player (within this half-angle of its
 // heading) and farther than AI_FLANK_MIN_FU steers for a point
 // AI_FLANK_OFFSET_FU beside the player instead of at it
@@ -371,8 +372,8 @@ constexpr uint16_t AI_EVADE_TURN_ANGLE = degToBrad(45);
 // of its health, it counterattacks instead with the tier's counterPct
 // probability: a quick turn under brake towards the shooter, firing as soon
 // as it is in the cone, then a charge.
-constexpr int32_t AI_COUNTER_MAX_RATIO_PCT = 125;
-constexpr int32_t AI_COUNTER_MIN_HP_DIV = 3;
+constexpr int32_t AI_COUNTER_MAX_RATIO_PCT = 200;
+constexpr int32_t AI_COUNTER_MIN_HP_DIV = 4;
 // Steering: brake (quick turn) when the target is more than this far around
 // and closer than AI_QUICK_TURN_FU
 constexpr uint16_t AI_QUICK_TURN_ANGLE = degToBrad(60);
