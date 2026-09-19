@@ -171,8 +171,8 @@ void Game::updateBullets() {
       int32_t power = b.power;
       if (o.isPlayer && !b.fromPlayer) {
         // A giant's bullet hurts the player like one from an enemy at most
-        // PLAYER_HIT_SIZE_RATIO_MAX times its size
-        uint32_t lim = o.size * PLAYER_HIT_SIZE_RATIO_MAX;
+        // hitSizeRatioMax (of the sphere's AI tier) times its size
+        uint32_t lim = o.size * aiTier().hitSizeRatioMax;
         if (b.ownerSize > lim) {
           power = (int32_t)(((int64_t)ws.powerPerSize * lim) / 8);
         }

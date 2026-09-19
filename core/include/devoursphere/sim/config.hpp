@@ -114,18 +114,16 @@ constexpr int32_t HP_PER_SIZE = 32;  // hpMax = HP_PER_SIZE * size
 // for their health only.
 constexpr int32_t HEAL_PER_FRAGMENT_MUL = 1;
 // One bullet hit takes at most this much of the player's gauge
-constexpr int32_t PLAYER_MAX_HIT_PERCENT = 20;
-// An enemy bullet hurts the player as if its owner were at most this many
-// times the player's size (a giant's shot is still a big hit, not a kill)
-constexpr int32_t PLAYER_HIT_SIZE_RATIO_MAX = 2;
-// After a hit the player ignores enemy bullets for this long (0.15 s:
+constexpr int32_t PLAYER_MAX_HIT_PERCENT = 25;
+// (the size clamp of a giant's bullet is AiTier::hitSizeRatioMax)
+// After a hit the player ignores enemy bullets for this long (0.1 s:
 // several enemies firing at once cannot stack their hits into one instant)
-constexpr int PLAYER_MERCY_TICKS = TICK_RATE * 3 / 20;
+constexpr int PLAYER_MERCY_TICKS = TICK_RATE / 10;
 // Emergency dodge (Button::B): a barrel roll sideways during which enemy
 // bullets pass through the player. The sidestep is DODGE_SPEED_MUL times the
 // cruising speed, so it scales with the body like everything else.
 constexpr int DODGE_TICKS = TICK_RATE * 3 / 10;  // 0.3 s
-constexpr int DODGE_COOLDOWN_TICKS = 2 * TICK_RATE;
+constexpr int DODGE_COOLDOWN_TICKS = 3 * TICK_RATE;
 constexpr int32_t DODGE_SPEED_MUL = 4;
 // Critical hit: one hit in CRIT_CHANCE_DEN knocks a fragment of about
 // size / CRIT_FRACTION_DIV out of the body instead of taking health. The
@@ -266,7 +264,7 @@ constexpr int MAX_FLOATING_UPGRADES = 8;
 constexpr uint32_t EXTRA_CORE_CHANCE_DEN = 3;  // 1 in 3 spheres carry one
 // Shield: damage taken in percent per level, level 3 regenerates
 constexpr int32_t SHIELD_DAMAGE_PCT[UPGRADE_MAX_LEVEL + 1] = {100, 75, 50, 50};
-constexpr int32_t SHIELD_REGEN_PCT_PER_SEC = 10;
+constexpr int32_t SHIELD_REGEN_PCT_PER_SEC = 5;
 // Overdrive: fire rate x1.25 / x1.5 / x2 per level (cooldown in percent)
 constexpr int32_t OVERDRIVE_COOLDOWN_PCT[UPGRADE_MAX_LEVEL + 1] = {100, 80, 67,
                                                                    50};
@@ -288,8 +286,8 @@ constexpr int32_t DIFF_DAMAGE_PCT_PER_LEVEL = 5;  // bullet damage
 // (100 + DIFF_DAMAGE_PCT_PER_SPHERE * (sphere level - 1)) %, capped at
 // DIFF_DAMAGE_PCT_SPHERE_MAX, multiplied with the upgrade factor above. The
 // player's own bullets never scale.
-constexpr int32_t DIFF_DAMAGE_PCT_PER_SPHERE = 10;
-constexpr int32_t DIFF_DAMAGE_PCT_SPHERE_MAX = 170;
+constexpr int32_t DIFF_DAMAGE_PCT_PER_SPHERE = 15;
+constexpr int32_t DIFF_DAMAGE_PCT_SPHERE_MAX = 250;
 
 // Enemies hunt other enemies no smaller than 1 / AI_PREY_MIN_RATIO of
 // themselves (the player's own ratio comes from the AI tier below)
@@ -317,28 +315,37 @@ struct AiTier {
   // when it is more than fleeFarPct percent of one's own effective size,
   // within 40 FU when more than fleeNearPct; and the player up to fleeFarPct
   // is hunted rather than avoided (a smaller enemy fights a bigger player)
-  uint8_t fleeFarPct, fleeNearPct;
+  uint16_t fleeFarPct, fleeNearPct;
   uint8_t playerSightFU;  // range at which the player is noticed
   uint8_t playerBiasPct;  // the player's distance is divided by this percent
                           // when choosing prey (preferred over other prey)
   uint8_t evadeHits;      // hits in a row that start a break-off (0: never)
   uint8_t counterPct;     // chance to counterattack instead of breaking off
   uint8_t flags;          // AI_DASH | AI_LEAD | AI_PACK | AI_FLANK
+  // An enemy bullet hurts the player as if its owner were at most this
+  // many times the player's size (a giant's shot is a big hit, not a kill)
+  uint8_t hitSizeRatioMax;
 };
 constexpr AiTier AI_TIERS[] = {
-    // fire mis las prey far  near sight bias evade counter flags
-    {40, 0, 0, 2, 125, 100, 120, 100, 0, 0, 0},                      // 1
-    {72, 0, 0, 2, 125, 100, 140, 110, 4, 0, 0},                      // 2
-    {102, 25, 0, 3, 150, 110, 160, 120, 3, 25, AI_DASH},             // 3
-    {140, 33, 12, 3, 150, 110, 180, 130, 2, 50, AI_DASH | AI_LEAD},  // 4
-    {180, 33, 25, 4, 200, 125, 200, 140, 2, 50,
-     AI_DASH | AI_LEAD | AI_PACK},  // 5
-    {218, 33, 33, 4, 200, 125, 220, 150, 2, 75,
-     AI_DASH | AI_LEAD | AI_PACK | AI_FLANK},  // 6
-    {255, 33, 33, 4, 200, 125, 240, 160, 2, 75,
-     AI_DASH | AI_LEAD | AI_PACK | AI_FLANK},  // 7 and beyond
+    // fire mis las prey far  near sight bias evade counter flags hit
+    {40, 0, 0, 2, 125, 100, 120, 100, 0, 0, 0, 2},                      // 1
+    {80, 0, 0, 2, 125, 100, 140, 110, 4, 0, 0, 2},                      // 2
+    {120, 25, 0, 3, 150, 110, 160, 120, 3, 25, AI_DASH, 2},             // 3
+    {160, 33, 12, 3, 150, 110, 180, 130, 2, 50, AI_DASH | AI_LEAD, 2},  // 4
+    {200, 33, 25, 4, 200, 125, 200, 140, 2, 50,
+     AI_DASH | AI_LEAD | AI_PACK, 3},  // 5
+    {230, 33, 33, 4, 200, 125, 220, 150, 2, 75,
+     AI_DASH | AI_LEAD | AI_PACK | AI_FLANK, 3},  // 6
+    {255, 33, 33, 4, 250, 150, 240, 160, 2, 75,
+     AI_DASH | AI_LEAD | AI_PACK | AI_FLANK, 3},  // 7
+    {255, 33, 40, 6, 250, 150, 250, 170, 2, 90,
+     AI_DASH | AI_LEAD | AI_PACK | AI_FLANK, 4},  // 8
+    {255, 30, 45, 6, 300, 150, 250, 180, 1, 90,
+     AI_DASH | AI_LEAD | AI_PACK | AI_FLANK, 4},  // 9
+    {255, 25, 50, 8, 300, 175, 250, 200, 1, 100,
+     AI_DASH | AI_LEAD | AI_PACK | AI_FLANK, 4},  // 10 and beyond
 };
-constexpr int AI_TIER_LEVELS = 7;
+constexpr int AI_TIER_LEVELS = 10;
 // Threat distances of the bravery rule above
 constexpr int32_t AI_FLEE_FAR_FU = 60, AI_FLEE_NEAR_FU = 40;
 // Pack: an enemy within this distance that hunts the player calls the

@@ -751,11 +751,11 @@ static void testDifficultyAndEvade() {
   CHECK(enemyDrop[0] == 8);
   CHECK(enemyDrop[1] == 8);
   CHECK(giantDrop == (int32_t)(WEAPON_SPECS[0].powerPerSize * giantSize *
-                              PLAYER_HIT_SIZE_RATIO_MAX / 8));
+                              AI_TIERS[0].hitSizeRatioMax / 8));
 
   // Shield before the cap: with Shield Lv.3 (50 %) and three upgrade levels
-  // (x 115 %), a 40 point hit takes 40 * 1.15 * 0.5 = 23, below the 20 % cap
-  // (25 of 128); capping first would leave only 14
+  // (x 115 %), a 40 point hit takes 40 * 1.15 * 0.5 = 23, below the 25 % cap
+  // (32 of 128); capping first would leave only 18
   {
     Game g;
     g.reset(31);
@@ -769,10 +769,13 @@ static void testDifficultyAndEvade() {
     CHECK(g.upgradeLevel(UpgradeKind::SHIELD) == UPGRADE_MAX_LEVEL);
     int e = firstEnemy(g, 8);
     g.entities[e].size = 8;
+    clearAround(g, g.player().frame.n);  // the gauge must not grow meanwhile
     int32_t cap = g.player().hpMax * PLAYER_MAX_HIT_PERCENT / 100;
     CHECK(cap > 23);
     CHECK(maxHitDrop(g, e, g.playerIndex(), 40, false) == 23);
-    // ... and the cap still bounds a huge hit after the shield
+    // ... and the cap still bounds a huge hit after the shield (the enemy
+    // may have eaten meanwhile: keep it under the giant clamp)
+    g.entities[e].size = 8;
     cap = g.player().hpMax * PLAYER_MAX_HIT_PERCENT / 100;
     CHECK(maxHitDrop(g, e, g.playerIndex(), 100000, false) == cap);
   }

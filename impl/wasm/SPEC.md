@@ -197,6 +197,11 @@ URL パラメータ (デバッグ用):
   ゲームページ固有のレイアウト (画面、パッド、全画面) は play/index.html 内の `<style>` に置く。
 - `touch-action: none` と `user-select: none` をキャンバスとパッドに指定し、
   スクロールや長押し選択がゲーム操作を妨げないようにする。
+- 言語: ブラウザの言語 (`navigator.language`) が `ja` で始まれば日本語、それ以外は英語。ページには両方の
+  文言を `lang="ja"` / `lang="en"` 付きで置き、`<head>` の最初のスクリプトが `<html>` に `ja` / `en` クラスと
+  `lang` を付け、CSS (`html.ja [lang="en"], html.en [lang="ja"] { display: none }`) で片方だけ見せる
+  (docs/index.html も同じ)。play.js が書く文字列 (サウンドボタンのラベル) は同じ判定で切り替える。
+  操作説明の段落は README の操作表と同じ内容 (回避、ポーズ、ミュート、ゲームパッドの割り当てを含む) に保つ。
 
 ## スマホ向けレイアウト
 

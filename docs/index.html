@@ -13,15 +13,25 @@
   gtag('config', 'G-KJ53WNQ22G');
 </script>
   
+<script>
+  (function () {
+    var ja = /^ja\b/i.test(navigator.language || '');
+    document.documentElement.lang = ja ? 'ja' : 'en';
+    document.documentElement.className += ja ? ' ja' : ' en';
+  })();
+</script>
 <title>Devour Sphere</title>
 <link rel="stylesheet" href="style.css">
+<style>html.ja [lang="en"], html.en [lang="ja"] { display: none; }</style>
 
 </head>
 <body>
 <h1>Devour Sphere</h1>
-<p class="help">サイバー空間のエンティティとしてフラグメントを喰らい、スフィアで最大の存在を目指すシューティングゲーム。</p>
-<p class="help">組み込み向けグラフィックスライブラリ <a href="https://github.com/shapoco/shapo-gfx">ShapoGFX</a> のデモとして作られたサンプルアプリケーションです。描画はすべて ShapoGFX (フレームバッファ不要のスキャンライン 3D レンダラ) で行っています。</p>
-<p><a href="play/">▶ プレイする (ブラウザ / WebAssembly)</a></p>
+<p class="help" lang="ja">サイバー空間のエンティティとしてフラグメントを喰らい、スフィアで最大の存在を目指すシューティングゲーム。</p>
+<p class="help" lang="en">A shooter: you are an entity in cyberspace, devouring fragments to become the largest being on the sphere.</p>
+<p class="help" lang="ja">組み込み向けグラフィックスライブラリ <a href="https://github.com/shapoco/shapo-gfx">ShapoGFX</a> のデモとして作られたサンプルアプリケーションです。描画はすべて ShapoGFX (フレームバッファ不要のスキャンライン 3D レンダラ) で行っています。</p>
+<p class="help" lang="en">A sample application written as a demo of <a href="https://github.com/shapoco/shapo-gfx">ShapoGFX</a>, a graphics library for embedded systems. All drawing goes through ShapoGFX, a scanline 3D renderer that needs no frame buffer.</p>
+<p><a href="play/"><span lang="ja">▶ プレイする (ブラウザ / WebAssembly)</span><span lang="en">▶ Play in the browser (WebAssembly)</span></a></p>
 <footer>
   <a href="https://github.com/shapoco/devour-sphere">github.com/shapoco/devour-sphere</a> &nbsp;|&nbsp;
   <a href="https://github.com/shapoco/shapo-gfx">ShapoGFX</a>

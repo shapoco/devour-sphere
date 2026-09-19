@@ -37,7 +37,8 @@ static void printTtk() {
       if (shotsPerSec > mercyCap) shotsPerSec = mercyCap;
       for (int k = 0; k < (w == 0 ? 4 : 2); k++) {
         double r = ratios[w == 0 ? k : k * 2];
-        double rc = r > PLAYER_HIT_SIZE_RATIO_MAX ? PLAYER_HIT_SIZE_RATIO_MAX : r;
+        double rmax = AI_TIERS[fi].hitSizeRatioMax;
+        double rc = r > rmax ? rmax : r;
         double frac = ws.powerPerSize * rc / 8.0 / HP_PER_SIZE * mult;
         if (frac > PLAYER_MAX_HIT_PERCENT / 100.0) frac = PLAYER_MAX_HIT_PERCENT / 100.0;
         std::printf(" %5.1f", 1.0 / (frac * shotsPerSec));

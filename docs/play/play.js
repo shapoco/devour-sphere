@@ -510,7 +510,11 @@ function setupButtons() {
 function setupSoundToggle(isMuted, setMuted) {
   const btn = document.getElementById('soundtoggle');
   if (!btn) return null;
-  const refresh = () => { btn.textContent = isMuted() ? 'サウンド OFF' : 'サウンド ON'; };
+  const ja = /^ja\b/i.test(navigator.language || '');
+  const refresh = () => {
+    btn.textContent = ja ? (isMuted() ? 'サウンド OFF' : 'サウンド ON')
+                         : (isMuted() ? 'Sound OFF' : 'Sound ON');
+  };
   refresh();
   btn.addEventListener('click', () => {
     setMuted(!isMuted());

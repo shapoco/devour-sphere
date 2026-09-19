@@ -13,6 +13,15 @@
   gtag('config', 'G-KJ53WNQ22G');
 </script>
 
+<script>
+  // Japanese for a Japanese browser, English otherwise: the page carries
+  // both, CSS shows one (see html.ja / html.en below)
+  (function () {
+    var ja = /^ja\b/i.test(navigator.language || '');
+    document.documentElement.lang = ja ? 'ja' : 'en';
+    document.documentElement.className += ja ? ' ja' : ' en';
+  })();
+</script>
 <title>Devour Sphere</title>
 <meta name="theme-color" content="#05060c">
 <meta name="mobile-web-app-capable" content="yes">
@@ -223,11 +232,13 @@
   }
   #tapstart small { font-size: 12px; letter-spacing: 0.05em; color: var(--dim); }
   #tapstart[hidden] { display: none; }
+  /* Language: both texts are in the markup, one is shown */
+  html.ja [lang="en"], html.en [lang="ja"] { display: none; }
 </style>
 </head>
 <body>
 <h1>Devour Sphere</h1>
-<div id="tapstart" hidden>TAP TO START<small>rotate the phone for a bigger screen</small></div>
+<div id="tapstart" hidden>TAP TO START<small lang="en">rotate the phone for a bigger screen</small><small lang="ja">横向きにすると画面が大きくなります</small></div>
 <div id="stage">
   <div id="game"><canvas id="screen" width="480" height="320"></canvas></div>
   <div id="pad">
@@ -236,22 +247,43 @@
   </div>
 </div>
 <div id="toolbar">
-  <button id="fullscreen" type="button">全画面</button>
-  <button id="touchtoggle" type="button">タッチ操作</button>
-  <button id="soundtoggle" type="button">サウンド ON</button>
+  <button id="fullscreen" type="button"><span lang="ja">全画面</span><span lang="en">Fullscreen</span></button>
+  <button id="touchtoggle" type="button"><span lang="ja">タッチ操作</span><span lang="en">Touch pad</span></button>
+  <button id="soundtoggle" type="button"><span lang="ja">サウンド ON</span><span lang="en">Sound ON</span></button>
   <span id="fps"></span>
 </div>
 <div id="status">Loading...</div>
-<p class="help">
-  移動: ←→ / A D で旋回、↑ / W でダッシュ (体力を消費)、↓ / S でブレーキ。攻撃: スペース / I J K L。
-  ゲームパッドにも対応。
+<p class="help" lang="ja">
+  フラグメントを喰らって大きくなり、スフィアで最大の存在になれば次のスフィアへ。
+  大きな敵の弾は痛いが、弱らせれば体当たりで取り込める。
 </p>
-<p class="help">
+<p class="help" lang="en">
+  Devour fragments to grow; become the largest on the sphere to fly on to the next one.
+  Bigger enemies hit hard, but once weakened they can be rammed and devoured.
+</p>
+<p class="help" lang="ja">
+  操作: ←→ / A D で旋回、↑ / W でダッシュ、↓ / S でブレーキ (旋回が速くなる)。
+  スペース / J L で攻撃 (押したままで連射)、I K / C V B N M で緊急回避
+  (0.3 秒無敵のバレルロール、3 秒に 1 回)、Esc / P でポーズ、タイトル / ポーズ画面の ↓ でミュート。
+  ゲームパッド (A / X / Y: 攻撃、B / ショルダー: 回避) とタッチ操作にも対応。
+</p>
+<p class="help" lang="en">
+  Controls: ← → / A D turn, ↑ / W dash, ↓ / S brake (and turn faster).
+  Space / J / L fire (hold for auto-fire), I / K or C V B N M dodge
+  (a 0.3 s barrel roll that bullets pass through, once every 3 s), Esc / P pause,
+  ↓ on the title or pause screen mutes. Gamepads (A / X / Y fire, B and shoulders dodge)
+  and touch controls work too.
+</p>
+<p class="help" lang="ja">
   このゲームは組み込み向けグラフィックスライブラリ
   <a href="https://github.com/shapoco/shapo-gfx">ShapoGFX</a> のデモとして作られたサンプルアプリケーションです。
 </p>
+<p class="help" lang="en">
+  This game is a sample application written as a demo of
+  <a href="https://github.com/shapoco/shapo-gfx">ShapoGFX</a>, a graphics library for embedded systems.
+</p>
 <footer>
-  <a href="../">トップ</a> &nbsp;|&nbsp;
+  <a href="../"><span lang="ja">トップ</span><span lang="en">Home</span></a> &nbsp;|&nbsp;
   <a href="https://github.com/shapoco/devour-sphere">github.com/shapoco/devour-sphere</a> &nbsp;|&nbsp;
   <a href="https://github.com/shapoco/shapo-gfx">ShapoGFX</a>
 </footer>
