@@ -337,6 +337,15 @@ void Game::updateAi(int idx) {
   c.turn = (int8_t)(r == 0 ? -1 : (r == 1 ? 1 : 0));
 }
 
+// Progress of the dodge after `elapsed` of DODGE_TICKS ticks as a smoothstep
+// 3t^2 - 2t^3 in Q16 (0 at the start, 65536 at the end; zero slope at both)
+static int32_t dodgeProgressQ16(int elapsed) {
+  if (elapsed <= 0) return 0;
+  if (elapsed >= DODGE_TICKS) return 65536;
+  const int64_t n = DODGE_TICKS, e = elapsed;
+  return (int32_t)(((e * e * (3 * n - 2 * e)) << 16) / (n * n * n));
+}
+
 void Game::moveEntity(Entity &c) {
   int32_t cruise = cruiseSpeedForSize(c.size);
   // The dash builds up slowly and fades faster
@@ -394,9 +403,9 @@ void Game::moveEntity(Entity &c) {
   if (rollAt >= 0 && rollAt <= FLIGHT_ROLL_TICKS) {
     c.bank = (int16_t)(uint16_t)((int64_t)rollAt * 65536 / FLIGHT_ROLL_TICKS);
   } else if (c.isPlayer && dodgeTicks_ > 0) {
-    // Emergency dodge: one barrel roll towards the dodge side
-    int elapsed = DODGE_TICKS - dodgeTicks_;
-    int32_t roll = (int32_t)((int64_t)elapsed * 65536 / DODGE_TICKS);
+    // Emergency dodge: one barrel roll towards the dodge side, eased in
+    // and out (the same smoothstep as the sidestep below)
+    int32_t roll = dodgeProgressQ16(DODGE_TICKS - dodgeTicks_ + 1);
     c.bank = (int16_t)(uint16_t)(dodgeDir_ > 0 ? roll : -roll);
   } else {
     int32_t bankTarget =
@@ -413,8 +422,13 @@ void Game::moveEntity(Entity &c) {
     c.frame.t = orthonormalizeQ30(c.frame.t, c.frame.n);
   }
   if (c.isPlayer && dodgeTicks_ > 0 && !flying) {
-    // ... and the sidestep of the dodge, DODGE_SPEED_MUL times the cruise
-    int32_t lat = cruise * DODGE_SPEED_MUL;
+    // ... and the sidestep of the dodge: DODGE_SPEED_MUL times the cruise
+    // on average, along a smoothstep so that it starts and stops softly
+    int elapsed = DODGE_TICKS - dodgeTicks_;
+    int32_t total = cruise * DODGE_SPEED_MUL * DODGE_TICKS;
+    int32_t lat = (int32_t)(((int64_t)total * (dodgeProgressQ16(elapsed + 1) -
+                                               dodgeProgressQ16(elapsed))) >>
+                            16);
     int32_t ang = (int32_t)(((int64_t)lat << Q30_SHIFT) / c.r);
     if (dodgeDir_ < 0) ang = -ang;
     c.frame.n = normalizeQ30(c.frame.n + scaleQ30(c.frame.right(), ang));

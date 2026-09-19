@@ -377,7 +377,8 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
         g.drawRect(0, oy, w_, h_, g2::makeColor(255, 60, 60, 160), ui(3, 1));
       }
 
-      if (hud.state == sim::GameState::LAUNCH) {
+      // The flight banners give way to PAUSED
+      if (hud.state == sim::GameState::LAUNCH && !hud.paused) {
         // Gone before the camera comes round to the front of the player
         if (hud.stateTimer < sim::LAUNCH_TICKS / 2) {
           setHudFont(g, HudFont::LARGE);
@@ -387,7 +388,7 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
           drawCenteredFit(g, oy + uiY(135), "leaving for a larger world...",
                           "next sphere...", HUD_TEXT);
         }
-      } else if (hud.state == sim::GameState::ARRIVE) {
+      } else if (hud.state == sim::GameState::ARRIVE && !hud.paused) {
         // From the moment the camera is behind the player (the next sphere
         // in view beyond it) until shortly before the landing
         if (hud.stateTimer >= 2 * sim::ARRIVE_SWITCH_TICKS &&
