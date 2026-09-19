@@ -169,7 +169,7 @@ int ticksDue() {
 // Only safe while the Game belongs to this core.
 void keepHighScore() {
   if (g_game.score() > g_game.highScore()) {
-    g_game.setHighScore(g_game.score());
+    g_game.setHighScore(g_game.score(), g_game.sphereLevel());
   }
 }
 

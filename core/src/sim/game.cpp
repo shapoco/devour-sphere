@@ -33,6 +33,9 @@ void Game::reset(uint32_t seed) {
   resetUpgrades();
   lastUpgradeKind_ = UpgradeKind::NONE;
   respawnDelay_ = 0;
+  timeUp_ = false;
+  lastSphereScoreQ8_ = lastClearBonusQ8_ = 0;
+  lastClearTicks_ = 0;
   resetPlayerTimers();
   playerClimb_ = 0;
   switchPending_ = false;
@@ -165,6 +168,7 @@ int Game::findFreeEntity() const {
 void Game::startSphere(bool keepPlayer) {
   sphereSeed_ = rng_.next();
   sphereTicks_ = 0;
+  sphereScoreStartQ8_ = scoreQ8_;
   Entity saved;
   if (keepPlayer) saved = entities[playerIndex_];
 
@@ -389,19 +393,31 @@ void Game::checkTransitions() {
         } else if (respawnDelay_ == 0) {
           respawnDelay_ = RESPAWN_DELAY_TICKS;
         } else if (--respawnDelay_ == 0) {
-          respawnPlayer();
+          if (timeUp_) {
+            restartSphereAfterTimeUp();
+          } else {
+            respawnPlayer();
+          }
         }
+      } else if (sphereTicks_ >= SPHERE_TIME_LIMIT_TICKS) {
+        // Time up: the player breaks apart like a kill, and the wreck is
+        // watched like one; then the sphere starts over (or game over)
+        timeUp_ = true;
+        events_ |= Event::SPHERE_TIME_UP;
+        killEntity(playerIndex_, -1);
       } else if (p.rank == 1 && stateTimer_ > CLEAR_GRACE_TICKS) {
         events_ |= Event::SPHERE_CLEARED;
-        // Clear bonus: full when fast, half when slow
-        int32_t speedQ8 = 256;
-        if (sphereTicks_ > SCORE_CLEAR_FAST_TICKS) {
-          int64_t over = sphereTicks_ - SCORE_CLEAR_FAST_TICKS;
-          int64_t span = SCORE_CLEAR_SLOW_TICKS - SCORE_CLEAR_FAST_TICKS;
-          if (over > span) over = span;
-          speedQ8 = (int32_t)(256 - (256 - SCORE_CLEAR_SLOW_Q8) * over / span);
-        }
-        addScore((int64_t)SCORE_CLEAR_BASE * speedQ8);
+        // The sphere's own score, then the clear bonus: a base plus a share
+        // of the time bonus for the time still left
+        lastSphereScoreQ8_ = scoreQ8_ - sphereScoreStartQ8_;
+        lastClearTicks_ = sphereTicks_;
+        int64_t left = sphereTimeLeft();
+        int64_t bonus = (int64_t)SCORE_CLEAR_BASE * 256 +
+                        (int64_t)SCORE_CLEAR_TIME_BONUS * 256 * left /
+                            SPHERE_TIME_LIMIT_TICKS;
+        uint64_t before = scoreQ8_;
+        addScore(bonus);
+        lastClearBonusQ8_ = scoreQ8_ - before;
         setState(GameState::LAUNCH);
         pushSound(SoundKind::LAUNCH);
       }
@@ -459,7 +475,14 @@ void Game::tick(uint8_t buttons) {
   }
   tickCount_++;
   stateTimer_++;
-  if (state_ == GameState::PLAYING) sphereTicks_++;
+  if (state_ == GameState::PLAYING && entities[playerIndex_].alive) {
+    // The clock of the sphere: not while dead, in flight or paused
+    sphereTicks_++;
+    int left = sphereTimeLeft();
+    if (left > 0 && left <= TIME_ALARM_TICKS && left % TICK_RATE == 0) {
+      pushSound(SoundKind::TIME_ALARM);
+    }
+  }
 
   // Menu handling
   switch (state_) {
@@ -581,25 +604,51 @@ void Game::tick(uint8_t buttons) {
   tickProfile_.stamp(TP_OTHER);
 }
 
-// Stay factor (Q8): lingering on a sphere pays less and less
-int32_t Game::stayFactorQ8() const {
-  if (sphereTicks_ <= SCORE_STAY_FULL_TICKS) return 256;
-  int64_t over = sphereTicks_ - SCORE_STAY_FULL_TICKS;
-  int64_t span = SCORE_STAY_MIN_TICKS - SCORE_STAY_FULL_TICKS;
-  if (over >= span) return SCORE_STAY_MIN_Q8;
-  return (int32_t)(256 - (256 - SCORE_STAY_MIN_Q8) * over / span);
+// 1.1^(level - 1) in Q8, by repeated integer multiplication (deterministic)
+int32_t Game::levelMultQ8() const {
+  int32_t m = 256;
+  for (int i = 1; i < sphereLevel_ && i < 64; i++) {
+    m = m * (100 + SCORE_LEVEL_GROWTH_PCT) / 100;
+  }
+  return m;
 }
 
-// baseQ8: base points in Q8; multiplied by the sphere multiplier and the
-// stay factor (saturating)
+// baseQ8: base points in Q8; multiplied by the sphere multiplier
+// (saturating)
 void Game::addScore(int64_t baseQ8) {
   if (baseQ8 <= 0) return;
-  int lv = sphereLevel_ - 1;
-  if (lv > 20) lv = 20;
-  if (lv < 0) lv = 0;
-  uint64_t gain = ((uint64_t)baseQ8 << lv) * (uint64_t)stayFactorQ8() >> 8;
+  uint64_t gain = ((uint64_t)baseQ8 * (uint64_t)levelMultQ8()) >> 8;
   uint64_t limit = (uint64_t)0xFFFFFFFFu << 8;
   scoreQ8_ = (scoreQ8_ + gain > limit) ? limit : scoreQ8_ + gain;
+}
+
+// The time ran out and the wreck has been watched: a core and a level of
+// every upgrade are lost, and the same sphere is built anew, entered from
+// the arrival flight like the first sphere of a game (the camera ahead of
+// the player, no switch midway). The player comes back at the size it
+// would have arrived with; the display scale stays, so it looks smaller
+void Game::restartSphereAfterTimeUp() {
+  cores_--;
+  for (int i = 0; i < UPGRADE_KINDS; i++) {
+    if (upgradeLevels_[i] > 0) upgradeLevels_[i]--;
+  }
+  timeUp_ = false;
+  respawnDelay_ = 0;
+  resetPlayerTimers();
+  setState(GameState::ARRIVE);
+  pushSound(SoundKind::ARRIVE);
+  startSphere(false);
+  Entity &p = entities[playerIndex_];
+  if (sphereLevel_ > 1) {
+    Frame f = p.frame;
+    uint8_t hue = p.hue;
+    initEntity(p, PLAYER_START_SIZE_LOG2 + 1, p.weapon);
+    p.isPlayer = true;
+    p.hue = hue;
+    p.frame = f;
+  }
+  beginArrival();
+  updateRanks();
 }
 
 void Game::pushEffect(EffectKind kind, int entity, const Vec3 &n, int32_t r,
@@ -647,7 +696,7 @@ uint32_t Game::stateHash() const {
       displayScaleLog2_,      (uint32_t)scoreQ8_, (uint32_t)(scoreQ8_ >> 32),
       (uint32_t)sphereTicks_, (uint32_t)cores_,   (uint32_t)switchPending_,
       (uint32_t)playerMercy_, (uint32_t)dodgeTicks_,
-      (uint32_t)dodgeCooldown_, (uint32_t)dodgeDir_};
+      (uint32_t)dodgeCooldown_, (uint32_t)dodgeDir_, (uint32_t)timeUp_};
   h = fnv(h, scalars, sizeof(scalars));
   return h;
 }

@@ -70,6 +70,8 @@ SOUNDS = [
     "menu_start",
     "launch",
     "arrive",
+    "time_alarm",
+    "dodge",
 ]
 
 TRIM = ("silenceremove=start_periods=1:start_threshold=-50dB,"

@@ -10,6 +10,15 @@
 
 namespace devoursphere::sim {
 
+// --- Version ----------------------------------------------------------------
+// The major version changes when the game system changes in a way that
+// makes older scores incomparable (scoring, the time limit, the difficulty
+// structure); a platform that stores the high score keeps the major with it
+// and drops the score when the major differs. Anything else bumps the minor.
+constexpr int VERSION_MAJOR = 1;
+constexpr int VERSION_MINOR = 0;
+constexpr const char *VERSION_STRING = "v1.0";
+
 constexpr int32_t FU_UNITS = 256;  // units per fragment unit (see FU below)
 
 // Simulation ticks per second. Everything below is derived from per-second
@@ -144,7 +153,7 @@ enum class Weapon : uint8_t { VULCAN = 0, LASER = 1, MISSILE = 2 };
 // scatters fragments that the player then swallows over a few ticks, and
 // both it and the player's hit are raised every tick of a contact
 // absorption (the gap paces the munching)
-constexpr int SOUND_KINDS = 14;
+constexpr int SOUND_KINDS = 16;
 constexpr int16_t SOUND_MIN_GAP_TICKS[SOUND_KINDS] = {
     0, 0, 0,                  // SHOT_VULCAN, SHOT_LASER, SHOT_MISSILE
     0, (int16_t)ticks30(3),   // HIT_ENEMY, HIT_PLAYER (0.1 s)
@@ -152,6 +161,7 @@ constexpr int16_t SOUND_MIN_GAP_TICKS[SOUND_KINDS] = {
     (int16_t)ticks30(3),      // GET_FRAGMENT (0.1 s)
     0, 0, 0,                  // GET_UPGRADE, MENU_SELECT, MENU_START
     0, 0,                     // LAUNCH, ARRIVE
+    0, 0,                     // TIME_ALARM (once a second by the sim), DODGE
 };
 constexpr int WEAPON_COUNT = 3;
 
@@ -223,6 +233,14 @@ constexpr int INITIAL_FOOD_FRAGMENTS = 320;
 constexpr int FOOD_TARGET = 400;  // keep at least this many floating fragments
 constexpr int FOOD_SPAWN_INTERVAL = ticks30(4);  // ticks
 constexpr int FOOD_MAX_SIZE_LOG2 = 3;
+// Time limit of a sphere (the clock runs only while the player plays and is
+// alive). Under TIME_WARN_TICKS the HUD turns yellow, under TIME_ALARM_TICKS
+// it blinks and the sim asks for the alarm once a second. At zero the player
+// breaks apart as if shot down and, with a spare core, the same sphere
+// starts over from the arrival (see Game::restartSphereAfterTimeUp)
+constexpr int SPHERE_TIME_LIMIT_TICKS = 5 * 60 * TICK_RATE;
+constexpr int TIME_WARN_TICKS = 60 * TICK_RATE;
+constexpr int TIME_ALARM_TICKS = 30 * TICK_RATE;
 
 // --- Colors (hues 0..255; the renderer maps them to its palette) ----------
 constexpr uint8_t ENEMY_HUES[] = {0, 21, 42, 64, 85, 170, 190, 213, 235};
@@ -231,20 +249,16 @@ constexpr uint8_t PLAYER_HUE = 135;
 constexpr uint8_t FRAGMENT_HUE = 120;  // floating fragments (teal)
 
 // --- Score ------------------------------------------------------------------
-// Every gain is base * 2^(sphere level - 1) * stay factor. The stay factor is
-// 1.0 for the first SCORE_STAY_FULL_TICKS on a sphere and falls linearly to
-// SCORE_STAY_MIN (Q8) at SCORE_STAY_MIN_TICKS, so lingering pays less and
-// less. The score is kept in Q8 (1 point = 256).
+// Every gain is base * (1 + SCORE_LEVEL_GROWTH_PCT / 100)^(sphere level - 1).
+// The score is kept in Q8 (1 point = 256). Clearing a sphere pays
+// SCORE_CLEAR_BASE plus SCORE_CLEAR_TIME_BONUS times the share of the time
+// limit still left, so a quick clear and a long hunt are both worth it.
 constexpr int32_t SCORE_KILL_BASE = 100;    // x (enemy size / own size)^2
 constexpr int32_t SCORE_DEVOUR_BASE = 30;   // enemy consumed by contact
 constexpr int32_t SCORE_FRAGMENT_BASE = 1;  // fragment joined the body
-constexpr int32_t SCORE_CLEAR_BASE = 2000;  // x speed factor
-constexpr int SCORE_STAY_FULL_TICKS = 2 * 60 * TICK_RATE;
-constexpr int SCORE_STAY_MIN_TICKS = 6 * 60 * TICK_RATE;
-constexpr int32_t SCORE_STAY_MIN_Q8 = 51;  // 0.2
-constexpr int SCORE_CLEAR_FAST_TICKS = 3 * 60 * TICK_RATE;
-constexpr int SCORE_CLEAR_SLOW_TICKS = 8 * 60 * TICK_RATE;
-constexpr int32_t SCORE_CLEAR_SLOW_Q8 = 128;  // 0.5
+constexpr int32_t SCORE_CLEAR_BASE = 2000;
+constexpr int32_t SCORE_CLEAR_TIME_BONUS = 4000;
+constexpr int32_t SCORE_LEVEL_GROWTH_PCT = 10;
 constexpr int32_t SCORE_RATIO_MIN_PCT = 25, SCORE_RATIO_MAX_PCT = 300;
 
 // --- Upgrades and cores ------------------------------------------------------

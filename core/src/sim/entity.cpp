@@ -49,6 +49,7 @@ void Game::startDodge(uint8_t buttons) {
   dodgeTicks_ = (int16_t)DODGE_TICKS;
   dodgeCooldown_ = (int16_t)DODGE_COOLDOWN_TICKS;
   events_ |= Event::PLAYER_DODGED;
+  pushSound(SoundKind::DODGE);
 }
 
 // Direction from `from` towards `to` projected on the tangent plane at `from`

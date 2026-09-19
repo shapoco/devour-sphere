@@ -385,6 +385,9 @@ static void testGameplay() {
   CHECK(q.player().bank == 0);  // the roll ended where it began
   CHECK(q.sphereLevel() == 2);
   CHECK(q.score() >= 2000);  // clear bonus on sphere 1
+  CHECK(q.clearBonus() >= (uint32_t)SCORE_CLEAR_BASE);
+  CHECK(q.clearBonus() <= (uint32_t)(SCORE_CLEAR_BASE + SCORE_CLEAR_TIME_BONUS));
+  CHECK(q.clearTicks() > 0 && q.clearTicks() <= SPHERE_TIME_LIMIT_TICKS);
   CHECK(q.player().size < 64);
   CHECK(q.playerDisplayScaleLog2() > 0);
   checkInvariants(q);
@@ -832,6 +835,7 @@ static void testDifficultyAndEvade() {
     int32_t hp0 = p.hp;
     g.tick(Button::B | Button::LEFT);
     CHECK(g.events() & Event::PLAYER_DODGED);
+    CHECK(g.sounds() & (1u << (int)SoundKind::DODGE));
     CHECK(g.dodgeTicks() == DODGE_TICKS);
     CHECK(g.dodgeReadyQ8() < 256);
     bool rolled = false;
@@ -937,6 +941,78 @@ static void testDifficultyAndEvade() {
       CHECK(countered >= 1);
     }
   }
+}
+
+// The time limit: the clock runs only while the player plays alive, the
+// alarm sounds once a second over the last 30 s, at zero the player breaks
+// apart and, after the wreck has been watched, the same sphere starts over
+// from the arrival with a core and an upgrade level less (game over when
+// no core is left). The score multiplier grows 10 % per sphere.
+static void testTimeLimitAndScore() {
+  {
+    Game g;
+    g.reset(5);
+    g.debugStartSphere(1, 0);
+    CHECK(g.levelMultQ8() == 256);
+    g.debugStartSphere(2, 0);
+    CHECK(g.levelMultQ8() == 281);
+    g.debugStartSphere(4, 0);
+    CHECK(g.levelMultQ8() == 339);  // 256 -> 281 -> 309 -> 339
+    g.setHighScore(123, 4);
+    CHECK(g.highScore() == 123 && g.highScoreSphere() == 4);
+  }
+  Game g;
+  g.reset(5);
+  g.debugStartSphere(2, 0);
+  g.debugTakeUpgrade(UpgradeKind::THRUSTER);
+  Entity &p = g.entities[g.playerIndex()];
+  int alarms = 0;
+  bool timeUpEvent = false;
+  const int cores = g.cores();
+  // Sit still and invulnerable until the time runs out
+  for (int t = 0; t < SPHERE_TIME_LIMIT_TICKS + 5 && p.alive; t++) {
+    p.invincible = 2;
+    g.tick(Button::DOWN);
+    if (g.sounds() & (1u << (int)SoundKind::TIME_ALARM)) alarms++;
+    if (g.events() & Event::SPHERE_TIME_UP) timeUpEvent = true;
+    if (t == SPHERE_TIME_LIMIT_TICKS - TIME_ALARM_TICKS - 2) {
+      CHECK(g.sphereTimeLeft() == TIME_ALARM_TICKS + 1);
+    }
+  }
+  CHECK(!p.alive);
+  CHECK(g.timeUp());
+  CHECK(timeUpEvent);
+  CHECK(alarms == TIME_ALARM_TICKS / TICK_RATE);
+  CHECK(g.sphereTicks() == SPHERE_TIME_LIMIT_TICKS);
+  CHECK(g.state() == GameState::PLAYING);
+  // The wreck is watched with the clock stopped (the delay starts on the
+  // tick after the death), then the sphere restarts
+  for (int t = 0; t < RESPAWN_DELAY_TICKS; t++) g.tick(0);
+  CHECK(g.state() == GameState::PLAYING);
+  CHECK(g.sphereTicks() == SPHERE_TIME_LIMIT_TICKS);
+  g.tick(0);
+  CHECK(g.state() == GameState::ARRIVE);
+  CHECK(!g.timeUp());
+  CHECK(g.cores() == cores - 1);
+  CHECK(g.upgradeLevel(UpgradeKind::THRUSTER) == 0);
+  CHECK(g.sphereLevel() == 2);
+  CHECK(g.sphereTicks() == 0);
+  CHECK(!g.switchPending());
+  CHECK(p.alive);
+  CHECK(p.size == 8);
+  CHECK(p.r > SPHERE_RADIUS + ALTITUDE + ARRIVE_ALTITUDE);  // from above
+  while (g.state() == GameState::ARRIVE) g.tick(0);
+  CHECK(g.state() == GameState::PLAYING);
+  CHECK(g.player().invincible > 0);
+  checkInvariants(g);
+  // No core left: the second time-up is the end
+  for (int t = 0; t < SPHERE_TIME_LIMIT_TICKS + 5 && p.alive; t++) {
+    p.invincible = 2;
+    g.tick(Button::DOWN);
+  }
+  CHECK(!p.alive && g.timeUp());
+  for (int t = 0; t < 2 && g.state() == GameState::PLAYING; t++) g.tick(0);
+  CHECK(g.state() == GameState::DEAD);
 }
 
 // The renderer must work at every frame buffer size the front ends allow:
@@ -1056,6 +1132,7 @@ int main() {
   testRenderBands();
   testCombatAndLayout();
   testDifficultyAndEvade();
+  testTimeLimitAndScore();
   testDeterminism();
   testGameplay();
   if (failures) {

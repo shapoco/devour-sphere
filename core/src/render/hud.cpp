@@ -179,6 +179,20 @@ void Renderer::drawUpgradeStatus(g2::Graphics2D &g, int oy) {
   }
 }
 
+// "HIGH SCORE 12345  SPHERE 5" and its short form
+static void formatHighScore(char *buf, size_t bufLen, char *alt, size_t altLen,
+                            const HudState &hud) {
+  if (hud.highScoreSphere > 0) {
+    std::snprintf(buf, bufLen, "HIGH SCORE %u  SPHERE %d",
+                  (unsigned)hud.highScore, hud.highScoreSphere);
+    std::snprintf(alt, altLen, "HI %u S%d", (unsigned)hud.highScore,
+                  hud.highScoreSphere);
+  } else {
+    std::snprintf(buf, bufLen, "HIGH SCORE %u", (unsigned)hud.highScore);
+    std::snprintf(alt, altLen, "HI %u", (unsigned)hud.highScore);
+  }
+}
+
 void Renderer::drawHud(g2::Graphics2D &g, int oy) {
   const HudState &hud = hud_;
   char buf[64], alt[64];
@@ -201,9 +215,7 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
       }
       setHudFont(g, HudFont::SMALL);
       if (hud.highScore > 0) {
-        std::snprintf(buf, sizeof(buf), "HIGH SCORE %u",
-                      (unsigned)hud.highScore);
-        std::snprintf(alt, sizeof(alt), "HI %u", (unsigned)hud.highScore);
+        formatHighScore(buf, sizeof(buf), alt, sizeof(alt), hud);
         drawCenteredFit(g, oy + uiY(236), buf, alt, HUD_DIM);
       }
       if (hud.muted) {
@@ -215,6 +227,18 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
                       hints_.moveAlt, HUD_DIM);
       drawCenteredFit(g, oy + h_ - margin - lineH, hints_.dash, hints_.dashAlt,
                       HUD_DIM);
+      // The core's version, in the bottom right corner beside the last hint
+      // line when there is room for both
+      {
+        const char *dash = textFits(g, hints_.dash) ? hints_.dash : hints_.dashAlt;
+        int vw = g.measureText(sim::VERSION_STRING);
+        if ((g.measureText(dash) + vw) / 2 + 2 * margin + vw < w_ / 2 + w_ / 2 - margin &&
+            g.measureText(dash) / 2 + vw + 2 * margin < w_ / 2) {
+          g.setTextColor(HUD_DIM);
+          g.drawString(w_ - margin - vw, oy + h_ - margin - lineH,
+                       sim::VERSION_STRING);
+        }
+      }
       break;
     }
     case sim::GameState::WEAPON_SELECT: {
@@ -355,8 +379,25 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
 
       drawUpgradeStatus(g, oy);
 
-      // Sphere and weapon (top right)
+      // Time left, sphere and weapon (top right)
       setHudFont(g, HudFont::SMALL);
+      int ry = gy;
+      if (hud.state == sim::GameState::PLAYING) {
+        // Rounded up: 0:00 only when the time is really up. White, yellow
+        // in the last minute, red / white at 0.5 s in the last 30 s
+        int secs = (hud.timeLeftTicks + sim::TICK_RATE - 1) / sim::TICK_RATE;
+        std::snprintf(buf, sizeof(buf), "%d:%02d", secs / 60, secs % 60);
+        g2::Color tc = HUD_TEXT;
+        if (hud.timeLeftTicks < sim::TIME_ALARM_TICKS) {
+          tc = blinkOn ? g2::makeColor(255, 70, 60) : HUD_TEXT;
+        } else if (hud.timeLeftTicks < sim::TIME_WARN_TICKS) {
+          tc = g2::makeColor(255, 220, 80);
+        }
+        int tw = g.measureText(buf);
+        g.setTextColor(tc);
+        g.drawString(w_ - margin - tw, ry, buf);
+        ry += g.lineAdvance() + ui(2, 1);
+      }
       std::snprintf(buf, sizeof(buf), "SPHERE %d", hud.sphereLevel);
       int tw = g.measureText(buf);
       if (tw > w_ / 3) {
@@ -364,11 +405,11 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
         tw = g.measureText(buf);
       }
       g.setTextColor(HUD_TEXT);
-      g.drawString(w_ - margin - tw, gy, buf);
+      g.drawString(w_ - margin - tw, ry, buf);
       if (!ui_.tiny) {
         tw = g.measureText(WEAPON_NAMES[hud.playerWeapon]);
         g.setTextColor(HUD_DIM);
-        g.drawString(w_ - margin - tw, gy + g.lineAdvance() + ui(2, 1),
+        g.drawString(w_ - margin - tw, ry + g.lineAdvance() + ui(2, 1),
                      WEAPON_NAMES[hud.playerWeapon]);
       }
 
@@ -388,6 +429,35 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
           drawCenteredFit(g, oy + uiY(135), "leaving for a larger world...",
                           "next sphere...", HUD_TEXT);
         }
+        // The sphere's tally, for the whole flight: what it earned, the
+        // time it took and the bonus for the time left, and the total
+        setHudFont(g, HudFont::SMALL);
+        int secs = hud.clearTicks / sim::TICK_RATE;
+        if (ui_.compact) {
+          std::snprintf(buf, sizeof(buf), "+%u  %d:%02d  +%u",
+                        (unsigned)hud.sphereScore, secs / 60, secs % 60,
+                        (unsigned)hud.clearBonus);
+          std::snprintf(alt, sizeof(alt), "%d:%02d +%u", secs / 60, secs % 60,
+                        (unsigned)hud.clearBonus);
+          drawCenteredFit(g, oy + uiY(190), buf, alt, HUD_TEXT);
+        } else {
+          int lh = g.lineAdvance() + ui(4, 2);
+          int y = oy + uiY(180);
+          std::snprintf(buf, sizeof(buf), "SPHERE SCORE %u",
+                        (unsigned)hud.sphereScore);
+          drawCenteredFit(g, y, buf, nullptr, HUD_TEXT);
+          std::snprintf(buf, sizeof(buf), "TIME %d:%02d   BONUS +%u", secs / 60,
+                        secs % 60, (unsigned)hud.clearBonus);
+          drawCenteredFit(g, y + lh, buf, nullptr, HUD_TEXT);
+          std::snprintf(buf, sizeof(buf), "TOTAL %u", (unsigned)hud.score);
+          drawCenteredFit(g, y + 2 * lh, buf, nullptr,
+                          g2::makeColor(255, 230, 120));
+        }
+      } else if (hud.state == sim::GameState::PLAYING && hud.timeUp) {
+        // The wreck of the timed-out player, before the sphere starts over
+        setHudFont(g, HudFont::LARGE);
+        drawCenteredFit(g, oy + uiY(100), "TIME UP", nullptr,
+                        g2::makeColor(255, 90, 90));
       } else if (hud.state == sim::GameState::ARRIVE && !hud.paused) {
         // From the moment the camera is behind the player (the next sphere
         // in view beyond it) until shortly before the landing
@@ -405,9 +475,7 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
         std::snprintf(buf, sizeof(buf), "SCORE %u", (unsigned)hud.score);
         std::snprintf(alt, sizeof(alt), "%u", (unsigned)hud.score);
         drawCenteredFit(g, oy + uiY(135), buf, alt, HUD_TEXT);
-        std::snprintf(buf, sizeof(buf), "HIGH SCORE %u",
-                      (unsigned)hud.highScore);
-        std::snprintf(alt, sizeof(alt), "HI %u", (unsigned)hud.highScore);
+        formatHighScore(buf, sizeof(buf), alt, sizeof(alt), hud);
         drawCenteredFit(g, oy + uiY(152), buf, alt,
                         hud.score >= hud.highScore && hud.score > 0
                             ? g2::makeColor(255, 230, 120)

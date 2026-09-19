@@ -43,6 +43,7 @@ constexpr uint8_t PRIORITY[sim::SOUND_KINDS] = {
     1, 3,     // GET_FRAGMENT, GET_UPGRADE
     0, 2,     // MENU_SELECT, MENU_START
     4, 4,     // LAUNCH, ARRIVE
+    4, 0,     // TIME_ALARM (high: it must be heard), DODGE (low)
 };
 
 // How long a playing sound keeps lower priorities out. After this, any

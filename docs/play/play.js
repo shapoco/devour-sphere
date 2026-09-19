@@ -44,7 +44,8 @@ const RGBA_LUT = new Uint32Array(65536);
 // raises no sound bits. This page keeps it in localStorage.
 const SE_NAMES = ['shot_vulcan', 'shot_laser', 'shot_missile', 'hit_enemy',
   'hit_player', 'enemy_killed_small', 'enemy_killed_big', 'player_killed',
-  'get_fragment', 'get_upgrade', 'menu_select', 'menu_start', 'launch', 'arrive'];
+  'get_fragment', 'get_upgrade', 'menu_select', 'menu_start', 'launch', 'arrive',
+  'time_alarm', 'dodge'];
 // Per-kind gain (the place to balance the material; 1 = as recorded)
 const SE_GAIN = {
   shot_vulcan: 1, shot_laser: 1, shot_missile: 1,
@@ -53,6 +54,7 @@ const SE_GAIN = {
   get_fragment: 1, get_upgrade: 1,
   menu_select: 1, menu_start: 1,
   launch: 1, arrive: 1,
+  time_alarm: 1, dodge: 1,
 };
 const SOUND_KEY = 'devoursphere.sound';
 
@@ -194,11 +196,20 @@ async function startDevourSphere(opts) {
       input.onDebugKey = (n) => ex.ds_debug_key(n);
     }
 
-    // High score: kept in the browser
+    // High score: kept in the browser as {major, score, sphere}. A record
+    // from another major version of the game (or the old plain number) is
+    // dropped: the scoring changed, the numbers do not compare
     const HS_KEY = 'devoursphere.highscore';
-    let highScore = 0;
-    try { highScore = parseInt(localStorage.getItem(HS_KEY) || '0', 10) >>> 0; } catch (e) { /* ignore */ }
-    ex.ds_set_high_score(highScore);
+    const major = ex.ds_get_version_major();
+    let highScore = 0, highSphere = 0;
+    try {
+      const rec = JSON.parse(localStorage.getItem(HS_KEY) || 'null');
+      if (rec && rec.major === major) {
+        highScore = (rec.score >>> 0) || 0;
+        highSphere = (rec.sphere | 0) || 0;
+      }
+    } catch (e) { /* ignore */ }
+    ex.ds_set_high_score(highScore, highSphere);
     // The mute: restored from localStorage, kept there when the game
     // toggles it (DOWN on the title / pause screen) or the button does
     let muted = false;
@@ -217,8 +228,11 @@ async function startDevourSphere(opts) {
       const score = ex.ds_get_score() >>> 0;
       if (score > highScore) {
         highScore = score;
-        ex.ds_set_high_score(highScore);
-        try { localStorage.setItem(HS_KEY, String(highScore)); } catch (e) { /* ignore */ }
+        highSphere = ex.ds_get_sphere_level();
+        ex.ds_set_high_score(highScore, highSphere);
+        try {
+          localStorage.setItem(HS_KEY, JSON.stringify({ major, score: highScore, sphere: highSphere }));
+        } catch (e) { /* ignore */ }
       }
     }
 

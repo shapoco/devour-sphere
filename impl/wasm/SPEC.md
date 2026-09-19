@@ -86,7 +86,8 @@ cmake --build build
 | `ds_set_muted(on)`, `ds_get_muted()` | ミュート (ゲームの設定。タイトル / ポーズ画面の ↓ でも切り替わる)。JS 側が localStorage の `devoursphere.sound` ('0' でオフ) に保持し、毎秒読んで変化を保存する |
 | `ds_get_paused()` | ポーズ中なら 1 |
 | `ds_get_score()` | 現在のスコア |
-| `ds_set_high_score(v)` | ハイスコアを渡す (表示用)。JS 側が localStorage の `devoursphere.highscore` に保持し、毎秒スコアと比べて更新する |
+| `ds_set_high_score(v, sphere)` | ハイスコアとそのとき到達していたスフィアを渡す (表示用)。JS 側が localStorage の `devoursphere.highscore` に JSON `{major, score, sphere}` で保持し、毎秒スコアと比べて更新する。読み出し時に `major` が `ds_get_version_major()` と違う記録 (バージョンの無い古い数値も) は破棄する (core/SPEC.md の「バージョン」) |
+| `ds_get_sphere_level()`, `ds_get_version_major()` | 現在のスフィアのレベルと core のメジャーバージョン (上の記録用) |
 | `ds_debug_start(level, weapon)` | デバッグ用: メニューを飛ばして指定レベルのスフィアで開始 |
 | `ds_set_debug(on)` | デバッグモード: HUD に「DEBUG MODE」が出続け、`ds_debug_key` が効くようになる |
 | `ds_debug_key(n)` | デバッグモードのチート。1 Shield / 2 Overdrive / 3 Thruster / 4 Extra Core を 1 つ取る、5 自機の大きさ 2 倍、6 半分、7 体力 -25%、8 体力 +25% (最大値比) |

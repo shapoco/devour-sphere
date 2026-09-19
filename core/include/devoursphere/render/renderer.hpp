@@ -109,6 +109,11 @@ struct HudState {
   int cores = 0;
   int upgradeLevel[sim::UPGRADE_KINDS] = {};
   int dodgeReadyQ8 = 256;  // emergency dodge: 256 = ready
+  int timeLeftTicks = 0;   // of the sphere's time limit
+  bool timeUp = false;     // the wreck of a timed-out player is on screen
+  uint32_t sphereScore = 0, clearBonus = 0;  // the last clear (LAUNCH)
+  int clearTicks = 0;
+  int highScoreSphere = 0;  // the sphere reached in the high score run
   sim::GameState state = sim::GameState::TITLE;
   bool debugMode = false;
   bool paused = false;

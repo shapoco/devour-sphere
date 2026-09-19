@@ -125,8 +125,14 @@ DS_EXPORT void ds_set_muted(int on) { game.setMuted(on != 0); }
 DS_EXPORT int ds_get_muted() { return game.muted() ? 1 : 0; }
 DS_EXPORT int ds_get_paused() { return game.paused() ? 1 : 0; }
 DS_EXPORT uint32_t ds_get_score() { return game.score(); }
-// The high score is stored by the platform (browser: localStorage)
-DS_EXPORT void ds_set_high_score(uint32_t v) { game.setHighScore(v); }
+DS_EXPORT int ds_get_sphere_level() { return game.sphereLevel(); }
+// The high score (and the sphere reached in that run) is stored by the
+// platform (browser: localStorage) together with the major version; a
+// record from another major is dropped
+DS_EXPORT void ds_set_high_score(uint32_t v, int sphere) {
+  game.setHighScore(v, sphere);
+}
+DS_EXPORT int ds_get_version_major() { return sim::VERSION_MAJOR; }
 DS_EXPORT int ds_get_tick_rate() { return sim::TICK_RATE; }
 
 }  // extern "C"

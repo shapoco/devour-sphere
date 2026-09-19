@@ -31,5 +31,7 @@ core/tools/pack_se.py がこれらを 1 本のパック (docs/play/se.bin、Pico
 | menu_start.wav | メニューで決定した |
 | launch.wav | LAUNCH 演出の開始 |
 | arrive.wav | ARRIVE 演出の開始 |
+| time_alarm.wav | 制限時間の残り 30 秒から 1 秒ごとの警報 (ハンドヘルドでは優先度高) |
+| dodge.wav | 緊急回避の開始 (ハンドヘルドでは優先度低) |
 
 shot_missile と shot_vulcan、get_upgrade と menu_start は今は同じ素材 (後で差し替えるかもしれない)。

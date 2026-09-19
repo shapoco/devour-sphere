@@ -34,6 +34,7 @@ constexpr uint32_t PLAYER_HEALED = 1 << 7;     // a heal-only (white) fragment
 constexpr uint32_t PLAYER_UPGRADED = 1 << 8;   // took an upgrade
 constexpr uint32_t PLAYER_RESPAWNED = 1 << 9;  // lost a core and came back
 constexpr uint32_t PLAYER_DODGED = 1 << 10;    // started an emergency dodge
+constexpr uint32_t SPHERE_TIME_UP = 1 << 11;   // the time limit ran out
 }  // namespace Event
 
 // Sound effects requested during the last tick (cleared every tick), one bit
@@ -57,6 +58,8 @@ enum class SoundKind : uint8_t {
   MENU_START,          // a menu choice was confirmed
   LAUNCH,              // the LAUNCH cinematic began (leaving the sphere)
   ARRIVE,              // the ARRIVE cinematic began (flying in)
+  TIME_ALARM,          // once a second during the last TIME_ALARM_TICKS
+  DODGE,               // the emergency dodge started
   COUNT
 };
 static_assert((int)SoundKind::COUNT == SOUND_KINDS, "SOUND_MIN_GAP_TICKS");
@@ -144,7 +147,22 @@ class Game {
   int aliveEntities() const { return aliveEntities_; }
   uint32_t playerDisplayScaleLog2() const { return displayScaleLog2_; }
   uint32_t score() const { return (uint32_t)(scoreQ8_ >> 8); }
-  int sphereTicks() const { return sphereTicks_; }  // ticks on this sphere
+  // Ticks played on this sphere (only while PLAYING and alive), and what is
+  // left of the time limit
+  int sphereTicks() const { return sphereTicks_; }
+  int sphereTimeLeft() const {
+    int left = SPHERE_TIME_LIMIT_TICKS - sphereTicks_;
+    return left < 0 ? 0 : left;
+  }
+  // The time ran out: the wreck is being watched before the sphere restarts
+  bool timeUp() const { return timeUp_; }
+  // The last clear, for the LAUNCH summary: points earned on that sphere
+  // (before the bonus), the clear bonus, and the ticks it took
+  uint32_t sphereScore() const { return (uint32_t)(lastSphereScoreQ8_ >> 8); }
+  uint32_t clearBonus() const { return (uint32_t)(lastClearBonusQ8_ >> 8); }
+  int clearTicks() const { return lastClearTicks_; }
+  // Score multiplier of the current sphere (Q8): 1.1^(level - 1)
+  int32_t levelMultQ8() const;
   // Radial movement of the player during the last tick (units, positive
   // away from the sphere): the renderer pitches the player along the
   // flight path from it. Zero on the surface.
@@ -158,8 +176,12 @@ class Game {
   uint32_t playerSizeAfterSwitch() const;
   // The high score lives outside the simulation (platform storage); it is
   // only kept here for display
-  void setHighScore(uint32_t v) { highScore_ = v; }
+  void setHighScore(uint32_t v, int sphere = 0) {
+    highScore_ = v;
+    highScoreSphere_ = sphere;
+  }
   uint32_t highScore() const { return highScore_; }
+  int highScoreSphere() const { return highScoreSphere_; }  // reached then
 
   // Hash of the whole state (for determinism tests)
   uint32_t stateHash() const;
@@ -300,9 +322,14 @@ class Game {
   int32_t descentSlope(int timer) const;
   int32_t enemyDamagePct() const;
   int sphereTicks_ = 0;
+  bool timeUp_ = false;
+  void restartSphereAfterTimeUp();
+  uint64_t sphereScoreStartQ8_ = 0;  // the score when this sphere began
+  uint64_t lastSphereScoreQ8_ = 0, lastClearBonusQ8_ = 0;
+  int lastClearTicks_ = 0;
   uint32_t highScore_ = 0;
+  int highScoreSphere_ = 0;
   void addScore(int64_t baseQ8);
-  int32_t stayFactorQ8() const;
   DebugStats stats_ = {};
   PhaseTimer tickProfile_;
   EffectEvent effects_[MAX_EFFECTS];
