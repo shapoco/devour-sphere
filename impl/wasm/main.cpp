@@ -132,6 +132,11 @@ DS_EXPORT int ds_get_sphere_level() { return game.sphereLevel(); }
 DS_EXPORT void ds_set_high_score(uint32_t v, int sphere) {
   game.setHighScore(v, sphere);
 }
+// The game decides whether the score counts (the title demo's does not):
+// 1 when the high score just changed and the platform should store it
+DS_EXPORT int ds_keep_high_score() { return game.keepHighScore() ? 1 : 0; }
+DS_EXPORT uint32_t ds_get_high_score() { return game.highScore(); }
+DS_EXPORT int ds_get_high_score_sphere() { return game.highScoreSphere(); }
 DS_EXPORT int ds_get_version_major() { return sim::VERSION_MAJOR; }
 DS_EXPORT int ds_get_tick_rate() { return sim::TICK_RATE; }
 

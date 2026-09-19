@@ -166,12 +166,9 @@ int ticksDue() {
 
 // Nothing is written to flash, but the high score still survives a restart
 // for as long as the power is on, because Game::reset() leaves it alone.
+// The Game decides whether the score counts (not the title demo's).
 // Only safe while the Game belongs to this core.
-void keepHighScore() {
-  if (g_game.score() > g_game.highScore()) {
-    g_game.setHighScore(g_game.score(), g_game.sphereLevel());
-  }
-}
+void keepHighScore() { g_game.keepHighScore(); }
 
 // --- Phase breakdown on the overlay ---------------------------------------
 // Integer formatting only (see profiler.cpp for why not printf)

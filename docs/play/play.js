@@ -201,15 +201,12 @@ async function startDevourSphere(opts) {
     // dropped: the scoring changed, the numbers do not compare
     const HS_KEY = 'devoursphere.highscore';
     const major = ex.ds_get_version_major();
-    let highScore = 0, highSphere = 0;
     try {
       const rec = JSON.parse(localStorage.getItem(HS_KEY) || 'null');
       if (rec && rec.major === major) {
-        highScore = (rec.score >>> 0) || 0;
-        highSphere = (rec.sphere | 0) || 0;
+        ex.ds_set_high_score((rec.score >>> 0) || 0, (rec.sphere | 0) || 0);
       }
     } catch (e) { /* ignore */ }
-    ex.ds_set_high_score(highScore, highSphere);
     // The mute: restored from localStorage, kept there when the game
     // toggles it (DOWN on the title / pause screen) or the button does
     let muted = false;
@@ -224,16 +221,13 @@ async function startDevourSphere(opts) {
       try { localStorage.setItem(SOUND_KEY, muted ? '0' : '1'); } catch (e) { /* ignore */ }
       if (soundBtn) soundBtn.refresh();
     }
+    // The game decides when the score counts (the title demo's never
+    // does); this side only stores the record it kept
     function updateHighScore() {
-      const score = ex.ds_get_score() >>> 0;
-      if (score > highScore) {
-        highScore = score;
-        highSphere = ex.ds_get_sphere_level();
-        ex.ds_set_high_score(highScore, highSphere);
-        try {
-          localStorage.setItem(HS_KEY, JSON.stringify({ major, score: highScore, sphere: highSphere }));
-        } catch (e) { /* ignore */ }
-      }
+      if (!ex.ds_keep_high_score()) return;
+      const rec = { major, score: ex.ds_get_high_score() >>> 0,
+                    sphere: ex.ds_get_high_score_sphere() | 0 };
+      try { localStorage.setItem(HS_KEY, JSON.stringify(rec)); } catch (e) { /* ignore */ }
     }
 
     const W = ex.ds_get_width();

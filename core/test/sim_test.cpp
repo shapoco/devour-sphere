@@ -1076,6 +1076,31 @@ static void testTimeLimitAndScore() {
     g.setHighScore(123, 4);
     CHECK(g.highScore() == 123 && g.highScoreSphere() == 4);
   }
+  {
+    // The title demo scores (the AI-driven player devours and kills), but
+    // that never becomes the high score; a run's score does
+    Game g;
+    g.reset(12345);
+    uint32_t demo = 0;
+    for (int t = 0; t < TICK_RATE * 300; t++) {
+      g.tick(0);
+      CHECK(!g.scoreIsPlayers());
+      CHECK(!g.keepHighScore());
+      demo = g.score();
+    }
+    CHECK(demo > 0);  // the demo did score, so the check above meant something
+    CHECK(g.highScore() == 0);
+    g.debugStartSphere(1, 0);
+    CHECK(g.scoreIsPlayers() && g.score() == 0);
+    CHECK(!g.keepHighScore());  // 0 beats nothing
+    // Past the top level an upgrade pays points instead
+    for (int i = 0; i <= UPGRADE_MAX_LEVEL; i++)
+      g.debugTakeUpgrade(UpgradeKind::THRUSTER);
+    CHECK(g.score() > 0);
+    CHECK(g.keepHighScore() && g.highScore() == g.score() &&
+          g.highScoreSphere() == 1);
+    CHECK(!g.keepHighScore());  // unchanged: nothing to store
+  }
   Game g;
   g.reset(5);
   g.debugStartSphere(2, 0);

@@ -186,6 +186,19 @@ class Game {
   }
   uint32_t highScore() const { return highScore_; }
   int highScoreSphere() const { return highScoreSphere_; }  // reached then
+  // The score is the player's own only during a run. On the title and the
+  // weapon select screen the attract demo (the AI-driven player) scores
+  // too, and that must never become the high score
+  bool scoreIsPlayers() const {
+    return state_ != GameState::TITLE && state_ != GameState::WEAPON_SELECT;
+  }
+  // Take the score as the high score when it is the player's and beats it;
+  // true when it did (the platform then stores it)
+  bool keepHighScore() {
+    if (!scoreIsPlayers() || score() <= highScore_) return false;
+    setHighScore(score(), sphereLevel_);
+    return true;
+  }
 
   // Hash of the whole state (for determinism tests)
   uint32_t stateHash() const;
