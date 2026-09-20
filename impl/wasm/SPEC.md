@@ -31,7 +31,7 @@ docs/
   index.html       トップページ (play/ へのリンク)
   favicon.ico      favicon (16/32/48px。play/icon-512.png から生成、両ページ共通)
   image/
-    ogp_image.png  OGP 画像 (958x538。両ページ共通)
+    ogp_image_v2.png  OGP 画像 (958x538。両ページ共通)
   play/
     index.html     ゲームページ (ページ固有のスタイルを含む)
     play.js        ローダ、ゲームループ、入力処理、仮想パッド、スマホ向けレイアウト
@@ -210,7 +210,7 @@ URL パラメータ (デバッグ用):
 - ページのメタデータ: 両ページの `<head>` に `<meta name="description">`、favicon (`docs/favicon.ico` と
   高解像度用の `play/icon-512.png`)、OGP (`og:title` / `og:description` / `og:url` / `og:image` など) と
   `twitter:card` = `summary_large_image` (X で大きな画像として表示させる) を置く。`og:url` と `og:image` は
-  https://shapoco.github.io/devour-sphere/ からの絶対 URL、画像は docs/image/ogp_image.png を両ページで共用する。
+  https://shapoco.github.io/devour-sphere/ からの絶対 URL、画像は docs/image/ogp_image_v2.png を両ページで共用する。
   description はメタタグでは言語を切り替えられないので、日本語の後に英語を " / " で続けた 1 本の文にする。
 
 ## スマホ向けレイアウト
