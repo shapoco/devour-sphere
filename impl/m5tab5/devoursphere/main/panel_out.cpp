@@ -155,7 +155,20 @@ bool PanelOut::submit(int idx, int bandY) {
   op.user_data = done_;
 
   flushForDma(buf_[idx], BAND_BYTES);
-  if (ppa_do_scale_rotate_mirror((ppa_client_handle_t)ppa_, &op) != ESP_OK) {
+  const esp_err_t err =
+      ppa_do_scale_rotate_mirror((ppa_client_handle_t)ppa_, &op);
+  if (err != ESP_OK) {
+    // The band is dropped rather than retried -- and pending_ stays false, so
+    // the next drain() does not wait for a transfer that was never started.
+    // Traced once: a rejected operation is rejected the same way every frame
+    // (the geometry does not change), and a black screen with nothing in the
+    // log is the worst thing to be handed during bring-up.
+    static bool complained = false;
+    if (!complained) {
+      complained = true;
+      trace("ppa refused the band, err", (uint32_t)err);
+      trace("  block_offset_x", op.out.block_offset_x);
+    }
     return false;
   }
   pending_ = true;
