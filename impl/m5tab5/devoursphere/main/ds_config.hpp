@@ -1,0 +1,150 @@
+#ifndef DS_CONFIG_HPP
+#define DS_CONFIG_HPP
+
+// Tunables of the M5Tab5 front end. See impl/m5tab5/SPEC.md for the
+// reasoning behind the values.
+
+#include <cstddef>
+#include <cstdint>
+
+#include "devoursphere/sim/config.hpp"
+
+namespace ds {
+
+// --- Geometry ---------------------------------------------------------------
+// The panel is a 720x1280 portrait raster (its MIPI-DSI framebuffer), used
+// in landscape. The game is drawn into a 640x360 landscape frame and the PPA
+// scales it by two and turns it a quarter clockwise on its way to the panel
+// (panel_out.cpp), which is one hardware operation either way -- so the
+// rotation is free and the resolution is purely a question of how much
+// rasterizing the CPU can afford.
+//
+// 640x360 rather than the panel's own 1280x720: the scene build is nearly
+// resolution independent but the band work is not, and at four times the
+// pixels it is what sets the frame time. Measured on the host over the same
+// frame, going to 1280x720 leaves beginFrame() flat (0.073 -> 0.084 ms) and
+// multiplies the band work by 2.5 -- and a CPU without x86's wide stores
+// pays closer to the full 4x. The HUD ends up the same physical size either
+// way: 1280x720 magnifies the bitmap fonts by two (UiMetrics::fontMult), and
+// so does the scaler here.
+constexpr int PANEL_W = 720;
+constexpr int PANEL_H = 1280;
+
+// Which way round landscape is. M5GFX's rotations 1 and 3 are both
+// landscape and differ by half a turn; which one is the right way up
+// depends on how the panel is mounted in the case, and nothing in the
+// software can tell. The display, the PPA's angle and the band offsets are
+// all derived from this one value (panel_out.cpp), and the touch follows
+// the display, so the picture and the pad can never disagree: if the game
+// comes up upside down on hardware, change this alone.
+//
+// Rotation 1 maps a landscape pixel (u, v) to the panel pixel
+// (719 - v, u) -- a quarter turn clockwise, which is 270 on the PPA's
+// counter-clockwise dial. Rotation 3 is (v, 1279 - u), a quarter
+// counter-clockwise, which is 90.
+constexpr int PANEL_ROTATION = 1;
+static_assert(PANEL_ROTATION == 1 || PANEL_ROTATION == 3,
+              "landscape is rotation 1 or 3");
+constexpr int SCALE = 2;
+constexpr int SCREEN_W = PANEL_H / SCALE;  // 640, the landscape frame
+constexpr int SCREEN_H = PANEL_W / SCALE;  // 360
+static_assert(PANEL_H % SCALE == 0 && PANEL_W % SCALE == 0, "integer scale");
+
+// Rows of the landscape frame rasterized and handed to the PPA at a time.
+// Each band becomes a vertical strip of the panel SCALE * BAND_H pixels
+// wide and the full 1280 tall, so a taller band means longer runs inside
+// each panel row (2 * 40 * 2 = 160 bytes at 40) and fewer transactions --
+// but two band buffers of it have to come out of the internal heap, and
+// that is what sets the ceiling here: the static side leaves about 165 KB,
+// of which the two task stacks and the drivers want their share. 40 rows is
+// 100 KB for the pair, and is the strip height the LcdTap example settled on
+// for the same panel. 45 (115 KB) and 60 (150 KB) tile 360 evenly too and
+// are worth trying against the overlay's DMA line, heap permitting.
+constexpr int BAND_H = 40;
+constexpr int BAND_COUNT = SCREEN_H / BAND_H;
+static_assert(SCREEN_H % BAND_H == 0, "the bands must tile the frame exactly");
+
+// --- The renderer's working memory -------------------------------------------
+// What binds is the triangle buffer the arena is divided into, not the arena.
+// Measured at 640x360 over levels 1-7 x 3 seeds x 600 ticks with the AI
+// driving (12,600 frames, the same run impl/xiamocon/SPEC.md uses), hashing
+// every frame:
+//
+//     arena    triangle budget   peak used   frames
+//     64 KB          49,824 B     14,864 B   identical
+//     48 KB          33,440 B     14,864 B   identical
+//     40 KB          25,248 B     14,864 B   identical   <- the inflection
+//     32 KB          17,056 B     13,952 B   the entities start losing detail
+//     24 KB           8,864 B      8,864 B   239 primitives dropped
+//
+// So 40 KB is where buildScene() still gets everything it asks for. 48 KB
+// keeps a fifth over that and 3.2x over the peak frame -- and hands 16 KB
+// back to the internal heap, which is what the band buffers come out of and
+// the one thing this board is actually short of.
+constexpr size_t ARENA_SIZE = 48 * 1024;
+
+// Spans held per scanline. The measured peak is 33 at 640x360 (36 at
+// 1280x720): what sets it is how many primitives cross one scanline, not how
+// long the scanline is. Overflowing drops spans and leaves holes, so this is
+// not a number to shave.
+constexpr int SPAN_CAPACITY = 128;
+
+// --- Timing -------------------------------------------------------------------
+constexpr uint32_t TICK_US = 1000000u / devoursphere::sim::TICK_RATE;
+
+// Ticks a single frame may catch up on. Beyond this the surplus is dropped,
+// so a long stall cannot turn into a burst of simulation.
+constexpr int MAX_CATCHUP = 4;
+
+// core1 runs the simulation while core0 builds the scene, rasterizes the
+// bands and hands them to the PPA -- the arrangement both handhelds use, for
+// the same reason: the ticks happen while the frame goes out. Set to 0 to
+// put everything on core0, which is slower but tells you whether a problem
+// is the split.
+#ifndef DS_SIM_ON_CORE1
+#define DS_SIM_ON_CORE1 1
+#endif
+
+// --- The virtual pad ----------------------------------------------------------
+// The WASM front end's landscape layout, in the pixels of the landscape
+// frame: a direction disc in the bottom left, A in the bottom right and B
+// above and left of it, drawn translucent over the game. The sizes are the
+// web page's own (a 150 px disc, 96 px A, 72 px B against a 360 px tall
+// view), which on this panel come out at 25.6, 16.4 and 12.3 mm across.
+struct Circle {
+  int cx, cy, r;
+};
+constexpr int PAD_EDGE = 10;  // from the frame's edge
+constexpr Circle PAD_DISC = {PAD_EDGE + 75, SCREEN_H - PAD_EDGE - 75, 75};
+constexpr Circle PAD_A = {SCREEN_W - PAD_EDGE - 48, SCREEN_H - PAD_EDGE - 48,
+                          48};
+constexpr Circle PAD_B = {PAD_A.cx - PAD_A.r - 36 - PAD_EDGE,
+                          PAD_A.cy - PAD_A.r - 36 + 24, 36};
+// Pause: a small button in the top right corner, the one control the game
+// needs that the disc and the two buttons cannot give (the mute and the
+// timing overlay are DOWN and UP on the title / pause screen, as everywhere
+// else). HUD_INSET_TOP keeps the HUD's top row clear of it.
+constexpr Circle PAD_PAUSE = {SCREEN_W - PAD_EDGE - 16, PAD_EDGE + 16, 16};
+
+// The disc's thresholds, as fractions of its radius, taken from play.js
+// (which expresses them against the diameter: dead = 0.12 w, per axis
+// 0.7 dead, the knob travelling up to 0.32 w).
+constexpr int PAD_DEAD_R = PAD_DISC.r * 24 / 100;
+constexpr int PAD_AXIS_R = PAD_DEAD_R * 7 / 10;
+constexpr int PAD_KNOB_R = PAD_DISC.r * 64 / 100;
+
+// Opacity of the pad over the game (play.js uses 0.55 in landscape)
+constexpr int PAD_OPACITY = 140;  // of 255
+
+// What the HUD has to keep out of (Renderer::setHudInsets). The side pair
+// applies to the bottom row alone, which is the only one the pad reaches:
+// the disc's right edge and A's left edge, plus a little air. B sits above
+// that row, and the pause button is what the top inset is for.
+constexpr int HUD_INSET_LEFT = PAD_DISC.cx + PAD_DISC.r + 8;
+constexpr int HUD_INSET_RIGHT = SCREEN_W - (PAD_A.cx - PAD_A.r) + 8;
+constexpr int HUD_INSET_TOP = PAD_PAUSE.cy + PAD_PAUSE.r + 6;
+constexpr int HUD_INSET_BOTTOM = 0;
+
+}  // namespace ds
+
+#endif

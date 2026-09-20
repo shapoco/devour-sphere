@@ -1,0 +1,52 @@
+# Devour Sphere on M5Stack Tab5 (ESP32-P4).
+#
+# The board-level values (CPU 400 MHz, hex PSRAM at 200 MHz, 256 KB L2 cache
+# with 128 byte lines, tick 1000 Hz, USB-Serial/JTAG console, the chip
+# revision range) are the ones proven on this hardware by the LcdTap example
+# at ~/repo/2026/lcdtap/example/m5tab5; see ../SPEC.md.
+CONFIG_IDF_TARGET="esp32p4"
+
+# Reaches the whole tree, which matters here: the frame time is spent in
+# ShapoGFX's span loops and in the IDF's PPA / cache paths, not only in our
+# own translation units.
+CONFIG_COMPILER_OPTIMIZATION_PERF=y
+
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_400=y
+
+# The panel framebuffer lives here and the DSI reads it continuously, so the
+# PSRAM interface is the one thing on this board that must not be slow.
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_HEX=y
+CONFIG_SPIRAM_SPEED_200M=y
+
+CONFIG_CACHE_L2_CACHE_256KB=y
+CONFIG_CACHE_L2_CACHE_LINE_128B=y
+
+CONFIG_FREERTOS_HZ=1000
+
+# app_main's task is the one that builds the scene and rasterizes, and
+# buildSphere() recurses seven levels deep on top of the rasterizer's locals.
+# The 3584 byte default would not survive it; the handhelds measured about
+# 3.5 KB with smaller frames than a 64-bit-less RISC-V ABI makes. Keep
+# ds_platform.hpp's STACK_BYTES_CORE0 in step with this.
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384
+
+# Tab5 brings out USB-C only; the generic esp32p4 target would send the
+# console to UART0, which is not wired.
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# ESP-IDF 5.5 defaults to chip revision >= v3.1, and rev <3.0 / >=3.0 are
+# mutually exclusive in its model. Tab5 units seen so far report v1.0, and
+# without this the bootloader refuses to start ("requires chip revision in
+# range [v3.1 - v3.99]").
+CONFIG_ESP32P4_SELECTS_REV_LESS_V3=y
+CONFIG_ESP32P4_REV_MIN_0=y
+
+# The simulation and the rasterizer each get a core and neither yields, so
+# the watchdog would fire on whichever one the idle task never reaches.
+CONFIG_ESP_TASK_WDT_INIT=n

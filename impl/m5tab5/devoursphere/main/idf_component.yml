@@ -1,0 +1,8 @@
+dependencies:
+  # Pinned exact, not a caret range: panel_out.cpp reaches into M5GFX's
+  # Panel_DSI header (not re-exported by M5GFX.h) for the physical panel
+  # framebuffer, the way the LcdTap example does. Bump deliberately and
+  # re-check those internals.
+  m5stack/m5gfx: "0.2.25"
+  m5stack/m5unified: "^0.2.17"
+  idf: ">=5.5"

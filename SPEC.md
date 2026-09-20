@@ -36,6 +36,15 @@ impl/xiamocon/ 配下に Xiamocon (XIAO RP2350 / ESP32S3 用のゲーム機型�
 
 詳細は impl/xiamocon/SPEC.md を参照のこと。
 
+### M5Tab5 版
+
+impl/m5tab5/ 配下に M5Stack Tab5 (ESP32-P4 の 5 インチタブレット型開発機) 向けの実装が置かれる。
+ESP-IDF のプロジェクト。640x360 のランドスケープのフレームに帯単位で描き、PPA (ESP32-P4 の
+2D アクセラレータ) が 2 倍拡大・90 度回転・バイト入れ替えを 1 回でまとめて
+720x1280 の MIPI-DSI パネルへ書く。入力は WASM 版の横画面と同じ仮想パッド。
+
+詳細は impl/m5tab5/SPEC.md を参照のこと。
+
 ### PicoSystem 版
 
 impl/picosystem/ 配下に PicoSystem (Pimoroni の RP2040 携帯ゲーム機) 向けの実装が置かれる。
@@ -53,6 +62,7 @@ core/                コアプログラム (core/SPEC.md)
 impl/wasm/           WASM 版 (impl/wasm/SPEC.md)
 impl/xiamocon/       Xiamocon 版 (impl/xiamocon/SPEC.md)
 impl/picosystem/     PicoSystem 版 (impl/picosystem/SPEC.md)
+impl/m5tab5/         M5Tab5 版 (impl/m5tab5/SPEC.md)
 docs/                公開用の静的サイト (docs/play/ がゲーム)
 assets/se/           効果音の素材 (効果音ラボ、assets/se/README.md)
 assets/release/      リリース zip にそのまま入れるファイル (README.txt、upload.sh)
@@ -89,6 +99,14 @@ PicoSystem 版も pico-sdk を使う別のトップレベルのビルド (Xiamoc
 cd impl/picosystem
 cmake -S . -B build -DPICO_SDK_PATH=~/pico/pico-sdk
 cmake --build build -j                           # build/devoursphere.uf2
+```
+
+M5Tab5 版は ESP-IDF v5.5.x のプロジェクト (`DS_IDF_PATH` の既定は `${HOME}/esp/5.5`):
+
+```sh
+cd impl/m5tab5/devoursphere
+./build.sh                                       # build/devoursphere.bin
+./run.sh /dev/ttyACM0                            # ビルドして書き込み
 ```
 
 C/C++ のコードは .clang-format (ShapoGFX と同じ設定) で整形する。

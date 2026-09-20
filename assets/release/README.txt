@@ -2,14 +2,20 @@ Devour Sphere - @DATE@
 Built from commit @COMMIT@
 https://github.com/shapoco/devour-sphere
 
-Firmware for Xiamocon (a XIAO RP2350 / ESP32S3 handheld) and for PicoSystem
-(Pimoroni, RP2040). The browser version needs no download: see docs/play/ on
-the project page.
+Firmware for Xiamocon (a XIAO RP2350 / ESP32S3 handheld), for PicoSystem
+(Pimoroni, RP2040) and for M5Stack Tab5 (ESP32-P4). The browser version
+needs no download: see docs/play/ on the project page.
 
-Controls (all three): LEFT / RIGHT turn, UP dashes, DOWN brakes, A / Y
+Controls on the handhelds: LEFT / RIGHT turn, UP dashes, DOWN brakes, A / Y
 fire and confirm, B is the emergency dodge (a 0.3 s barrel roll that enemy
 bullets pass through, once every 3 s), X pauses. On the title or pause screen DOWN toggles mute
 and UP toggles the timing overlay (Xiamocon: FUNC toggles it any time).
+
+The Tab5 is played with an on-screen pad: a direction disc in the bottom
+left (push it the way you want to go; up dashes, down brakes), A in the
+bottom right, the emergency dodge above and left of it, and pause in the top
+right corner. Down on the disc toggles mute and up toggles the timing
+overlay, on the title or pause screen.
 
 xiamocon-rp2350/  - for XIAO RP2350
   devour-sphere.uf2
@@ -29,3 +35,11 @@ picosystem/       - for PicoSystem
   devour-sphere.uf2
     Hold X while switching the PicoSystem on to get the BOOTSEL drive, then
     copy the .uf2 onto it.
+
+m5tab5/           - for M5Stack Tab5
+  devour-sphere.factory.bin, upload.sh
+    ./upload.sh [PORT] [BAUD]        (PORT defaults to /dev/ttyACM0)
+    The script calls esptool ("pip install esptool" if you do not have it).
+    The image is bootloader + partition table + app merged at their offsets,
+    so it is written in one go at 0x0. If the port does not appear, hold the
+    BOOT button next to the USB-C port, tap RESET, release BOOT.
