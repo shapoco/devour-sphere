@@ -5,8 +5,9 @@
 //
 //   ASCII    the cell is sampled 3 wide x 6 high, thresholded to 18 bits,
 //            and the printable ASCII character whose glyph is closest to
-//            that pattern is looked up in a 2^18-entry table. One color per
-//            cell: the most common (or the brightest) lit color.
+//            that pattern (a lit sub-pixel the glyph misses counts double)
+//            is looked up in a 2^18-entry table. One color per cell: the
+//            most common (or the brightest) lit color.
 //   BRAILLE  2 x 4 dots map one-to-one onto U+2800..U+28FF: no lookup and
 //            no approximation. One color per cell.
 //   HALF     the upper half block U+2580 with the top half's color as the
@@ -14,7 +15,9 @@
 //            pixels per cell, two colors.
 //
 // The cell grid is the largest one of a 1:2 cell aspect that fits the
-// terminal; it is centered, and the rest of the screen stays black.
+// terminal; it is centered, and the rest of the screen stays black. The
+// background is set to black explicitly (the terminal's own background is
+// not used), so a light-themed terminal shows the same picture.
 #pragma once
 
 #include <cstddef>

@@ -89,13 +89,17 @@ void Converter::buildTable() {
   }
   seed[0] = 0;  // the space is exactly "nothing"
   table_.assign(1u << 18, ' ');
-  for (uint32_t p = 0; p < (1u << 18); p++) {
-    const int pop = __builtin_popcount(p);
-    int best = 0, bestScore = 1 << 30;
-    for (int c = 0; c < 95; c++) {
-      const int ham = __builtin_popcount(p ^ seed[c]);
-      const int dens = std::abs(pop - __builtin_popcount(seed[c]));
-      const int score = ham * 32 + dens;
+  // A lit sub-pixel the glyph leaves dark costs MISS, a glyph pixel the
+  // pattern does not have costs EXTRA. Symmetric costs made a single dot
+  // (a star) tie between the space and a one-dot glyph, and the space won
+  // by character order, so stars came and went as they crossed cells. The
+  // space is now only ever the empty pattern.
+  constexpr int MISS = 2, EXTRA = 1;
+  for (uint32_t p = 1; p < (1u << 18); p++) {
+    int best = 1, bestScore = 1 << 30;
+    for (int c = 1; c < 95; c++) {
+      const int score = MISS * __builtin_popcount(p & ~seed[c]) +
+                        EXTRA * __builtin_popcount(seed[c] & ~p);
       if (score < bestScore) {
         bestScore = score;
         best = c;
@@ -266,6 +270,10 @@ std::string Converter::dump() const {
   tmp.opts_ = opts_;
   for (int cy = 0; cy < gh_; cy++) {
     uint32_t curFg = 0xFFFFFFFF, curBg = 0xFFFFFFFF;
+    if (opts_.mode != Mode::HALF) {
+      tmp.appendColor(0, true);
+      curBg = 0;
+    }
     for (int cx = 0; cx < gw_; cx++) {
       const Cell &c = cells_[(size_t)cy * gw_ + cx];
       if (opts_.mode == Mode::HALF && c.bg != curBg) {
@@ -312,13 +320,25 @@ void Converter::appendChar(uint32_t ch) {
 const std::string &Converter::emit() {
   out_.clear();
   out_ += "\x1b[?2026h";  // synchronized output: no tearing where supported
+  const bool half = opts_.mode == Mode::HALF;
   if (redraw_) {
-    out_ += "\x1b[0m\x1b[2J";
+    // Black under everything, the margins around the grid included: a
+    // terminal with its own background color would otherwise show it
+    // through. Spaces rather than "CSI 2 J", which not every terminal
+    // fills with the current background.
+    out_ += "\x1b[0m";
+    appendColor(0, true);
+    for (int r = 0; r < rows_; r++) {
+      char pos[16];
+      std::snprintf(pos, sizeof(pos), "\x1b[%d;1H", r + 1);
+      out_ += pos;
+      out_.append((size_t)cols_, ' ');
+    }
     std::fill(prev_.begin(), prev_.end(), Cell{'\0', 0, 0});  // nothing matches
     redraw_ = false;
   }
   out_ += "\x1b[0m";
-  const bool half = opts_.mode == Mode::HALF;
+  if (!half) appendColor(0, true);  // the black background, once per frame
   uint32_t curFg = 0xFFFFFFFF, curBg = half ? 0xFFFFFFFF : 0;
   int curX = -1, curY = -1;  // where the cursor is, in grid cells
   char buf[32];

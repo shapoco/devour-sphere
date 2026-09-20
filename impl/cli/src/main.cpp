@@ -32,19 +32,15 @@ constexpr int64_t TICK_US = 1000000 / sim::TICK_RATE;
 constexpr int MAX_CATCHUP = 8;  // ticks per loop before time is dropped
 constexpr int64_t BEEP_GAP_US = 100000;
 
-// The sounds that ring the bell. Everything the player does every few
-// frames (shots, hits on enemies, fragments) stays silent: a bell has one
-// pitch and no length, and a bell per shot would be a bell always.
-constexpr uint32_t BEEP_MASK =
-    1u << (int)sim::SoundKind::HIT_PLAYER |
-    1u << (int)sim::SoundKind::ENEMY_KILLED_SMALL |
-    1u << (int)sim::SoundKind::ENEMY_KILLED_BIG |
-    1u << (int)sim::SoundKind::PLAYER_KILLED |
-    1u << (int)sim::SoundKind::GET_UPGRADE |
-    1u << (int)sim::SoundKind::MENU_SELECT |
-    1u << (int)sim::SoundKind::MENU_START | 1u << (int)sim::SoundKind::LAUNCH |
-    1u << (int)sim::SoundKind::ARRIVE | 1u << (int)sim::SoundKind::TIME_ALARM |
-    1u << (int)sim::SoundKind::DODGE;
+// The sounds that ring the bell: the player hit, the player killed, an
+// enemy killed -- and the mute coming off (a transition of Game::muted(),
+// watched in the loop: the sim asks for MENU_SELECT there, but that one
+// also rings for every cursor move). Everything else is silent: a bell has
+// one pitch and no length, and a bell per shot would be a bell always.
+constexpr uint32_t BEEP_MASK = 1u << (int)sim::SoundKind::HIT_PLAYER |
+                               1u << (int)sim::SoundKind::ENEMY_KILLED_SMALL |
+                               1u << (int)sim::SoundKind::ENEMY_KILLED_BIG |
+                               1u << (int)sim::SoundKind::PLAYER_KILLED;
 
 struct Args {
   ds::aa::Options aa;
@@ -129,7 +125,8 @@ void usage() {
       "  --fps=N                     display rate cap (30); the game ticks at "
       "%d Hz\n"
       "  --keys=auto|kitty|legacy    key events (auto: ask the terminal)\n"
-      "  --beep=on|off               terminal bell for the main sounds (on)\n"
+      "  --beep=on|off               bell: player hit / killed, enemy killed, "
+      "unmute (on)\n"
       "  --stats                     a line of timings on the first row\n"
       "  --debug                     debug mode: 1-8 are cheats (see SPEC.md)\n"
       "  --level=N --auto --seed=N   start on sphere N / AI drives / seed\n"
@@ -331,10 +328,13 @@ int main(int argc, char **argv) {
 
     int n = 0;
     while (accum >= TICK_US && n < MAX_CATCHUP) {
+      const bool wasMuted = g_game.muted();
       g_game.tick(buttonsNow(now / 1000));
       g_renderer.pollEffects(g_game);
       const uint32_t snd = g_game.sounds();
-      if (a.beep && (snd & BEEP_MASK) && now - lastBeep >= BEEP_GAP_US) {
+      const bool unmuted = wasMuted && !g_game.muted();
+      if (a.beep && ((snd & BEEP_MASK) || unmuted) &&
+          now - lastBeep >= BEEP_GAP_US) {
         g_term.write("\a", 1);
         lastBeep = now;
       }
