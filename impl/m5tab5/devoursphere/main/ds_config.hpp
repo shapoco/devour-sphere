@@ -35,14 +35,16 @@ constexpr int PANEL_H = 1280;
 // depends on how the panel is mounted in the case, and nothing in the
 // software can tell. The display, the PPA's angle and the band offsets are
 // all derived from this one value (panel_out.cpp), and the touch follows
-// the display, so the picture and the pad can never disagree: if the game
-// comes up upside down on hardware, change this alone.
+// the display, so the picture and the pad can never disagree.
 //
 // Rotation 1 maps a landscape pixel (u, v) to the panel pixel
 // (719 - v, u) -- a quarter turn clockwise, which is 270 on the PPA's
 // counter-clockwise dial. Rotation 3 is (v, 1279 - u), a quarter
 // counter-clockwise, which is 90.
-constexpr int PANEL_ROTATION = 1;
+//
+// 3 is the one that comes out the right way up on hardware (2026-09-20;
+// 1 was upside down).
+constexpr int PANEL_ROTATION = 3;
 static_assert(PANEL_ROTATION == 1 || PANEL_ROTATION == 3,
               "landscape is rotation 1 or 3");
 constexpr int SCALE = 2;
@@ -135,6 +137,15 @@ constexpr int PAD_KNOB_R = PAD_DISC.r * 64 / 100;
 
 // Opacity of the pad over the game (play.js uses 0.55 in landscape)
 constexpr int PAD_OPACITY = 140;  // of 255
+
+// --- Sound ------------------------------------------------------------------
+// M5Unified's master volume, which its mixer SQUARES: a sample's gain is
+// magnification * master^2 * channel^2, so loudness goes as the square of
+// this number and its default of 64 is not a midpoint. 64 * sqrt(3) = 111 is
+// three times as loud as the default, which is what this speaker wants to be
+// heard across a room. The mixer saturates at the 16-bit limit rather than
+// wrapping, so raising it further clips the peaks instead of tearing.
+constexpr uint8_t SE_MASTER_VOLUME = 111;
 
 // What the HUD has to keep out of (Renderer::setHudInsets). The side pair
 // applies to the bottom row alone, which is the only one the pad reaches:

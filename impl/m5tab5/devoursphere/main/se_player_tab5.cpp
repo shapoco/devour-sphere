@@ -20,6 +20,7 @@
 #include <M5Unified.h>
 
 #include "devoursphere/sim/game.hpp"
+#include "ds_config.hpp"
 #include "ds_platform.hpp"
 
 // docs/play/se.bin, embedded by main/CMakeLists.txt
@@ -46,6 +47,8 @@ bool g_muted = false;
 void init(const Config &) {
   // The Config fields describe an RP2's PWM pin and pacing; nothing here
   // needs them. M5.begin() has already brought the speaker up.
+  M5.Speaker.setVolume(ds::SE_MASTER_VOLUME);
+
   const uint8_t *p = g_sePack;
   const size_t bytes = (size_t)(g_sePackEnd - g_sePack);
   if (bytes < 16 || p[0] != 'D' || p[1] != 'S' || p[2] != 'S' || p[3] != 'E') {
