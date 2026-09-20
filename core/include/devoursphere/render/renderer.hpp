@@ -107,6 +107,23 @@ struct ControlHints {
   const char *pauseAlt = "ESC: RESUME   DOWN: SOUND";
 };
 
+// How much of the frame the platform covers with something it draws itself
+// (a virtual pad). The HUD keeps out of it. World-anchored drawing -- the 3D
+// scene, the enemy gauges, the horizon markers, the hit flash -- ignores
+// this: only the HUD moves. The UI scale still comes from the whole frame,
+// so the fonts do not shrink because a pad is in the way; a line that then
+// does not fit takes its usual shorter form or is dropped.
+//
+// `top` and `bottom` move every edge-anchored row inwards. `left` and
+// `right` describe a pad sitting in the BOTTOM corners (the layout the WASM
+// front end uses on a phone held sideways, and the M5Tab5 one), so they
+// apply to the bottom row alone -- the upgrade icons, the spare cores, the
+// version and the hint lines. The top row and the centered banners keep the
+// full width, because nothing covers the top corners.
+struct HudInsets {
+  int left = 0, right = 0, top = 0, bottom = 0;
+};
+
 // What the HUD needs from the simulation, taken once per frame by
 // beginFrame(). The HUD is drawn inside renderBand(), so without this a
 // platform that advances the simulation on another core while the bands are
@@ -241,6 +258,13 @@ class Renderer {
   // called once at start up whatever the frame buffer size does afterwards)
   void setControlHints(const ControlHints &hints) { hints_ = hints; }
 
+  // The HUD's safe area (see HudInsets). Like the control hints this is kept
+  // across init(), so a platform that changes the frame buffer size does not
+  // have to set it again -- but the values are in pixels of the frame, so a
+  // platform that does change the size has to.
+  void setHudInsets(const HudInsets &insets) { insets_ = insets; }
+  const HudInsets &hudInsets() const { return insets_; }
+
   // Take the effects the simulation raised during the last tick. A platform
   // that runs several ticks per frame must call this after every tick: the
   // simulation only keeps the events of the current tick, so the ones it
@@ -277,7 +301,17 @@ class Renderer {
   int w_ = 0, h_ = 0;
   UiMetrics ui_;
   ControlHints hints_;  // set by the platform, kept across init()
+  HudInsets insets_;    // same
   HudState hud_;        // snapshot for renderBand(), taken in beginFrame()
+  // Where the HUD may draw (HudInsets). The vertical pair bounds every
+  // edge-anchored row; the horizontal pair is the bottom row's span between
+  // the pads. With no insets both are just the frame.
+  int hudY0() const { return insets_.top; }
+  int hudY1() const { return h_ - insets_.bottom; }
+  int hudH() const { return hudY1() - hudY0(); }
+  int barX0() const { return insets_.left; }
+  int barX1() const { return w_ - insets_.right; }
+  int barW() const { return barX1() - barX0(); }
   // A distance of the reference layout in the pixels of this screen
   int ui(int refPx) const { return refPx * ui_.scale8 / 8; }
   // A vertical position of the reference layout as a fraction of the height
@@ -610,7 +644,13 @@ class Renderer {
   // drawn, 0 for nothing.
   const char *drawCenteredFit(g2::Graphics2D &g, int y, const char *text,
                               const char *alt, g2::Color color);
+  // The same, for a line along the bottom edge: centered in the bottom
+  // row's span (barX0()..barX1()) so it stays clear of a virtual pad in
+  // the corners
+  const char *drawBottomFit(g2::Graphics2D &g, int y, const char *text,
+                            const char *alt, g2::Color color);
   int textFits(g2::Graphics2D &g, const char *text) const;
+  int textFitsIn(g2::Graphics2D &g, const char *text, int width) const;
 };
 
 }  // namespace devoursphere::render

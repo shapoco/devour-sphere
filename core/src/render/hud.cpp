@@ -6,6 +6,13 @@
 // gauge, icons) go through ui(); vertical positions of the full-width
 // overlays go through uiY(), so they follow the aspect ratio. Text that
 // still does not fit is replaced by a shorter version or dropped.
+//
+// Vertical anchoring goes through hudY0() / hudY1(), and the bottom row --
+// the upgrade icons, the spare cores, the version and the hint lines --
+// through barX0() / barX1(), so that a platform that draws a virtual pad in
+// the bottom corners can keep the HUD out of it (HudInsets). With no insets,
+// which is every front end but the M5Tab5 one, those are the frame's own
+// edges and nothing about the layout changes.
 
 #include <cstdio>
 
@@ -54,7 +61,11 @@ void Renderer::setHudFont(g2::Graphics2D &g, HudFont role) const {
 }
 
 int Renderer::textFits(g2::Graphics2D &g, const char *text) const {
-  return g.measureText(text) <= w_ - 2 * ui_.margin;
+  return textFitsIn(g, text, w_);
+}
+
+int Renderer::textFitsIn(g2::Graphics2D &g, const char *text, int width) const {
+  return g.measureText(text) <= width - 2 * ui_.margin;
 }
 
 void Renderer::drawCenteredText(g2::Graphics2D &g, int y, const char *text,
@@ -80,6 +91,27 @@ const char *Renderer::drawCenteredFit(g2::Graphics2D &g, int y,
     return alt;
   }
   return nullptr;
+}
+
+// The bottom row's own version: centered between the pads rather than on the
+// frame, and measured against that narrower span
+const char *Renderer::drawBottomFit(g2::Graphics2D &g, int y, const char *text,
+                                    const char *alt, g2::Color color) {
+  const char *pick = nullptr;
+  if (text && textFitsIn(g, text, barW())) {
+    pick = text;
+  } else if (alt && textFitsIn(g, alt, barW())) {
+    pick = alt;
+  }
+  if (!pick) return nullptr;
+  int tw = g.measureText(pick);
+  int x = barX0() + (barW() - tw) / 2;
+  int sh = ui_.fontMult;
+  g.setTextColor(HUD_SHADOW);
+  g.drawString(x + sh, y + sh, pick);
+  g.setTextColor(color);
+  g.drawString(x, y, pick);
+  return pick;
 }
 
 // Icons of the upgrade kinds, centered at (cx, cy), 14 px tall at scale8 = 8
@@ -148,11 +180,11 @@ void Renderer::drawUpgradeStatus(g2::Graphics2D &g, int oy) {
   const int is = ui_.iconScale8;
   const int half = 7 * is / 8;
   const int pipW = ui(4, 2), pipH = ui(7, 3), pipPitch = ui(6, 3);
-  const int y = oy + h_ - ui(14, half + 2);
+  const int y = oy + hudY1() - ui(14, half + 2);
   const int gap = ui(3, 1);  // icon to pips
   int pitch = half + gap + pipPitch * sim::UPGRADE_MAX_LEVEL + ui(10, 3);
   if (pitch < ui(44)) pitch = ui(44);
-  int x = ui(14, half + 2);
+  int x = barX0() + ui(14, half + 2);
   for (int k = 1; k <= sim::UPGRADE_KINDS; k++) {
     int level = hud.upgradeLevel[k - 1];
     g2::Color c = upgradeColor(k);
@@ -172,7 +204,7 @@ void Renderer::drawUpgradeStatus(g2::Graphics2D &g, int oy) {
   // Spare cores
   int corePitch = half * 2 + ui(4, 2);
   if (corePitch < ui(18)) corePitch = ui(18);
-  int cx = w_ - ui(14, half + 2);
+  int cx = barX1() - ui(14, half + 2);
   for (int i = 0; i < sim::CORES_MAX; i++) {
     g2::Color c = upgradeColor((int)sim::UpgradeKind::EXTRA_CORE);
     if (i >= hud.cores) c = dimmed(c);
@@ -226,10 +258,10 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
       }
       int lineH = g.lineAdvance() + ui(6, 2);
       // The two hint lines, above the version line at the bottom
-      drawCenteredFit(g, oy + h_ - margin - 3 * lineH, hints_.move,
-                      hints_.moveAlt, HUD_DIM);
-      drawCenteredFit(g, oy + h_ - margin - 2 * lineH, hints_.dash,
-                      hints_.dashAlt, HUD_DIM);
+      drawBottomFit(g, oy + hudY1() - margin - 3 * lineH, hints_.move,
+                    hints_.moveAlt, HUD_DIM);
+      drawBottomFit(g, oy + hudY1() - margin - 2 * lineH, hints_.dash,
+                    hints_.dashAlt, HUD_DIM);
       break;
     }
     case sim::GameState::WEAPON_SELECT: {
@@ -261,7 +293,7 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
       const int padX = ui(10, 3), padY = ui(6, 2);
       const int boxH = nameH + 2 * padY;
       const int rowH = boxH + ui(4, 2);  // stacked: one row per weapon
-      const int top = (h_ - rowH * sim::WEAPON_COUNT) / 2;
+      const int top = hudY0() + (hudH() - rowH * sim::WEAPON_COUNT) / 2;
       for (int i = 0; i < sim::WEAPON_COUNT; i++) {
         int cx = stacked ? w_ / 2 : colW * i + colW / 2;
         int textY = stacked ? oy + top + rowH * i + padY : oy + uiY(136);
@@ -292,12 +324,15 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
         g.setTextColor(i == sel ? HUD_TEXT : HUD_DIM);
         g.drawString(cx - tw / 2, descY, WEAPON_DESCS[i]);
       }
-      int hintY = stacked ? oy + h_ - margin - g.textHeight() : oy + uiY(220);
-      // Either axis chooses, so the hint names the one that matches the layout
-      drawCenteredFit(g, hintY,
-                      stacked ? "UP / DOWN: choose    A: confirm"
-                              : "LEFT / RIGHT: choose    A: confirm",
-                      "A: confirm", HUD_DIM);
+      // Either axis chooses, so the hint names the one that matches the
+      // layout. Stacked it lands on the bottom row, next to the pad.
+      if (stacked) {
+        drawBottomFit(g, oy + hudY1() - margin - g.textHeight(),
+                      "UP / DOWN: choose    A: confirm", "A: confirm", HUD_DIM);
+      } else {
+        drawCenteredFit(g, oy + uiY(220), "LEFT / RIGHT: choose    A: confirm",
+                        "A: confirm", HUD_DIM);
+      }
       break;
     }
     case sim::GameState::PLAYING:
@@ -305,7 +340,7 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
     case sim::GameState::ARRIVE:
     case sim::GameState::DEAD: {
       // Health gauge (top left)
-      const int gx = margin, gy = oy + margin;
+      const int gx = margin, gy = oy + hudY0() + margin;
       const int gw = ui_.gaugeW, gh = ui_.gaugeH, gb = ui(1, 1);
       g.drawRect(gx - gb, gy - gb, gw + 2 * gb, gh + 2 * gb, HUD_DIM, gb);
       int fill =
@@ -424,7 +459,9 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
                      WEAPON_NAMES[hud.playerWeapon]);
       }
 
-      // Hit flash
+      // Hit flash. The one thing here that frames the whole picture rather
+      // than the HUD's safe area: it is an effect on the scene, and a border
+      // inset from the edges would read as a box drawn over the game.
       if (hud.events & sim::Event::PLAYER_HIT) {
         g.drawRect(0, oy, w_, h_, g2::makeColor(255, 60, 60, 160), ui(3, 1));
       }
@@ -517,8 +554,8 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
                           g2::makeColor(255, 120, 120));
         }
         int lineH = g.lineAdvance() + ui(6, 2);
-        drawCenteredFit(g, oy + h_ - margin - 2 * lineH, hints_.pause,
-                        hints_.pauseAlt, HUD_DIM);
+        drawBottomFit(g, oy + hudY1() - margin - 2 * lineH, hints_.pause,
+                      hints_.pauseAlt, HUD_DIM);
       }
       break;
     }
@@ -535,11 +572,12 @@ void Renderer::upgradeStatusExtents(int &leftEnd, int &rightStart) const {
   const int gap = ui(3, 1);
   int pitch = half + gap + pipPitch * sim::UPGRADE_MAX_LEVEL + ui(10, 3);
   if (pitch < ui(44)) pitch = ui(44);
-  leftEnd = ui(14, half + 2) + (sim::UPGRADE_KINDS - 1) * pitch +
+  leftEnd = barX0() + ui(14, half + 2) + (sim::UPGRADE_KINDS - 1) * pitch +
             ui(11, half + 1) + pipPitch * sim::UPGRADE_MAX_LEVEL;
   int corePitch = half * 2 + ui(4, 2);
   if (corePitch < ui(18)) corePitch = ui(18);
-  rightStart = w_ - ui(14, half + 2) - half - (sim::CORES_MAX - 1) * corePitch;
+  rightStart =
+      barX1() - ui(14, half + 2) - half - (sim::CORES_MAX - 1) * corePitch;
 }
 
 // The core's version at the bottom center of every screen (so that it is
@@ -551,7 +589,7 @@ void Renderer::drawVersion(g2::Graphics2D &g, int oy) {
   setHudFont(g, HudFont::SMALL);
   const int vw = g.measureText(sim::VERSION_STRING);
   const int lineH = g.lineAdvance() + ui(6, 2);
-  const int x = (w_ - vw) / 2;
+  const int x = barX0() + (barW() - vw) / 2;
   // On a screen size where the upgrade status leaves no room for it (the
   // layout does not depend on the levels: 240x240), the title alone
   int leftEnd, rightStart;
@@ -559,7 +597,7 @@ void Renderer::drawVersion(g2::Graphics2D &g, int oy) {
   const bool fits = x >= leftEnd + ui_.margin && x + vw <= rightStart - ui_.margin;
   if (hud.state != sim::GameState::TITLE && !fits) return;
   g.setTextColor(HUD_DIM);
-  g.drawString(x, oy + h_ - ui_.margin - lineH, sim::VERSION_STRING);
+  g.drawString(x, oy + hudY1() - ui_.margin - lineH, sim::VERSION_STRING);
 }
 
 }  // namespace devoursphere::render
