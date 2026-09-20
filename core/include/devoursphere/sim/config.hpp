@@ -15,9 +15,9 @@ namespace devoursphere::sim {
 // makes older scores incomparable (scoring, the time limit, the difficulty
 // structure); a platform that stores the high score keeps the major with it
 // and drops the score when the major differs. Anything else bumps the minor.
-constexpr int VERSION_MAJOR = 1;
+constexpr int VERSION_MAJOR = 2;
 constexpr int VERSION_MINOR = 0;
-constexpr const char *VERSION_STRING = "v1.0";
+constexpr const char *VERSION_STRING = "v2.0";
 
 constexpr int32_t FU_UNITS = 256;  // units per fragment unit (see FU below)
 
@@ -238,7 +238,7 @@ constexpr int FOOD_MAX_SIZE_LOG2 = 3;
 // it blinks and the sim asks for the alarm once a second. At zero the player
 // breaks apart as if shot down and, with a spare core, the same sphere
 // starts over from the arrival (see Game::restartSphereAfterTimeUp)
-constexpr int SPHERE_TIME_LIMIT_TICKS = 5 * 60 * TICK_RATE;
+constexpr int SPHERE_TIME_LIMIT_TICKS = 4 * 60 * TICK_RATE;
 constexpr int TIME_WARN_TICKS = 60 * TICK_RATE;
 constexpr int TIME_ALARM_TICKS = 30 * TICK_RATE;
 

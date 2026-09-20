@@ -944,8 +944,8 @@ static void testDifficultyAndEvade() {
   }
 }
 
-// The largest enemy is the biggest by size alone, and its hits never knock
-// fragments off (no critical hits), so shooting it cannot swap the top rank
+// The largest enemy is the biggest by size alone, and (since 2.0) it loses
+// fragments to critical hits like anyone else
 static void testLargestEnemy() {
   Game g;
   g.reset(9);
@@ -962,12 +962,13 @@ static void testLargestEnemy() {
     if (i != top && i != g.playerIndex()) g.entities[i].alive = false;
   }
   uint32_t crits = g.debugStats().crits;
-  for (int n = 0; n < 120 && g.entities[top].alive; n++) {
+  for (int n = 0; n < 300 && g.entities[top].alive; n++) {
+    g.entities[top].invincible = 0;  // no spawn protection
     plantBullet(g, n % 8, g.playerIndex(), top, 1, true);
     g.tick(Button::DOWN);
   }
   CHECK(g.entities[top].alive);
-  CHECK(g.debugStats().crits == crits);  // no fragment knocked off
+  CHECK(g.debugStats().crits > crits);  // fragments knocked off
 }
 
 // A death scatters the lost upgrade levels around the respawn point (up to
