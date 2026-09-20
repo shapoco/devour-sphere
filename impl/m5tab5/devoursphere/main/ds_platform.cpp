@@ -37,6 +37,10 @@ uint32_t freeInternalRam() {
   return (uint32_t)heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
 }
 
+uint32_t largestInternalBlock() {
+  return (uint32_t)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
+}
+
 uint32_t freeSpiRam() {
   return (uint32_t)heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
 }

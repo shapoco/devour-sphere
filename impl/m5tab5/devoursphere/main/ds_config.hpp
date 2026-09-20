@@ -55,14 +55,19 @@ static_assert(PANEL_H % SCALE == 0 && PANEL_W % SCALE == 0, "integer scale");
 // Rows of the landscape frame rasterized and handed to the PPA at a time.
 // Each band becomes a vertical strip of the panel SCALE * BAND_H pixels
 // wide and the full 1280 tall, so a taller band means longer runs inside
-// each panel row (2 * 40 * 2 = 160 bytes at 40) and fewer transactions --
+// each panel row (2 * 45 * 2 = 180 bytes at 45) and fewer transactions --
 // but two band buffers of it have to come out of the internal heap, and
-// that is what sets the ceiling here: the static side leaves about 165 KB,
-// of which the two task stacks and the drivers want their share. 40 rows is
-// 100 KB for the pair, and is the strip height the LcdTap example settled on
-// for the same panel. 45 (115 KB) and 60 (150 KB) tile 360 evenly too and
-// are worth trying against the overlay's DMA line, heap permitting.
-constexpr int BAND_H = 40;
+// that is what sets the ceiling.
+//
+// 45 rows is 8 bands and 115 KB for the pair, and is what runs on hardware.
+// 60 (150 KB) does not: the board comes up with a black screen, which is
+// the band buffers failing to allocate and init() giving up (the serial log
+// says so). The total free internal heap is not what runs out -- there is
+// about 246 KB of it at that point -- but a band buffer has to be ONE
+// contiguous block, and the internal heap is several regions. 40 rows
+// (100 KB) is the value this started at and is the strip height the LcdTap
+// example settled on for the same panel.
+constexpr int BAND_H = 45;
 constexpr int BAND_COUNT = SCREEN_H / BAND_H;
 static_assert(SCREEN_H % BAND_H == 0, "the bands must tile the frame exactly");
 

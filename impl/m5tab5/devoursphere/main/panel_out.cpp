@@ -97,7 +97,13 @@ bool PanelOut::init(m5gfx::M5GFX *gfx) {
         CONFIG_CACHE_L2_CACHE_LINE_SIZE, BAND_BYTES,
         MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     if (!buf_[i]) {
+      // Both numbers, because it is nearly always the second one that ran
+      // out: a band buffer has to be one contiguous block and the internal
+      // heap is several regions, so the total can be comfortable while no
+      // single region can hold BAND_BYTES. Raising BAND_H is what hits this.
       trace("no band buffers, internal free", freeInternalRam());
+      trace("  largest internal block", largestInternalBlock());
+      trace("  wanted", BAND_BYTES);
       return false;
     }
     // aligned_alloc does not zero, and measureTransfer() pushes these

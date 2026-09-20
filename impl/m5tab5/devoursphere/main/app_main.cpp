@@ -141,6 +141,7 @@ void setup() {
   g_mainTask = xTaskGetCurrentTaskHandle();
   ds::stackWatchInitCore0();
   ds::trace("internal free", ds::freeInternalRam());
+  ds::trace("internal largest block", ds::largestInternalBlock());
   ds::trace("psram free", ds::freeSpiRam());
 
   g_game = ds::allocGame();

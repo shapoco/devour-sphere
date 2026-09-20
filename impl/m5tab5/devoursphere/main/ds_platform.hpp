@@ -20,8 +20,12 @@ namespace ds {
 // out of PSRAM would cost for no reason here.
 devoursphere::sim::Game *allocGame();
 
-// Bytes of internal RAM still free, for the bring-up trace and the overlay.
+// Bytes of internal RAM still free, for the bring-up trace and the overlay,
+// and the largest single block of it -- which is the one that matters for
+// the band buffers, since each is one contiguous allocation and the
+// internal heap is several regions.
 uint32_t freeInternalRam();
+uint32_t largestInternalBlock();
 uint32_t freeSpiRam();
 
 // Bring-up progress on the USB-Serial/JTAG console (`./monitor.sh`). The one
