@@ -26,3 +26,7 @@ tmp.*
 tmp.*/
 
 impl/xiamocon/devoursphere/se/
+
+# The CLI build writes the high score next to where it runs (impl/cli/SPEC.md)
+devoursphere.highscore
+devoursphere.highscore.tmp

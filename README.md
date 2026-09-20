@@ -15,7 +15,8 @@ and fonts.
 - **Play:** https://shapoco.github.io/devour-sphere/play/
 - **Specifications (Japanese):** [SPEC.md](SPEC.md), [core/SPEC.md](core/SPEC.md),
   [impl/wasm/SPEC.md](impl/wasm/SPEC.md), [impl/xiamocon/SPEC.md](impl/xiamocon/SPEC.md),
-  [impl/picosystem/SPEC.md](impl/picosystem/SPEC.md), [impl/m5tab5/SPEC.md](impl/m5tab5/SPEC.md)
+  [impl/picosystem/SPEC.md](impl/picosystem/SPEC.md), [impl/m5tab5/SPEC.md](impl/m5tab5/SPEC.md),
+  [impl/cli/SPEC.md](impl/cli/SPEC.md)
 
 ## Download
 
@@ -77,6 +78,13 @@ For [M5Stack Tab5](https://docs.m5stack.com/en/core/Tab5) (ESP32-P4), with ESP-I
 cd impl/m5tab5/devoursphere
 ./build.sh                     # DS_IDF_PATH defaults to ${HOME}/esp/5.5
 ./run.sh /dev/ttyACM0          # build and flash (the port may be omitted)
+```
+
+For a terminal (half a joke: colored ASCII art; C++17 and cmake are all it needs):
+
+```sh
+cd impl/cli
+make && ./build/devoursphere   # also --mode=braille / --mode=half (see --help)
 ```
 
 ## License

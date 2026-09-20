@@ -53,6 +53,15 @@ ST7789 を 16 ビットモードで帯ごとに駆動する。フレームルー
 
 詳細は impl/picosystem/SPEC.md を参照のこと。
 
+### CLI 版
+
+impl/cli/ 配下に Linux の端末で遊ぶ実装が置かれる (半分冗談)。320x240 のフレームバッファに描き、
+色付きの ASCII アート (おまけで点字と半ブロック) にして端末に流す。キーは kitty keyboard protocol
+(非対応の端末ではキーリピートから推定)、音はベル、ハイスコアはカレントディレクトリのファイル。
+依存は C++17 と cmake と POSIX だけ。
+
+詳細は impl/cli/SPEC.md を参照のこと。
+
 ## ディレクトリ構成
 
 ```
@@ -65,6 +74,7 @@ impl/wasm/           WASM 版 (impl/wasm/SPEC.md)
 impl/xiamocon/       Xiamocon 版 (impl/xiamocon/SPEC.md)
 impl/picosystem/     PicoSystem 版 (impl/picosystem/SPEC.md)
 impl/m5tab5/         M5Tab5 版 (impl/m5tab5/SPEC.md)
+impl/cli/            CLI 版 (impl/cli/SPEC.md)
 docs/                公開用の静的サイト (docs/play/ がゲーム)
 assets/se/           効果音の素材 (効果音ラボ、assets/se/README.md)
 assets/release/      リリース zip にそのまま入れるファイル (README.txt、upload.sh)
@@ -109,6 +119,14 @@ M5Tab5 版は ESP-IDF v5.5.x のプロジェクト (`DS_IDF_PATH` の既定は `
 cd impl/m5tab5/devoursphere
 ./build.sh                                       # build/devoursphere.bin
 ./run.sh /dev/ttyACM0                            # ビルドして書き込み
+```
+
+CLI 版は独立したトップレベルで、C++17 と cmake があれば作れる:
+
+```sh
+cd impl/cli
+make                                             # build/devoursphere
+./build/devoursphere                             # 端末で遊ぶ (--help でオプション)
 ```
 
 C/C++ のコードは .clang-format (ShapoGFX と同じ設定) で整形する。

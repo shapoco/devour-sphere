@@ -14,7 +14,8 @@
 - **遊ぶ:** https://shapoco.github.io/devour-sphere/play/
 - **仕様:** [SPEC.md](SPEC.md), [core/SPEC.md](core/SPEC.md),
   [impl/wasm/SPEC.md](impl/wasm/SPEC.md), [impl/xiamocon/SPEC.md](impl/xiamocon/SPEC.md),
-  [impl/picosystem/SPEC.md](impl/picosystem/SPEC.md), [impl/m5tab5/SPEC.md](impl/m5tab5/SPEC.md)
+  [impl/picosystem/SPEC.md](impl/picosystem/SPEC.md), [impl/m5tab5/SPEC.md](impl/m5tab5/SPEC.md),
+  [impl/cli/SPEC.md](impl/cli/SPEC.md)
 
 ## ダウンロード
 
@@ -74,6 +75,13 @@ cmake --build build -j         # build/devoursphere.uf2 (効果音のパック�
 cd impl/m5tab5/devoursphere
 ./build.sh                     # DS_IDF_PATH 既定 ${HOME}/esp/5.5
 ./run.sh /dev/ttyACM0          # ビルドして書き込み (ポート省略可)
+```
+
+端末版 (半分冗談。色付きの ASCII アートで遊ぶ。C++17 と cmake だけ):
+
+```sh
+cd impl/cli
+make && ./build/devoursphere   # --mode=braille / --mode=half もある (--help)
 ```
 
 ## License
