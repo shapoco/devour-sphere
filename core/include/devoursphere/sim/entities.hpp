@@ -36,9 +36,10 @@ int32_t bulletSpeed(const WeaponSpec &ws, uint32_t ownerSize);
 // units. x >= 0; a mirrored copy at (-x, y) is implied.
 struct Fragment {
   int32_t x, y;    // position
-  int32_t vx, vy;  // velocity (units per tick)
+  int16_t vx, vy;  // velocity (units per tick; updateLayout clamps it to a
+                   // few thousand, see FRAGMENT_V_MAX)
   uint8_t sizeLog2;
-};
+};  // 16 bytes
 
 // Orientation frame on the sphere: n (up, unit normal), t (forward, unit
 // tangent), right = t x n. All Q30.
@@ -56,52 +57,58 @@ enum class EvadeMode : uint8_t {
   COUNTER               // quick turn towards the shooter and fight back
 };
 
+// An entity index that means "none" (Entity::evadeFrom)
+constexpr uint8_t NO_ENTITY = 0xFF;
+
+// Ordered by alignment (4-byte members, then 2-byte, then bytes) so that
+// nothing but the tail is padding: 224 bytes, checked in entities.cpp.
+// The flags share one byte as bitfields; the indices that used to be
+// int16_t with -1 for "none" are uint8_t with NO_ENTITY where the range
+// allows (an entity index is < MAX_ENTITIES = 224; a floating fragment index
+// is not, so aiTarget stays 16 bits)
 struct Entity {
-  bool alive;
-  bool isPlayer;
   Frame frame;
   int32_t r;      // distance from the sphere center (units)
   int32_t speed;  // current speed (units per tick)
   uint32_t size;  // sum of fragment sizes (authoritative)
   int32_t hp, hpMax;
-  Weapon weapon;
-  uint8_t hue;   // 0..255 color hue (render hint)
-  int8_t turn;   // -1 left, 0, +1 right (current input)
-  int16_t bank;  // roll around the heading (brad, positive = right wing down)
-  int16_t turnLevel;  // -256..256: how far the turn has built up
-  bool dashing, braking, firing;
-  int16_t dashLevel;  // 0..256: how far the dash has built up
-  int16_t fireCooldown;
-  int16_t invincible;   // ticks of spawn protection
-  int16_t absorbGuard;  // ticks during which the entity cannot be absorbed
-  int16_t evadeTicks;   // AI: ticks left of an evasive maneuver
-  int16_t evadeFrom;    // AI: entity whose fire triggered it (-1 = unknown)
-  int16_t evadeFlipAt;  // AI: flip the escape side when evadeTicks gets here
-  int8_t evadeDir;      // AI: escape side (+1 / -1; see EvadeMode)
-  uint8_t evadeMode;    // AI: EvadeMode
-  uint8_t hitStreak;    // AI: recent hits taken (decays)
-  uint8_t absorbedBig;  // was bigger than the player when it started absorbing
-                        // it (the kill sound; the size shrinks while absorbed).
-                        // Here it fills the padding before the fragments
-
   Fragment fragments[MAX_FRAGMENTS_PER_ENTITY];
-  uint8_t fragmentCount;
   int32_t coreY;         // core position on the local Y axis
   int32_t coreHalf;      // core kite half-size
   int32_t bodyRadius;    // tangential extent (units) for collisions
   int32_t layoutFocusY;  // focus point for fragment orientation (render hint)
 
-  // AI
-  AiMode aiMode;
+  int16_t bank;         // roll around the heading (brad, positive = right wing down)
+  int16_t turnLevel;    // -256..256: how far the turn has built up
+  int16_t dashLevel;    // 0..256: how far the dash has built up
+  int16_t fireCooldown;
+  int16_t invincible;   // ticks of spawn protection
+  int16_t absorbGuard;  // ticks during which the entity cannot be absorbed
+  int16_t evadeTicks;   // AI: ticks left of an evasive maneuver
+  int16_t evadeFlipAt;  // AI: flip the escape side when evadeTicks gets here
   int16_t aiTarget;  // index into entities or floating fragments (-1 = none)
-  int16_t grudge;  // AI: ticks of grudge against the player (GRUDGE_*)
+  int16_t grudge;    // AI: ticks of grudge against the player (GRUDGE_*)
   uint16_t aiWanderAngle;
 
+  bool alive : 1;
+  bool isPlayer : 1;
+  bool dashing : 1, braking : 1, firing : 1;
+  bool absorbedBig : 1;  // was bigger than the player when it started
+                         // absorbing it (the kill sound; the size shrinks
+                         // while absorbed)
+  bool bounty : 1;       // has been the largest on the sphere: must be killed
+                         // for the sphere to be cleared (see updateRanks)
+  Weapon weapon;
+  uint8_t hue;          // 0..255 color hue (render hint)
+  int8_t turn;          // -1 left, 0, +1 right (current input)
+  uint8_t evadeFrom;    // AI: entity whose fire triggered it (NO_ENTITY)
+  int8_t evadeDir;      // AI: escape side (+1 / -1; see EvadeMode)
+  uint8_t evadeMode;    // AI: EvadeMode
+  uint8_t hitStreak;    // AI: recent hits taken (decays)
+  uint8_t fragmentCount;
+  AiMode aiMode;
   uint8_t upgrade;  // UpgradeKind carried (released when the entity dies)
-
-  // Bookkeeping
-  uint16_t rank;  // 1 = largest on the sphere (updated periodically)
-  uint32_t seed;  // per-entity random seed (visual variation)
+  uint8_t rank;     // 1 = largest on the sphere (the player's is maintained)
 };
 
 // Effective size for absorption and color: size * (0.25 + 0.75 * hp / hpMax)

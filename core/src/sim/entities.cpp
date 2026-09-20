@@ -23,6 +23,9 @@ static constexpr int32_t HALF_SIZE[MAX_SIZE_LOG2 + 1] = {
     halfSizeOf(20),
 };
 static_assert(MAX_SIZE_LOG2 == 20, "HALF_SIZE lists one entry per exponent");
+static_assert(sizeof(Fragment) == 16, "Fragment grew");
+static_assert(sizeof(Entity) == 224, "Entity grew (see the layout note)");
+static_assert(MAX_ENTITIES < NO_ENTITY, "evadeFrom is a byte");
 
 int32_t fragmentHalfSize(int sizeLog2) {
   if (sizeLog2 < 0) sizeLog2 = 0;

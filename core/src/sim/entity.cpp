@@ -212,7 +212,7 @@ void Game::updateAi(int idx) {
   if (c.evadeTicks > 0) {
     // Under sustained fire (see EvadeMode)
     int from = c.evadeFrom;
-    bool shooter = from >= 0 && from < MAX_ENTITIES && entities[from].alive;
+    bool shooter = from != NO_ENTITY && entities[from].alive;
     if (!shooter) {
       // Shooter unknown or gone: break off in the remembered direction
       c.aiMode = AiMode::FLEE;
@@ -554,8 +554,11 @@ void Game::updateLayout(Entity &c) {
     int64_t vx = ((int64_t)p.vx >> 2) + fx;
     int64_t vy = ((int64_t)p.vy >> 2) + fy;
     int32_t vmax = (s >> (3 + RATE_SHIFT)) + (dist >> (4 + RATE_SHIFT));
-    p.vx = (int32_t)clampI64(-vmax, vmax, vx);
-    p.vy = (int32_t)clampI64(-vmax, vmax, vy);
+    // (vmax is a few thousand at most: s <= 8192 units and dist is bounded
+    // by the body; the clamp only defines the 16-bit velocities' behavior)
+    if (vmax > INT16_MAX) vmax = INT16_MAX;
+    p.vx = (int16_t)clampI64(-vmax, vmax, vx);
+    p.vy = (int16_t)clampI64(-vmax, vmax, vy);
     // Below a small threshold the fragment is considered at rest
     int32_t rest = (s >> (6 + RATE_SHIFT)) + 1;
     if (absI32(p.vx) <= rest && absI32(p.vy) <= rest) p.vx = p.vy = 0;

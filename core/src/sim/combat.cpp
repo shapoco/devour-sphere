@@ -288,7 +288,7 @@ void Game::damageEntity(int idx, int32_t dmg, int attacker, bool allowCrit) {
         c.evadeTicks =
             (int16_t)(AI_EVADE_TICKS + rng_.range(0, AI_EVADE_TICKS / 2));
         bool known = attacker >= 0 && attacker < MAX_ENTITIES;
-        c.evadeFrom = (int16_t)(known ? attacker : -1);
+        c.evadeFrom = (uint8_t)(known ? attacker : NO_ENTITY);
         c.evadeDir = (int8_t)(rng_.below(2) ? 1 : -1);
         c.evadeFlipAt = (int16_t)(c.evadeTicks / 2);
         c.evadeMode = (uint8_t)EvadeMode::BREAK_PICK_SIDE;
@@ -304,7 +304,7 @@ void Game::damageEntity(int idx, int32_t dmg, int attacker, bool allowCrit) {
     } else {
       // Still under fire: keep evading (from the latest shooter)
       if (attacker >= 0 && attacker < MAX_ENTITIES)
-        c.evadeFrom = (int16_t)attacker;
+        c.evadeFrom = (uint8_t)attacker;
       if (c.evadeTicks < AI_EVADE_TICKS / 2) c.evadeTicks = AI_EVADE_TICKS / 2;
     }
   }

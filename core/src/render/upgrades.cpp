@@ -62,7 +62,7 @@ static vec3f rotateAxis(const vec3f &v, const vec3f &axis, float angle) {
   return v * c + g3::cross(axis, v) * s + axis * (g3::dot(axis, v) * (1 - c));
 }
 
-void Renderer::drawFloatingUpgrades() {
+void Renderer::drawFloatingUpgrades(bool withMarkers) {
   const sim::Game &g = *game_;
   // Size follows the player's visual scale
   float s =
@@ -76,8 +76,9 @@ void Renderer::drawFloatingUpgrades() {
     const float cosDist = g3::dot(up, camUnit_);
     if (cosDist < cosHorizon_ - 0.02f) {
       // Beyond the horizon: a marker in the upgrade's color, fading with
-      // the distance like the enemies' markers (but never dropped)
-      if (markerCount_ >= MAX_MARKERS) continue;
+      // the distance like the enemies' markers (but never dropped), unless
+      // markers are off (the flight between spheres)
+      if (!withMarkers || markerCount_ >= MAX_MARKERS) continue;
       vec3f d = up - camUnit_ * cosDist;
       float len = g3::length(d);
       if (len < 1e-5f) continue;

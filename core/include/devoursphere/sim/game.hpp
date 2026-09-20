@@ -142,10 +142,11 @@ class Game {
   uint32_t sphereSeed() const { return sphereSeed_; }
 
   int playerIndex() const { return playerIndex_; }
-  // The largest enemy alive (by size alone, like the ranks; -1 when none):
-  // the one to beat. Its hits never knock fragments off (no critical hits),
-  // so shooting it cannot hand the player the top rank by accident
+  // The largest enemy alive (by size alone, like the ranks; -1 when none)
   int largestEnemy() const { return largestEnemy_; }
+  // Enemies alive with a bounty on them (Entity::bounty): the sphere is
+  // cleared once this stays 0 for a moment (see updateRanks)
+  int bountyCount() const { return bountyCount_; }
   const Entity &player() const { return entities[playerIndex_]; }
   int playerRank() const { return entities[playerIndex_].rank; }
   int aliveEntities() const { return aliveEntities_; }
@@ -292,6 +293,8 @@ class Game {
   int playerIndex_ = 0;
   int aliveEntities_ = 0;
   int largestEnemy_ = -1;
+  int bountyCount_ = 0;
+  int clearGrace_ = 0;  // ticks in a row without a bounty out (PLAYING)
   int respawnTimer_ = 0;
   int foodTimer_ = 0;
   uint32_t displayScaleLog2_ = 0;

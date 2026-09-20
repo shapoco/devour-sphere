@@ -102,6 +102,7 @@ void Renderer::init(int width, int height, void *arena, size_t arenaSize,
   palette_[PAL_PLAYER] = flatMaterial(hueColor(sim::FRAGMENT_HUE, 220, 230));
   palette_[PAL_ENEMY_BIG] = flatMaterial(g2::makeColor(255, 90, 170));
   palette_[PAL_ENEMY_SMALL] = flatMaterial(g2::makeColor(110, 200, 255));
+  palette_[PAL_ENEMY_BOUNTY] = flatMaterial(g2::makeColor(255, 195, 60));
   palette_[PAL_FRAGMENT] = flatMaterial(hueColor(sim::FRAGMENT_HUE, 220, 220));
   palette_[PAL_CORE] = flatMaterial(g2::makeColor(255, 255, 255));
   palette_[PAL_BULLET_PLAYER] =
@@ -838,6 +839,7 @@ void Renderer::updateCamera(float dt) {
 
 const g3::Material &Renderer::materialForEntity(const sim::Entity &c) const {
   if (c.isPlayer) return palette_[PAL_PLAYER];
+  if (c.bounty) return palette_[PAL_ENEMY_BOUNTY];  // the ones to kill
   const sim::Entity &p = game_->player();
   return palette_[sim::effectiveSizeQ8(c) > sim::effectiveSizeQ8(p)
                       ? PAL_ENEMY_BIG
@@ -883,14 +885,10 @@ void Renderer::drawEntity(const sim::Entity &c, const sim::Vec3 &pos, float px,
     entitiesDrawn_++;
     return;
   }
-  // The largest enemy (the one to beat) is outlined in yellow, a carrier
-  // of an upgrade in white
-  const bool top =
-      !c.isPlayer && (int)(&c - game_->entities) == game_->largestEnemy();
-  bool carrier = top || (!c.isPlayer &&
-                         c.upgrade != (uint8_t)sim::UpgradeKind::NONE);
-  g2::Color outline =
-      top ? g2::makeColor(255, 230, 80) : g2::makeColor(255, 255, 255);
+  // A carrier of an upgrade is outlined in white (the bounty holders are
+  // told apart by their body color instead)
+  bool carrier = !c.isPlayer && c.upgrade != (uint8_t)sim::UpgradeKind::NONE;
+  const g2::Color outline = g2::makeColor(255, 255, 255);
   if (full) {
     // Dihedral: fragments tilt outwards (around the heading) the farther
     // they are from the body's axis, so the body looks like it has volume
@@ -1281,11 +1279,13 @@ void Renderer::drawHealthWarning() {
 
 // Enemies beyond the horizon get a marker on the horizon in their direction:
 // opponents of a comparable size (1/4 .. 4x), and every carrier of an
-// upgrade (`always`). The color fades with the distance along the surface;
-// enemies farther than MARKER_MAX_ANGLE around the sphere are not shown at
-// all, except the carriers and the bigger ones when the player is close to
+// upgrade or of a bounty (`always`). The color (the body's, so a bounty
+// holder's is yellow) fades with the distance along the surface; enemies
+// farther than MARKER_MAX_ANGLE around the sphere are not shown at all,
+// except the `always` ones and the bigger ones when the player is close to
 // the top (rank <= MARKER_ALWAYS_RANK): those are the remaining targets,
-// wherever they are. A carrier's white outline fades the same way.
+// wherever they are. A carrier's white outline fades the same way. No
+// markers at all during the flight (LAUNCH / ARRIVE): buildScene skips them.
 void Renderer::addEnemyMarker(const sim::Entity &c, bool always) {
   const sim::Game &g = *game_;
   uint32_t ps = g.player().size;
@@ -1385,13 +1385,16 @@ void Renderer::buildScene() {
   // The world: everything standing on the surface, depth sorted.
   g3d_.beginLayer();
   // Upgrades first: their horizon markers must never be crowded out by
-  // the enemies' markers; then the enemies carrying one, shown whatever
-  // their size and distance; the other enemies take what is left
-  drawFloatingUpgrades();
-  for (int i = 0; i < sim::MAX_ENTITIES; i++) {
+  // the enemies' markers; then the enemies carrying one or a bounty, shown
+  // whatever their size and distance; the other enemies take what is left.
+  // Nothing is marked during the flight between spheres
+  const bool flying = g.state() == sim::GameState::LAUNCH ||
+                      g.state() == sim::GameState::ARRIVE;
+  drawFloatingUpgrades(!flying);
+  for (int i = 0; i < sim::MAX_ENTITIES && !flying; i++) {
     const sim::Entity &c = g.entities[i];
-    if (!c.alive || c.isPlayer || c.upgrade == (uint8_t)sim::UpgradeKind::NONE)
-      continue;
+    if (!c.alive || c.isPlayer) continue;
+    if (c.upgrade == (uint8_t)sim::UpgradeKind::NONE && !c.bounty) continue;
     if (sim::dotQ30(c.frame.n, camQ_.unit) < camQ_.cosHorizon - HORIZON_Q02) {
       addEnemyMarker(c, true);
     }
@@ -1403,8 +1406,10 @@ void Renderer::buildScene() {
     const sim::Entity &c = g.entities[i];
     if (!c.alive) continue;
     if (sim::dotQ30(c.frame.n, camQ_.unit) < camQ_.cosHorizon - HORIZON_Q02) {
-      // Beyond the horizon: a marker (carriers were collected above)
-      if (!c.isPlayer && c.upgrade == (uint8_t)sim::UpgradeKind::NONE) {
+      // Beyond the horizon: a marker (carriers and bounty holders were
+      // collected above)
+      if (!flying && !c.isPlayer && !c.bounty &&
+          c.upgrade == (uint8_t)sim::UpgradeKind::NONE) {
         addEnemyMarker(c, false);
       }
       continue;

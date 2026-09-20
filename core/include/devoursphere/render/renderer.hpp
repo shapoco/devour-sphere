@@ -502,6 +502,7 @@ class Renderer {
     PAL_PLAYER = 0,     // teal, like the floating fragments
     PAL_ENEMY_BIG,      // bigger than the player: pink
     PAL_ENEMY_SMALL,    // not bigger than the player: light blue
+    PAL_ENEMY_BOUNTY,   // carries a bounty (Entity::bounty): orange-yellow
     PAL_FRAGMENT,       // floating fragments (teal)
     PAL_CORE,           // white
     PAL_BULLET_PLAYER,  // additive orange
@@ -564,7 +565,7 @@ class Renderer {
   g3::vec3f screenToWorld(const ScreenPlane &sp, float sx, float sy,
                           float depth) const;
   // upgrades.cpp
-  void drawFloatingUpgrades();
+  void drawFloatingUpgrades(bool withMarkers);
   void putSolid(const g3::vec3f *verts, int nv, const uint16_t *idx, int ni,
                 const g3::Material &m);
   const g3::Material &materialForEntity(const sim::Entity &c) const;

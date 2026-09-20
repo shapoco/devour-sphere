@@ -10,6 +10,7 @@ const int LAUNCH_TICKS = 5 * TICK_RATE;
 const int ARRIVE_TICKS = 5 * TICK_RATE;
 const int ARRIVE_SWITCH_TICKS = TICK_RATE;
 static constexpr int DEAD_WAIT_TICKS = 2 * TICK_RATE;
+// Ticks without a bounty out before the sphere counts as cleared
 static constexpr int CLEAR_GRACE_TICKS = 4 * TICK_RATE;
 
 Game::Game() { reset(1); }
@@ -168,6 +169,7 @@ int Game::findFreeEntity() const {
 void Game::startSphere(bool keepPlayer) {
   sphereSeed_ = rng_.next();
   sphereTicks_ = 0;
+  clearGrace_ = 0;
   sphereScoreStartQ8_ = scoreQ8_;
   Entity saved;
   if (keepPlayer) saved = entities[playerIndex_];
@@ -228,8 +230,7 @@ void Game::initEntity(Entity &c, int sizeLog2, Weapon w) {
   c.alive = true;
   c.weapon = w;
   c.aiTarget = -1;
-  c.evadeFrom = -1;
-  c.seed = rng_.next();
+  c.evadeFrom = NO_ENTITY;
   c.fragmentCount = 0;
   c.size = 0;
   // Decompose 2^k into a few fragments for a more interesting body
@@ -343,23 +344,62 @@ void Game::rescalePlayerForNextSphere() {
   updateLayout(p);
 }
 
-// Ranks go by size alone (not by the health-weighted effective size)
+// Ranks go by size alone (not by the health-weighted effective size).
+//
+// Bounties: an enemy that is the largest on the sphere (bigger than the
+// player) gets one, and keeps it until it dies or drops out of the top three
+// -- except that the last bounty is never lifted that way, so the sphere is
+// only cleared by a kill (an enemy chipped down by critical hits would
+// otherwise hand over the clear while the player is still shooting). While
+// the player is not on top there is always a bounty out, so bountyCount_ == 0
+// means the player is the largest and every one-time boss is dead.
+//
+// One pass over the entities (rank, largest enemy, the three largest sizes,
+// the bounties alive) plus a second one only when a bounty could be lifted
 void Game::updateRanks() {
   Entity &p = entities[playerIndex_];
   int rank = 1;
   aliveEntities_ = 0;
   largestEnemy_ = -1;
   uint32_t largest = 0;
+  uint32_t top[3] = {0, 0, 0};  // the three largest sizes, player included
+  int bounties = 0;
   for (int i = 0; i < MAX_ENTITIES; i++) {
     const Entity &c = entities[i];
     if (!c.alive) continue;
     aliveEntities_++;
+    const uint32_t s = c.size;
+    if (s > top[0]) {
+      top[2] = top[1], top[1] = top[0], top[0] = s;
+    } else if (s > top[1]) {
+      top[2] = top[1], top[1] = s;
+    } else if (s > top[2]) {
+      top[2] = s;
+    }
     if (i == playerIndex_) continue;
-    if (c.size > p.size) rank++;
-    if (c.size > largest) largest = c.size, largestEnemy_ = i;
+    if (s > p.size) rank++;
+    if (s > largest) largest = s, largestEnemy_ = i;
+    bounties += c.bounty;
   }
+  if (largestEnemy_ >= 0 && largest > p.size &&
+      !entities[largestEnemy_].bounty) {
+    entities[largestEnemy_].bounty = true;
+    bounties++;
+  }
+  if (bounties > 1) {
+    // Lift the bounties of the holders that fell out of the top three (ties
+    // count as in), but never the last one
+    for (int i = 0; i < MAX_ENTITIES && bounties > 1; i++) {
+      Entity &c = entities[i];
+      if (c.alive && c.bounty && !c.isPlayer && c.size < top[2]) {
+        c.bounty = false;
+        bounties--;
+      }
+    }
+  }
+  bountyCount_ = bounties;
   // The rank is frozen once the sphere is cleared
-  if (state_ != GameState::LAUNCH) p.rank = (uint16_t)rank;
+  if (state_ != GameState::LAUNCH) p.rank = (uint8_t)rank;
 }
 
 void Game::updateRespawns() {
@@ -410,7 +450,11 @@ void Game::checkTransitions() {
         timeUp_ = true;
         events_ |= Event::SPHERE_TIME_UP;
         killEntity(playerIndex_, -1);
-      } else if (p.rank == 1 && stateTimer_ > CLEAR_GRACE_TICKS) {
+      } else if (bountyCount_ > 0) {
+        clearGrace_ = 0;
+      } else if (++clearGrace_ > CLEAR_GRACE_TICKS) {
+        // Every bounty claimed (and so the player on top, see updateRanks)
+        // for a moment: the kill has been seen and heard
         events_ |= Event::SPHERE_CLEARED;
         // The sphere's own score, then the clear bonus: a base plus a share
         // of the time bonus for the time still left
@@ -704,7 +748,8 @@ uint32_t Game::stateHash() const {
       displayScaleLog2_,      (uint32_t)scoreQ8_, (uint32_t)(scoreQ8_ >> 32),
       (uint32_t)sphereTicks_, (uint32_t)cores_,   (uint32_t)switchPending_,
       (uint32_t)playerMercy_, (uint32_t)dodgeTicks_,
-      (uint32_t)dodgeCooldown_, (uint32_t)dodgeDir_, (uint32_t)timeUp_};
+      (uint32_t)dodgeCooldown_, (uint32_t)dodgeDir_, (uint32_t)timeUp_,
+      (uint32_t)bountyCount_,   (uint32_t)clearGrace_};
   h = fnv(h, scalars, sizeof(scalars));
   return h;
 }

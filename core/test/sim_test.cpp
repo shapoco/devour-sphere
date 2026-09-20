@@ -354,7 +354,8 @@ static void testGameplay() {
   h.tick(Button::A);
   CHECK(h.state() == GameState::TITLE);
 
-  // Sphere transition: make the player the largest
+  // Sphere transition: make the player the largest and kill the bounty
+  // holder (the enemy that was the largest)
   Game q;
   q.reset(99);
   enterPlay(q);
@@ -363,6 +364,10 @@ static void testGameplay() {
     qp.fragments[0].sizeLog2 = 18, qp.size = 1u << 18;
   qp.hpMax = HP_PER_SIZE * (int32_t)qp.size;
   qp.hp = qp.hpMax;
+  CHECK(q.bountyCount() == 1);
+  for (int i = 0; i < MAX_ENTITIES; i++) {
+    if (q.entities[i].bounty) q.entities[i].alive = false;
+  }
   uint32_t heard = 0;
   for (int i = 0; i < 4 * TICK_RATE + 5; i++) q.tick(0), heard |= q.sounds();
   CHECK(q.state() == GameState::LAUNCH);
@@ -712,10 +717,16 @@ static int32_t maxHitDrop(Game &g, int shooter, int victim, int32_t power,
     for (int t = 0; t < PLAYER_MERCY_TICKS; t++) g.tick(Button::DOWN);
     g.entities[victim].invincible = 0;
     g.entities[victim].hp = g.entities[victim].hpMax;  // never dies here
+    const Entity before = g.entities[victim];
     plantBullet(g, n, shooter, victim, power, fromPlayer);
     int32_t hp0 = g.entities[victim].hp, hpMax0 = g.entities[victim].hpMax;
     g.tick(Button::DOWN);
-    if (g.entities[victim].hpMax != hpMax0) continue;
+    if (g.entities[victim].hpMax != hpMax0) {
+      // A critical hit (1 in 30) or a meal changed the size: that attempt
+      // tells nothing, and the size must not stay changed for the next
+      g.entities[victim] = before;
+      continue;
+    }
     int32_t drop = hp0 - g.entities[victim].hp;
     if (drop > maxDrop) maxDrop = drop;
   }
@@ -969,6 +980,76 @@ static void testLargestEnemy() {
   }
   CHECK(g.entities[top].alive);
   CHECK(g.debugStats().crits > crits);  // fragments knocked off
+}
+
+// Bounties: the largest enemy carries one; being the largest oneself does
+// not clear the sphere while a bounty holder lives; a holder that drops out
+// of the top three loses it unless it is the last one; the sphere is cleared
+// a moment after the last one dies
+static void testBounty() {
+  Game g;
+  g.reset(21);
+  enterPlay(g);
+  Entity &p = g.entities[g.playerIndex()];
+  auto holders = [&]() {
+    int n = 0;
+    for (int i = 0; i < MAX_ENTITIES; i++)
+      n += g.entities[i].alive && g.entities[i].bounty;
+    return n;
+  };
+  auto setSize = [](Entity &e, int log2) {
+    e.fragments[0].sizeLog2 = (uint8_t)log2;
+    e.fragmentCount = 1;
+    e.size = 1u << log2;
+    e.hpMax = HP_PER_SIZE * (int32_t)e.size;
+    e.hp = e.hpMax;
+  };
+  int boss = g.largestEnemy();
+  CHECK(boss >= 0);
+  CHECK(g.entities[boss].bounty);
+  CHECK(g.bountyCount() == 1 && holders() == 1);
+  CHECK(!p.bounty);
+  // The player outgrows everyone: still no clear, the boss is alive
+  setSize(p, 19);
+  for (int i = 0; i < 6 * TICK_RATE; i++) {
+    g.entities[boss].invincible = 100;  // whatever happens around it
+    g.entities[boss].absorbGuard = 100;
+    g.tick(0);
+    p.hp = p.hpMax;
+    CHECK(g.entities[boss].alive);
+    CHECK(g.state() == GameState::PLAYING);
+  }
+  CHECK(g.playerRank() == 1);
+  CHECK(g.entities[boss].bounty && g.bountyCount() == 1);
+  CHECK(!p.bounty);
+  // A second boss: an enemy grows past the player, then the player past it
+  int e2 = -1;
+  for (int i = 0; i < MAX_ENTITIES && e2 < 0; i++) {
+    if (i != boss && i != g.playerIndex() && g.entities[i].alive) e2 = i;
+  }
+  CHECK(e2 >= 0);
+  setSize(g.entities[e2], 20);
+  g.tick(0);
+  CHECK(g.entities[e2].bounty && g.entities[boss].bounty);
+  CHECK(g.bountyCount() == 2);
+  setSize(p, 21);
+  // The first boss shrinks out of the top three: its bounty is lifted, the
+  // second one's stays (it is the last)
+  setSize(g.entities[boss], 0);
+  g.tick(0);
+  CHECK(!g.entities[boss].bounty);
+  CHECK(g.entities[e2].bounty && g.bountyCount() == 1);
+  setSize(g.entities[e2], 0);
+  g.tick(0);
+  CHECK(g.entities[e2].bounty && g.bountyCount() == 1);  // never the last
+  // Its death clears the sphere after the grace
+  g.entities[e2].alive = false;
+  g.tick(0);
+  CHECK(g.bountyCount() == 0);
+  for (int i = 0; i < 4 * TICK_RATE + 2 && g.state() == GameState::PLAYING; i++)
+    g.tick(0);
+  CHECK(g.state() == GameState::LAUNCH);
+  CHECK(sizeof(Entity) == 224);
 }
 
 // A death scatters the lost upgrade levels around the respawn point (up to
@@ -1315,6 +1396,7 @@ int main() {
   testTimeLimitAndScore();
   testHighScoreRecord();
   testLargestEnemy();
+  testBounty();
   testGrudgeAndScatter();
   testDeterminism();
   testGameplay();
