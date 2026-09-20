@@ -1280,7 +1280,8 @@ void Renderer::drawHealthWarning() {
 // Enemies beyond the horizon get a marker on the horizon in their direction:
 // opponents of a comparable size (1/4 .. 4x), and every carrier of an
 // upgrade or of a bounty (`always`). The color (the body's, so a bounty
-// holder's is yellow) fades with the distance along the surface; enemies
+// holder's is yellow) fades with the distance along the surface, except a
+// bounty holder's, which stays at full brightness; enemies
 // farther than MARKER_MAX_ANGLE around the sphere are not shown at all,
 // except the `always` ones and the bigger ones when the player is close to
 // the top (rank <= MARKER_ALWAYS_RANK): those are the remaining targets,
@@ -1327,7 +1328,10 @@ void Renderer::addEnemyMarker(const sim::Entity &c, bool always) {
   mk.y = (int16_t)sy;
   mk.kind = 0;
   g2::Color col = colorForEntity(c);
-  float k = MARKER_MIN_BRIGHTNESS + (1.0f - MARKER_MIN_BRIGHTNESS) * fade;
+  // A bounty holder's marker never fades: it is the target, wherever it is
+  // (at the far side the fade would leave it at 25 %, lost on the black)
+  float k = c.bounty ? 1.0f
+                     : MARKER_MIN_BRIGHTNESS + (1.0f - MARKER_MIN_BRIGHTNESS) * fade;
   mk.color =
       g2::makeColor((int)(g2::colorR(col) * k), (int)(g2::colorG(col) * k),
                     (int)(g2::colorB(col) * k));
@@ -1551,6 +1555,8 @@ void Renderer::beginFrame(const sim::Game &game, float dt) {
   hud_.spheresCleared = game.spheresCleared();
   hud_.playerRank = game.playerRank();
   hud_.aliveEntities = game.aliveEntities();
+  hud_.bountyCount = game.bountyCount();
+  hud_.playerAlive = p.alive;
   hud_.selectedWeapon = game.selectedWeapon();
   hud_.playerWeapon = (int)p.weapon;
   hud_.cores = game.cores();

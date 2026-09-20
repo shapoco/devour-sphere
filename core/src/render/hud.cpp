@@ -22,6 +22,8 @@ static const char *WEAPON_DESCS[sim::WEAPON_COUNT] = {
 static const g2::Color HUD_TEXT = g2::makeColor(200, 230, 255);
 static const g2::Color HUD_DIM = g2::makeColor(110, 140, 180);
 static const g2::Color HUD_SHADOW = g2::makeColor(0, 0, 0, 180);
+// The bounty holders' body color (PAL_ENEMY_BOUNTY), for the prompt to kill them
+static const g2::Color BOUNTY_TEXT = g2::makeColor(255, 195, 60);
 
 // The three fonts are 8, 12 and 21 px tall and are magnified by an integer
 // factor. On a screen below half the reference every role drops a step, so
@@ -349,20 +351,40 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
                         g2::makeColor(255, 70, 70, 150));
       }
 
-      // Rank, under the gauge (same size as the score)
-      std::snprintf(buf, sizeof(buf), "RANK %d / %d", hud.playerRank,
-                    hud.aliveEntities);
-      if (!textFits(g, buf)) {
-        std::snprintf(buf, sizeof(buf), "%d/%d", hud.playerRank,
+      // Rank, under the gauge (same size as the score). On top with
+      // bounties still out, the line says what is left to do instead, in
+      // the bounty holders' yellow and blinking (1 s period); once they are
+      // all dead (the grace before LAUNCH) the rank is back, blinking
+      const bool onTop = hud.state == sim::GameState::PLAYING &&
+                         hud.playerAlive && hud.playerRank == 1;
+      const bool hunting = onTop && hud.bountyCount > 0;
+      const bool cleared = onTop && hud.bountyCount == 0;
+      g2::Color rankColor = HUD_TEXT;
+      if (hunting) {
+        if (hud.bountyCount == 1) {
+          std::snprintf(buf, sizeof(buf), "KILL THE BOUNTY");
+        } else {
+          std::snprintf(buf, sizeof(buf), "KILL %d BOUNTIES", hud.bountyCount);
+        }
+        if (!textFits(g, buf)) {
+          std::snprintf(buf, sizeof(buf), "BOUNTY x%d", hud.bountyCount);
+        }
+        rankColor = BOUNTY_TEXT;
+      } else {
+        std::snprintf(buf, sizeof(buf), "RANK %d / %d", hud.playerRank,
                       hud.aliveEntities);
+        if (!textFits(g, buf)) {
+          std::snprintf(buf, sizeof(buf), "%d/%d", hud.playerRank,
+                        hud.aliveEntities);
+        }
+        if (cleared) rankColor = g2::makeColor(255, 230, 120);
       }
-      {
+      if (!(hunting || cleared) || blinkOn) {
         int ry = gy + gh + ui(12, 4);
         int sh = ui_.fontMult;
         g.setTextColor(HUD_SHADOW);
         g.drawString(gx + sh, ry + sh, buf);
-        g.setTextColor(hud.playerRank == 1 ? g2::makeColor(255, 230, 120)
-                                           : HUD_TEXT);
+        g.setTextColor(rankColor);
         g.drawString(gx, ry, buf);
       }
 

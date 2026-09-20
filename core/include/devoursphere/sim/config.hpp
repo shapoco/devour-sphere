@@ -132,7 +132,9 @@ constexpr int PLAYER_MERCY_TICKS = TICK_RATE / 10;
 // bullets pass through the player. The sidestep is DODGE_SPEED_MUL times the
 // cruising speed, so it scales with the body like everything else.
 constexpr int DODGE_TICKS = TICK_RATE * 3 / 10;  // 0.3 s
-constexpr int DODGE_COOLDOWN_TICKS = 3 * TICK_RATE;
+// The next dodge is allowed 0.3 s after the roll ends (the cooldown counts
+// from the press). 2.0: it was 3 s, useless in a dogfight with a giant
+constexpr int DODGE_COOLDOWN_TICKS = DODGE_TICKS + TICK_RATE * 3 / 10;
 constexpr int32_t DODGE_SPEED_MUL = 4;
 // Critical hit: one hit in CRIT_CHANCE_DEN knocks a fragment of about
 // size / CRIT_FRACTION_DIV out of the body instead of taking health. The

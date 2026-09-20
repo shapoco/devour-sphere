@@ -119,6 +119,8 @@ struct HudState {
   int stateTimer = 0;
   int sphereLevel = 1, spheresCleared = 0;
   int playerRank = 1, aliveEntities = 1;
+  int bountyCount = 0;  // enemies alive with a bounty (the ones to kill)
+  bool playerAlive = true;
   int selectedWeapon = 0, playerWeapon = 0;
   int cores = 0;
   int upgradeLevel[sim::UPGRADE_KINDS] = {};
