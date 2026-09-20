@@ -15,8 +15,8 @@ build/
 # Python
 __pycache__/
 
-# Site assets (the general *.png rule is for scratch renders)
-!docs/play/*.png
+# Site assets under docs/ (the general *.png rule is for scratch renders)
+!docs/**/*.png
 
 # Release outputs
 releases/
