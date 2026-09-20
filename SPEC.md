@@ -57,6 +57,8 @@ ST7789 を 16 ビットモードで帯ごとに駆動する。フレームルー
 
 ```
 SPEC.md              この文書
+README.md            紹介 (英語)
+README.ja.md         紹介 (日本語)
 CMakeLists.txt       ネイティブビルド (コア、テスト、確認用フロントエンド)
 core/                コアプログラム (core/SPEC.md)
 impl/wasm/           WASM 版 (impl/wasm/SPEC.md)

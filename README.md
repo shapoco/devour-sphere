@@ -1,58 +1,82 @@
 # Devour Sphere
 
-サイバー空間の「スフィア」上空で、他のエンティティと戦い、
-フラグメントを喰らって巨大化していく3D シューティングゲームです。
-組み込み機器 (RP2350 / RP2040 / ESP32S3) とブラウザ (WebAssembly) で
-同じコアプログラムが動きます。
+English | [日本語](README.ja.md)
 
-このゲームは組み込み向けグラフィックスライブラリ [ShapoGFX](https://github.com/shapoco/shapo-gfx)
-のデモとして作られたサンプルアプリケーションで、描画 (フレームバッファ不要のスキャンライン 3D、
-線・点プリミティブ、2D 描画とフォント) はすべて ShapoGFX で行っている。
+A 3D shooter played above "the Sphere", a cyberspace world: fight the other
+entities, devour the fragments they drop and grow huge.
+The same core program runs on embedded boards (RP2350 / RP2040 / ESP32S3 /
+ESP32-P4) and in the browser (WebAssembly).
 
-- **遊ぶ:** https://shapoco.github.io/devour-sphere/play/
-- **仕様:** [SPEC.md](SPEC.md), [core/SPEC.md](core/SPEC.md),
+The game is a sample application written to show off [ShapoGFX](https://github.com/shapoco/shapo-gfx),
+a graphics library for embedded systems. All of the drawing goes through it:
+scanline 3D that needs no framebuffer, line and point primitives, 2D drawing
+and fonts.
+
+- **Play:** https://shapoco.github.io/devour-sphere/play/
+- **Specifications (Japanese):** [SPEC.md](SPEC.md), [core/SPEC.md](core/SPEC.md),
   [impl/wasm/SPEC.md](impl/wasm/SPEC.md), [impl/xiamocon/SPEC.md](impl/xiamocon/SPEC.md),
-  [impl/picosystem/SPEC.md](impl/picosystem/SPEC.md)
+  [impl/picosystem/SPEC.md](impl/picosystem/SPEC.md), [impl/m5tab5/SPEC.md](impl/m5tab5/SPEC.md)
 
-## 操作
+## Download
 
-| 操作 | キー | Xiamocon | PicoSystem |
+- **M5Stack Tab5:** a prebuilt firmware can be flashed straight from
+  [M5Burner](https://docs.m5stack.com/en/download) — look for "Devour Sphere"
+  in its ESP32-P4 (Tab5) list.
+- **Other boards:** binaries for Xiamocon (RP2350 / ESP32S3) and PicoSystem are
+  zipped up under [Releases](https://github.com/shapoco/devour-sphere/releases);
+  the README.txt inside says how to flash each one.
+- **Browser:** nothing to download, just follow the Play link above.
+
+## Controls
+
+| Action | Keyboard | Xiamocon | PicoSystem |
 |---|---|---|---|
-| 旋回 | ← → / A D | ← → | ← → |
-| ダッシュ (体力を消費) | ↑ / W | ↑ | ↑ |
-| ブレーキ (旋回が速くなる) | ↓ / S | ↓ | ↓ |
-| 攻撃・決定 | スペース / J L | A / Y | A / Y |
-| 緊急回避 (0.3 秒無敵のバレルロール、3 秒に 1 回) | I K / C V B N M | B | B |
-| ポーズ / 再開 | Esc / P | X | X |
-| ミュート切り替え | タイトル / ポーズ画面で ↓ | 同左 | 同左 |
-| 計測表示の切り替え | (なし) | タイトル / ポーズ画面で ↑、または FUNC | タイトル / ポーズ画面で ↑ |
+| Turn | ← → / A D | ← → | ← → |
+| Dash (costs health) | ↑ / W | ↑ | ↑ |
+| Brake (turns faster) | ↓ / S | ↓ | ↓ |
+| Fire / confirm | Space / J L | A / Y | A / Y |
+| Emergency dodge (0.3 s invincible barrel roll, once every 3 s) | I K / C V B N M | B | B |
+| Pause / resume | Esc / P | X | X |
+| Toggle mute | ↓ on the title or pause screen | same | same |
+| Toggle the timing overlay | (none) | ↑ on the title or pause screen, or FUNC | ↑ on the title or pause screen |
 
-ブラウザ版はゲームパッドとタッチ操作 (仮想パッド) にも対応。
+The browser version also takes a gamepad and touch input (an on-screen pad).
+The M5Tab5 version is played with that same landscape pad layout: a direction
+disc in the bottom left, A in the bottom right, the dodge button above and left
+of it, and pause in the top right corner.
 
-## ビルド
+## Build
 
 ```sh
 git submodule update --init
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build && ctest --test-dir build
-make -C impl/wasm        # WASM 版 (Emscripten)
+make -C impl/wasm        # the WASM version (Emscripten)
 ./launch_web_server.sh   # http://localhost:52980/play/
 ```
 
-実機 ([Xiamocon](https://github.com/shapoco/xiamocon) / XIAO RP2350・ESP32S3) 版:
+For [Xiamocon](https://github.com/shapoco/xiamocon) (a XIAO RP2350 / ESP32S3 handheld):
 
 ```sh
 source ~/path/to/xiamocon/setup.shrc
 cd impl/xiamocon/devoursphere
-xmc build                      # 両方のターゲット
+xmc build                      # both targets
 ```
 
-PicoSystem (RP2040) 版 (pico-sdk のみ):
+For PicoSystem (RP2040), with pico-sdk alone:
 
 ```sh
 cd impl/picosystem
 cmake -S . -B build -DPICO_SDK_PATH=~/path/to/pico-sdk
-cmake --build build -j         # build/devoursphere.uf2 (効果音のパックに ffmpeg と python3 が要る)
+cmake --build build -j         # build/devoursphere.uf2 (packing the sound effects needs ffmpeg and python3)
+```
+
+For [M5Stack Tab5](https://docs.m5stack.com/en/core/Tab5) (ESP32-P4), with ESP-IDF v5.5.x:
+
+```sh
+cd impl/m5tab5/devoursphere
+./build.sh                     # DS_IDF_PATH defaults to ${HOME}/esp/5.5
+./run.sh /dev/ttyACM0          # build and flash (the port may be omitted)
 ```
 
 ## License
