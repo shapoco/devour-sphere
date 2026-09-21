@@ -9,24 +9,31 @@
 //
 //     x = screen right,  y = screen down,  z = INTO the screen
 //
-// which is right handed (x cross y = z). Gravity on a device held upright
-// facing the player is +y. The sensor's own axes are mapped onto these by
-// ACC_TO_SCREEN in attitude.cpp, which is a property of how the BMI270 is
-// mounted in this case and has to be checked on the hardware -- M5Unified
+// which is right handed (x cross y = z). The sensor's own axes are mapped
+// onto these in attitude.cpp, which is a property of how the BMI270 is
+// mounted in this case and had to be found on the hardware -- M5Unified
 // hands over the raw sensor axes for this board.
+//
+// **The vector this carries points AWAY from the floor, not at it.** An
+// accelerometer at rest measures the force holding the device up, so it
+// reads +1 G along whichever axis points at the sky; that is why the name
+// here is accel and not gravity, and why the boot screen's needle is
+// labelled UP. Nothing downstream cares -- the controls come from a cross
+// product of two of these, and negating both leaves it unchanged -- but a
+// reader who assumes it points at the floor will "fix" a sign that is not
+// broken. It was checked as a whole on hardware; see attitude.cpp.
 //
 // --- The two halves ---------------------------------------------------------
 //
 // At start up the screen is still portrait and the player is asked to tip
-// the stick onto its side. Which side is read from gravity: it comes to lie
-// along the screen's x axis, and its sign says whether the stick's top
-// ended up on the player's right or left, which is the difference between
-// M5GFX's two landscape rotations. Lying flat (gravity along z) says
-// nothing, so that is when the prompt stays up. Once the stick has been
-// still for a moment, that attitude is frozen as the NEUTRAL one and the
-// game starts.
+// the stick onto its side. Which side is read from the reading: it comes to
+// lie along the screen's x axis, and its sign says which of M5GFX's two
+// landscape rotations the picture wants. Lying flat (the reading along z)
+// says nothing, so that is when the prompt stays up. Once the stick has
+// been still for a moment, that attitude is frozen as the NEUTRAL one and
+// the game starts.
 //
-// In play, the keys come from how far the current gravity has moved away
+// In play, the keys come from how far the current reading has moved away
 // from the neutral one. Taking the cross product of the two gives a vector
 // along the axis the device was turned about, whose length is the sine of
 // the angle -- so one cross product yields both axes at once:
@@ -53,8 +60,10 @@ struct Vec3f {
 
 class Attitude {
  public:
-  // Which way round the stick was tipped, from gravity along the screen's
-  // x axis. UNKNOWN while it is too near flat (or still upright) to tell.
+  // Which way round the stick was tipped, from the reading along the
+  // screen's x axis. UNKNOWN while it is too near flat (or still upright)
+  // to tell. The two names are labels for the two landscape rotations, not
+  // a claim about which way the player's hand went: see attitude.cpp.
   enum class Side : uint8_t { UNKNOWN, TOP_LEFT, TOP_RIGHT };
 
   // After M5.begin(). False if there is no IMU, in which case nothing else
@@ -66,7 +75,9 @@ class Attitude {
   // expressed in seconds so that the frame rate cannot change the feel.
   void sample(float dtSec);
 
-  Vec3f gravity() const { return g_; }
+  // The smoothed accelerometer reading in screen axes. At rest it points
+  // away from the floor (see the note above).
+  Vec3f accel() const { return a_; }
   Side side() const;
   // |a| - 1 G, low-passed: 0 when the device is merely being held.
   float motion() const { return motion_; }
@@ -85,23 +96,29 @@ class Attitude {
   // True once per shake, for the pause toggle. Reading it clears it.
   bool takeShake();
 
-  // The neutral attitude, for the boot screen's readout.
-  Vec3f neutral() const { return ref_; }
-
  private:
   // --- Thresholds -----------------------------------------------------------
   // Tipped this far from neutral, a direction key goes down; it comes back
   // up below the second angle. Compared as sines, which is what the cross
   // product gives directly.
   //
-  // 7 degrees, halved from the 15 this started at: on the device 15 asked
-  // for a deliberate lean of the whole forearm, and the screen had turned
-  // noticeably away from the player by the time the key went down. The
-  // wrist alone covers 7 either way from wherever it is resting.
-  static constexpr float TILT_ON = 0.1219f;   // sin 7 deg
-  static constexpr float TILT_OFF = 0.0872f;  // sin 5 deg
-  // Gravity has to lie this far along the screen's x axis before the boot
-  // screen believes the stick has been tipped onto a side.
+  // Both started at 15 degrees, which on the device asked for a deliberate
+  // lean of the whole forearm and had turned the screen away from the
+  // player by the time a key went down. The two axes then wanted different
+  // answers, which is why they are separate constants now:
+  //
+  //   turning   5 degrees. It is the control that is held down for
+  //             seconds at a time and worked constantly, and the wrist
+  //             rolls far more easily than it pitches.
+  //   dash /    7 degrees. Tipping the far edge away also tips the screen
+  //   brake     out of view, so this one wants to cost something -- and
+  //             dash and brake are taps against a held turn, not a pose.
+  static constexpr float TURN_ON = 0.0872f;    // sin 5 deg
+  static constexpr float TURN_OFF = 0.0610f;   // sin 3.5 deg
+  static constexpr float PITCH_ON = 0.1219f;   // sin 7 deg
+  static constexpr float PITCH_OFF = 0.0872f;  // sin 5 deg
+  // The reading has to lie this far along the screen's x axis before the
+  // boot screen believes the stick has been tipped onto a side.
   static constexpr float SIDE_MIN = 0.342f;  // sin 20 deg
   // The accelerometer, smoothed. Long enough to swallow the hand's tremor
   // and the knocks of play, short enough not to lag a deliberate tip.
@@ -122,7 +139,7 @@ class Attitude {
   // that has settled somewhere else over a game.
   static constexpr float DRIFT_RAD_PER_SEC = 0.0175f;  // 1 deg/s
 
-  Vec3f g_ = {0, 1, 0};    // gravity, screen axes, filtered
+  Vec3f a_ = {0, 1, 0};    // the accelerometer, screen axes, filtered
   Vec3f ref_ = {0, 1, 0};  // the neutral attitude
   float motion_ = 0;       // |a| - 1 G, filtered
   float settledSec_ = 0;   // how long it has been still

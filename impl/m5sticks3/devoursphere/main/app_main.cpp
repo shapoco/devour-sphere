@@ -126,10 +126,11 @@ void keepHighScore() {
 // display is used as a display rather than as somewhere to push bands.
 //
 // It asks for the one thing the software cannot work out for itself: which
-// way round the stick is going to be held. It also shows the gravity the
-// axis mapping in attitude.cpp produces, as a line from the middle of the
-// screen, because that mapping is the first thing to check on a new board
-// and this makes it a glance rather than a session with the serial log.
+// way round the stick is going to be held. It also shows the accelerometer
+// the axis mapping in attitude.cpp produces, as a needle from the middle of
+// the screen, because that mapping is the first thing to check on a new
+// board and this makes it a glance rather than a session with the serial
+// log.
 void drawBootScreen(ds::Attitude::Side side, bool still) {
   auto &d = M5.Display;
   const int w = d.width(), h = d.height();
@@ -151,22 +152,23 @@ void drawBootScreen(ds::Attitude::Side side, bool still) {
     d.drawString("READY", w / 2, h / 2 - 40);
   }
 
-  // Gravity, as a labelled needle from the centre: with the axis mapping
-  // right the DOWN end points at the floor however the stick is held, and
-  // it is the label rather than the needle that says so -- a needle alone
-  // is read as an attitude indicator, which turns the wrong way round on
-  // purpose (the picture turns with the device, gravity does not).
-  const ds::Vec3f g = g_att.gravity();
+  // The accelerometer, as a labelled needle from the centre. At rest it
+  // reads the force holding the stick up, so with the axis mapping right
+  // the UP end points AWAY from the floor however the stick is held -- and
+  // it is the label rather than the needle that says so, because a needle
+  // alone is read as an attitude indicator, which turns the other way round
+  // on purpose (the picture turns with the device, the world does not).
+  const ds::Vec3f g = g_att.accel();
   const int cx = w / 2, cy = h / 2 + 20, r = 30;
   d.drawCircle(cx, cy, r, 0x4208);
   const int ex = cx + (int)(g.x * r), ey = cy + (int)(g.y * r);
   d.drawLine(cx, cy, ex, ey, 0x07E0);
   d.fillCircle(ex, ey, 4, 0x07E0);
   d.setTextColor(0x07E0, 0x0000);
-  d.drawString("DOWN", cx + (int)(g.x * (r + 14)), cy + (int)(g.y * (r + 14)));
+  d.drawString("UP", cx + (int)(g.x * (r + 14)), cy + (int)(g.y * (r + 14)));
   d.setTextColor(0xFFFF, 0x0000);
-  d.drawString("THIS END", w / 2, cy + r + 32);
-  d.drawString("AT THE FLOOR", w / 2, cy + r + 44);
+  d.drawString("UP END AWAY", w / 2, cy + r + 32);
+  d.drawString("FROM THE FLOOR", w / 2, cy + r + 44);
 
   // ... and the numbers behind it, for the serial-less case
   char line[32];

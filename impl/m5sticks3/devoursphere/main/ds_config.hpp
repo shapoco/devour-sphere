@@ -89,9 +89,12 @@ constexpr int MAX_CATCHUP = 4;
 // magnification * master^2 * channel^2, so loudness goes as the square of
 // this number and its default of 64 is not a midpoint. This is a 1 W
 // speaker a hand's width from the player rather than the Tab5's
-// room-filling one. 90 is twice the default's loudness and is what sounded
-// right on the device (2026-09-21).
-constexpr uint8_t SE_MASTER_VOLUME = 90;
+// room-filling one, but it still wants driving: 64 was quiet on the device
+// and 90 (twice the loudness) was still short, so 120 -- 3.5x the default's
+// loudness and not quite half the scale. The mixer saturates at the 16-bit
+// limit rather than wrapping, so the failure mode above this is clipped
+// peaks, not tearing (2026-09-21).
+constexpr uint8_t SE_MASTER_VOLUME = 120;
 
 }  // namespace ds
 
