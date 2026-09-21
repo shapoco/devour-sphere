@@ -14,6 +14,7 @@
 #include <new>
 
 #include "devoursphere/sim/game.hpp"
+#include "ds_config.hpp"
 #include "devoursphere/sim/high_score_record.hpp"
 
 namespace ds {
@@ -28,13 +29,31 @@ TaskHandle_t g_task1 = nullptr;
 }  // namespace
 
 devoursphere::sim::Game *allocGame() {
-  // PSRAM, as on the other ESP32S3 board: 84 KB of internal SRAM is worth
-  // more to the arena and the band buffers than to a structure that is read
-  // once a tick, by the core that is not rasterizing. Placement new because
-  // heap_caps_malloc does not run constructors and Game has plenty.
-  void *p = heap_caps_malloc(sizeof(devoursphere::sim::Game), MALLOC_CAP_SPIRAM);
+  // Internal SRAM if it fits with room to spare, PSRAM otherwise. Call this
+  // AFTER the band buffers, so the fussy allocation has already had its
+  // pick and these figures are what is really left.
+  //
+  // Why it is worth the SRAM: the simulation is this board's critical path
+  // (see DS_GAME_IN_SRAM in ds_config.hpp). Why it is guarded rather than
+  // just asked for: the internal heap running dry here does not fail
+  // loudly. It fails as a black screen or a core1 that never runs.
+  //
+  // Placement new because heap_caps_malloc does not run constructors and
+  // Game has plenty.
+  constexpr size_t BYTES = sizeof(devoursphere::sim::Game);
+  void *p = nullptr;
+#if DS_GAME_IN_SRAM
+  const size_t freeInternal = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+  const size_t block = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
+  if (freeInternal >= BYTES + SRAM_RESERVE && block >= BYTES + 8 * 1024) {
+    p = heap_caps_malloc(BYTES, MALLOC_CAP_INTERNAL);
+  }
+  trace(p ? "Game in internal SRAM, bytes" : "Game to PSRAM, internal free",
+        p ? (uint32_t)BYTES : (uint32_t)freeInternal);
+#endif
+  if (!p) p = heap_caps_malloc(BYTES, MALLOC_CAP_SPIRAM);
   if (!p) {
-    trace("Game did not fit in PSRAM, bytes", sizeof(devoursphere::sim::Game));
+    trace("Game fitted nowhere, bytes", BYTES);
     return nullptr;
   }
   return new (p) devoursphere::sim::Game();

@@ -291,8 +291,25 @@ void setup() {
   M5.Display.fillScreen(0x0000);
   ds::trace("rotation", (uint32_t)rotation);
 
+  // The band buffers first, before anything else large is taken out of the
+  // internal heap. They are the fussiest allocation on the board -- DMA
+  // capable, internal, and each one a single contiguous 21.6 KB block --
+  // and the simulation behind them can go to PSRAM if it has to, which
+  // they cannot. Doing it in this order also means allocGame() decides
+  // from what is really left rather than from a prediction.
+  if (!g_panel.init(&M5.Display)) {
+    ds::trace("display pipeline failed", 0);
+    return;  // loop() bails out
+  }
+  // Both cores are otherwise idle here, so this is the panel write on its
+  // own -- the one cost of a frame that does not depend on what is in it.
+  g_prof.xferUs = g_panel.measureTransfer();
+  ds::trace("panel write us", g_prof.xferUs);
+  ds::trace("internal free after bands", ds::freeInternalRam());
+  ds::trace("internal largest block", ds::largestInternalBlock());
+
   g_game = ds::allocGame();
-  if (!g_game) return;  // loop() bails out
+  if (!g_game) return;
   g_game->reset(ds::randomSeed());
   g_store.load(*g_game);  // before core1, which has no business in the NVS
 
@@ -310,16 +327,6 @@ void setup() {
   });
 
   audio::init(audio::Config{-1, audio::Pacing::DMA_TIMER, true});
-
-  if (!g_panel.init(&M5.Display)) {
-    ds::trace("display pipeline failed", 0);
-    g_game = nullptr;
-    return;
-  }
-  // Both cores are otherwise idle here, so this is the panel write on its
-  // own -- the one cost of a frame that does not depend on what is in it.
-  g_prof.xferUs = g_panel.measureTransfer();
-  ds::trace("panel write us", g_prof.xferUs);
 
   // Start owing one tick, so the first loop has something to do.
   g_lastUs = (uint64_t)esp_timer_get_time();

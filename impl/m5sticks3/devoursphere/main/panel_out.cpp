@@ -7,6 +7,8 @@
 #include <esp_heap_caps.h>
 #include <esp_timer.h>
 
+#include <cstring>
+
 #include "ds_platform.hpp"
 
 namespace ds {
@@ -24,6 +26,9 @@ bool PanelOut::init(m5gfx::M5GFX *gfx) {
             largestInternalBlock());
       return false;
     }
+    // measureTransfer() pushes these before anything has drawn into them,
+    // so they start black rather than as whatever was in the heap.
+    memset(buf_[i], 0, BAND_BYTES);
   }
   // Held for the life of the program: see panel_out.hpp. This also takes
   // the bus lock once instead of twice a band.

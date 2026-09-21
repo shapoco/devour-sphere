@@ -84,6 +84,25 @@ constexpr int MAX_CATCHUP = 4;
 #define DS_SIM_ON_CORE1 1
 #endif
 
+// Where the simulation lives. 1 puts it in the internal SRAM when there is
+// room left after the band buffers, 0 always in PSRAM.
+//
+// It is the board's critical path, not the drawing: measured at 39.8 fps a
+// frame was core0's 16.94 ms plus 9.40 ms of waiting for core1, whose two
+// ticks out of PSRAM cost 11.2 ms each. Set this to 0 to get that back for
+// comparison -- the overlay's TCK line is the number that moves.
+#ifndef DS_GAME_IN_SRAM
+#define DS_GAME_IN_SRAM 1
+#endif
+
+// What the internal heap must still hold after the simulation is taken out
+// of it: the simulation task's 8 KB stack, the speaker's task, the SPI
+// driver's buffers and whatever M5Unified allocates later. Generous on
+// purpose -- running the internal heap dry on this chip does not fail
+// loudly, it fails as a black screen or a core1 that never runs (see
+// impl/xiamocon/SPEC.md, which is where that was learned).
+constexpr size_t SRAM_RESERVE = 64 * 1024;
+
 // --- Sound ------------------------------------------------------------------
 // M5Unified's master volume, which its mixer SQUARES: a sample's gain is
 // magnification * master^2 * channel^2, so loudness goes as the square of
@@ -94,7 +113,16 @@ constexpr int MAX_CATCHUP = 4;
 // loudness and not quite half the scale. The mixer saturates at the 16-bit
 // limit rather than wrapping, so the failure mode above this is clipped
 // peaks, not tearing (2026-09-21).
+//
+// The ceiling is not a matter of taste: M5 asks for at most 75% of the
+// scale on battery, because a louder speaker can pull the rail down far
+// enough to reboot the board. Raise SE_MASTER_VOLUME by ear if you like,
+// but not past this.
+constexpr uint8_t SE_VOLUME_LIMIT = 255 * 3 / 4;  // 191
 constexpr uint8_t SE_MASTER_VOLUME = 120;
+static_assert(SE_MASTER_VOLUME <= SE_VOLUME_LIMIT,
+              "M5 asks for at most 75% volume on battery: louder can reboot "
+              "the board");
 
 }  // namespace ds
 
