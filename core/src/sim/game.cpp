@@ -444,7 +444,7 @@ void Game::checkTransitions() {
             respawnPlayer();
           }
         }
-      } else if (sphereTicks_ >= SPHERE_TIME_LIMIT_TICKS) {
+      } else if (sphereTicks_ >= sphereTimeLimit()) {
         // Time up: the player breaks apart like a kill, and the wreck is
         // watched like one; then the sphere starts over (or game over)
         timeUp_ = true;
@@ -457,10 +457,13 @@ void Game::checkTransitions() {
         // for a moment: the kill has been seen and heard
         events_ |= Event::SPHERE_CLEARED;
         // The sphere's own score, then the clear bonus: a base plus a share
-        // of the time bonus for the time still left
+        // of the time bonus for the time still left. The grace the early
+        // spheres are given does not pay (see sphereBonusGraceTicks), which
+        // leaves every sphere the same four minutes' worth of bonus.
         lastSphereScoreQ8_ = scoreQ8_ - sphereScoreStartQ8_;
         lastClearTicks_ = sphereTicks_;
-        int64_t left = sphereTimeLeft();
+        int64_t left = sphereTimeLeft() - sphereBonusGraceTicks(sphereLevel_);
+        if (left < 0) left = 0;
         int64_t bonus = (int64_t)SCORE_CLEAR_BASE * 256 +
                         (int64_t)SCORE_CLEAR_TIME_BONUS * 256 * left /
                             SPHERE_TIME_LIMIT_TICKS;

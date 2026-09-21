@@ -393,7 +393,7 @@ static void testGameplay() {
   CHECK(q.score() >= 2000);  // clear bonus on sphere 1
   CHECK(q.clearBonus() >= (uint32_t)SCORE_CLEAR_BASE);
   CHECK(q.clearBonus() <= (uint32_t)(SCORE_CLEAR_BASE + SCORE_CLEAR_TIME_BONUS));
-  CHECK(q.clearTicks() > 0 && q.clearTicks() <= SPHERE_TIME_LIMIT_TICKS);
+  CHECK(q.clearTicks() > 0 && q.clearTicks() <= sphereTimeLimitTicks(1));
   CHECK(q.player().size < 64);
   CHECK(q.playerDisplayScaleLog2() > 0);
   checkInvariants(q);
@@ -1376,6 +1376,40 @@ static void testHighScoreRecord() {
 
 static void testTimeLimitAndScore() {
   {
+    // The first two spheres run long, but the extra time pays nothing:
+    // what is left above the grace is what the bonus is measured on
+    CHECK(sphereTimeLimitTicks(1) == 6 * 60 * TICK_RATE);
+    CHECK(sphereTimeLimitTicks(2) == 5 * 60 * TICK_RATE);
+    CHECK(sphereTimeLimitTicks(3) == SPHERE_TIME_LIMIT_TICKS);
+    CHECK(sphereTimeLimitTicks(9) == SPHERE_TIME_LIMIT_TICKS);
+    Game g;
+    g.reset(99);
+    enterPlay(g);
+    CHECK(g.sphereTimeLimit() == 6 * 60 * TICK_RATE);
+    Entity &p = g.entities[g.playerIndex()];
+    // Burn everything but the grace, then clear the sphere: the time bonus
+    // is exhausted and only the base is paid
+    while (g.sphereTimeLeft() > sphereBonusGraceTicks(1)) {
+      p.invincible = 2;
+      g.tick(0);
+    }
+    CHECK(g.state() == GameState::PLAYING && p.alive);
+    for (int i = 0; i < 12; i++)
+      p.fragments[0].sizeLog2 = 18, p.size = 1u << 18;
+    p.hpMax = HP_PER_SIZE * (int32_t)p.size;
+    p.hp = p.hpMax;
+    for (int i = 0; i < MAX_ENTITIES; i++) {
+      if (g.entities[i].bounty) g.entities[i].alive = false;
+    }
+    for (int i = 0; i < 4 * TICK_RATE + 5 && g.state() == GameState::PLAYING;
+         i++) {
+      p.invincible = 2;
+      g.tick(0);
+    }
+    CHECK(g.state() == GameState::LAUNCH);
+    CHECK(g.clearBonus() == (uint32_t)SCORE_CLEAR_BASE);  // no time left over
+  }
+  {
     Game g;
     g.reset(5);
     g.debugStartSphere(1, 0);
@@ -1420,13 +1454,16 @@ static void testTimeLimitAndScore() {
   int alarms = 0;
   bool timeUpEvent = false;
   const int cores = g.cores();
+  // Sphere 2 still gets a minute of grace on top of the standard limit
+  const int limit = g.sphereTimeLimit();
+  CHECK(limit == 5 * 60 * TICK_RATE);
   // Sit still and invulnerable until the time runs out
-  for (int t = 0; t < SPHERE_TIME_LIMIT_TICKS + 5 && p.alive; t++) {
+  for (int t = 0; t < limit + 5 && p.alive; t++) {
     p.invincible = 2;
     g.tick(Button::DOWN);
     if (g.sounds() & (1u << (int)SoundKind::TIME_ALARM)) alarms++;
     if (g.events() & Event::SPHERE_TIME_UP) timeUpEvent = true;
-    if (t == SPHERE_TIME_LIMIT_TICKS - TIME_ALARM_TICKS - 2) {
+    if (t == limit - TIME_ALARM_TICKS - 2) {
       CHECK(g.sphereTimeLeft() == TIME_ALARM_TICKS + 1);
     }
   }
@@ -1434,13 +1471,13 @@ static void testTimeLimitAndScore() {
   CHECK(g.timeUp());
   CHECK(timeUpEvent);
   CHECK(alarms == TIME_ALARM_TICKS / TICK_RATE);
-  CHECK(g.sphereTicks() == SPHERE_TIME_LIMIT_TICKS);
+  CHECK(g.sphereTicks() == limit);
   CHECK(g.state() == GameState::PLAYING);
   // The wreck is watched with the clock stopped (the delay starts on the
   // tick after the death), then the sphere restarts
   for (int t = 0; t < RESPAWN_DELAY_TICKS; t++) g.tick(0);
   CHECK(g.state() == GameState::PLAYING);
-  CHECK(g.sphereTicks() == SPHERE_TIME_LIMIT_TICKS);
+  CHECK(g.sphereTicks() == limit);
   g.tick(0);
   CHECK(g.state() == GameState::ARRIVE);
   CHECK(!g.timeUp());
@@ -1457,7 +1494,7 @@ static void testTimeLimitAndScore() {
   CHECK(g.player().invincible > 0);
   checkInvariants(g);
   // No core left: the second time-up is the end
-  for (int t = 0; t < SPHERE_TIME_LIMIT_TICKS + 5 && p.alive; t++) {
+  for (int t = 0; t < limit + 5 && p.alive; t++) {
     p.invincible = 2;
     g.tick(Button::DOWN);
   }

@@ -155,8 +155,10 @@ class Game {
   // Ticks played on this sphere (only while PLAYING and alive), and what is
   // left of the time limit
   int sphereTicks() const { return sphereTicks_; }
+  // The time limit of the current sphere (longer on the first two)
+  int sphereTimeLimit() const { return sphereTimeLimitTicks(sphereLevel_); }
   int sphereTimeLeft() const {
-    int left = SPHERE_TIME_LIMIT_TICKS - sphereTicks_;
+    int left = sphereTimeLimit() - sphereTicks_;
     return left < 0 ? 0 : left;
   }
   // The time ran out: the wreck is being watched before the sphere restarts

@@ -16,8 +16,8 @@ namespace devoursphere::sim {
 // structure); a platform that stores the high score keeps the major with it
 // and drops the score when the major differs. Anything else bumps the minor.
 constexpr int VERSION_MAJOR = 3;
-constexpr int VERSION_MINOR = 0;
-constexpr const char *VERSION_STRING = "v3.0";
+constexpr int VERSION_MINOR = 1;
+constexpr const char *VERSION_STRING = "v3.1";
 
 constexpr int32_t FU_UNITS = 256;  // units per fragment unit (see FU below)
 
@@ -249,7 +249,32 @@ constexpr int FOOD_MAX_SIZE_LOG2 = 3;
 // it blinks and the sim asks for the alarm once a second. At zero the player
 // breaks apart as if shot down and, with a spare core, the same sphere
 // starts over from the arrival (see Game::restartSphereAfterTimeUp)
+// The first two spheres are where a newcomer learns the game, so they run
+// longer than the standard four minutes: 6 min on sphere 1, 5 min on
+// sphere 2, 4 min from sphere 3 on.
 constexpr int SPHERE_TIME_LIMIT_TICKS = 4 * 60 * TICK_RATE;
+constexpr int sphereTimeLimitTicks(int level) {
+  return level <= 1   ? 6 * 60 * TICK_RATE
+         : level == 2 ? 5 * 60 * TICK_RATE
+                      : SPHERE_TIME_LIMIT_TICKS;
+}
+// The extra time handed to those spheres is a grace, not a head start on
+// the score: the clear bonus counts only what is left above it (2 min on
+// sphere 1, 1 min on sphere 2, nothing after that), so every sphere still
+// pays the full bonus for a clear with four minutes to spare and nothing
+// for one that used all the time it was given.
+constexpr int sphereBonusGraceTicks(int level) {
+  return level <= 1 ? 2 * 60 * TICK_RATE : level == 2 ? 60 * TICK_RATE : 0;
+}
+static_assert(sphereTimeLimitTicks(1) - sphereBonusGraceTicks(1) ==
+                  SPHERE_TIME_LIMIT_TICKS,
+              "the bonus window must be the same on every sphere");
+static_assert(sphereTimeLimitTicks(2) - sphereBonusGraceTicks(2) ==
+                  SPHERE_TIME_LIMIT_TICKS,
+              "the bonus window must be the same on every sphere");
+static_assert(sphereTimeLimitTicks(3) - sphereBonusGraceTicks(3) ==
+                  SPHERE_TIME_LIMIT_TICKS,
+              "the bonus window must be the same on every sphere");
 constexpr int TIME_WARN_TICKS = 60 * TICK_RATE;
 constexpr int TIME_ALARM_TICKS = 30 * TICK_RATE;
 
