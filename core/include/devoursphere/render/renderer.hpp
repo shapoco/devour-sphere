@@ -260,6 +260,10 @@ class Renderer {
   static constexpr int MAX_LINES2D = DEVOURSPHERE_MAX_LINES2D;
   static constexpr int MAX_POINTS2D = DEVOURSPHERE_MAX_POINTS2D;
   static constexpr int MAX_SPHERE_LEVEL = 7;
+  // How many levels the mesh may grade over between the point below the
+  // camera and the horizon
+  static constexpr int SPHERE_LEVEL_STEPS = 5;
+  static constexpr float SPHERE_TARGET_PX_INIT = 24.0f;
   static constexpr int MAX_GAUGES = 64;
   static constexpr int MAX_MARKERS = 40;
   static constexpr int MAX_ENEMY_MARKERS = 32;  // the rest is kept for upgrades
@@ -387,23 +391,26 @@ class Renderer {
   float cosHorizon_ = 0;
   float horizonAngle_ = 0;
   float cullCos_[MAX_SPHERE_LEVEL + 1] = {};
-  int sphereShift_ = 0;      // level reduction used for the current frame
-  int sphereWantShift_ = 0;  // ... and what it would be without the flight
-                             // floor, which is what is kept between frames
-  // How wide the fine regions around the player are, as a multiple of what
-  // the camera's height asks for: the continuous half of the detail
-  // control (the level itself can only move in steps of four times the
-  // line count), steered towards the line budget frame by frame
-  float sphereBand_ = 1;
-  int sphereFloor_ = 0;    // levels the flight floor added last frame
+  // How big a face of the mesh should come out on the screen, in pixels:
+  // the one thing the level of detail is steered by. The line count it
+  // leads to is measured and this is nudged towards the budget (see
+  // buildSphere); everything else about the mesh follows from the camera.
+  // What the mesh is measured from: the camera as it cruises, without the
+  // dash and the brake. Following those would rebuild the mesh every time
+  // the camera dives, and they are the one part of it the player can move
+  // several times a second.
+  float camAltitude_ = 11;    // the eye over the surface, FU
+  float camFocalNominal_ = 1; // px per unit at unit distance
+  float sphereTarget_ = SPHERE_TARGET_PX_INIT;
+  // The finest level in the mesh, kept between frames with a dead zone so
+  // that a camera sitting between two levels does not flip the picture
+  int sphereTop_ = 0;
   int wireBudget_ = 1100;  // lines the mesh may use this frame (the flight
                            // gets the whole array, the surface its share)
-  float camAltitude_ = 11;  // the eye above the surface, FU (the mesh scale,
-                            // without the dash and the brake)
   bool sphereDryRun_ = false;  // count edges instead of emitting them
-  int sphereCount_ = 0;        // edges of the last pass (drives the level)
+  int sphereCount_ = 0;        // edges the last pass walked
+  int wireDrawn_ = 0;          // ... and how many of them it kept
   bool sphereCountValid_ = false;
-  int sphereRelaxWait_ = 0;  // frames before the next try to go finer
   // The player off the surface (LAUNCH / ARRIVE): the sphere is seen from
   // afar, so the mesh keeps a floor of FLIGHT_MIN_LEVEL, the fine regions
   // around the player shrink to nothing, the fade starts at the altitude,
@@ -437,13 +444,19 @@ class Renderer {
   struct CameraQ {
     sim::Vec3 right, up, fwd;  // view basis
     sim::Vec3 unit;            // sphere center -> eye (camUnit_)
-    sim::Vec3 player;          // sphere center -> player (for the LOD)
+    sim::Vec3 player;          // sphere center -> player (presence auras)
     sim::Vec3 eye;
     int32_t focal16, cx16, cy16;
     int32_t cosHorizon;
     int32_t cullCos[MAX_SPHERE_LEVEL + 1];
-    int32_t cosLevel6[MAX_SPHERE_LEVEL + 1];  // per traversal (sphereConstants)
-    int32_t cosLevel5[MAX_SPHERE_LEVEL + 1];
+    // The four sides of the screen as planes through the eye: a face whose
+    // whole extent is outside one of them is off screen (sphereConstants)
+    sim::Vec3 cullN[4];
+    int32_t cullPlane[4][MAX_SPHERE_LEVEL + 1];
+    // The mesh (sphereConstants): the coarsest level drawn, and for a face
+    // of each level the cosines at which it wants one more level than that
+    int levelMin;
+    int32_t cosStep[MAX_SPHERE_LEVEL + 1][SPHERE_LEVEL_STEPS];
   };
   CameraQ camQ_ = {};
   bool projectQ(const sim::Vec3 &pos, int32_t &sx, int32_t &sy) const;
@@ -665,8 +678,7 @@ class Renderer {
 
   // sphere.cpp
   void buildSphere();
-  int countSphereLines(int shift, const int *order);
-  void fitSphereBand(int shift, const int *order, int limit);
+  int countSphereLines(const int *order);
   // Subdivide one face and draw the lines separating its children; returns
   // how deeply the mesh ended up subdivided along the face's own edges. See
   // sphere.cpp for why that is all a face draws.

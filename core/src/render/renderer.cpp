@@ -894,6 +894,11 @@ void Renderer::updateCamera(float dt) {
   viewProj_ = proj_ * view_;
   g3d_.setPerspectiveProjection(camFov_, aspect, Z_NEAR, Z_FAR);
   focalPx_ = (h_ * 0.5f) / std::tan(camFov_ * 0.5f);
+  // ... and the same without what the dash and the brake do to the lens,
+  // together with the height the camera cruises at: the sphere's mesh is
+  // measured from those (sphere.cpp)
+  camFocalNominal_ = (h_ * 0.5f) / std::tan(camLens_ * 0.5f);
+  camAltitude_ = camNominal_ * dolly + (float)sim::ALTITUDE / FU + altExcess_;
   viewDir_ = dir;
 
   sphereCenter_ = toLocal({0, 0, 0});
@@ -911,11 +916,6 @@ void Renderer::updateCamera(float dt) {
   vec3f rel = eye - sphereCenter_;
   float d = g3::length(rel);
   camUnit_ = rel * (1.0f / d);
-  // The height the camera watches from, without the dash and the brake:
-  // the scale the sphere's mesh is drawn at (sphere.cpp). It is the real
-  // height while the player cruises; taking it from the nominal framing
-  // instead of from the eye keeps a dash from rebuilding the mesh.
-  camAltitude_ = camNominal_ * dolly + (float)sim::ALTITUDE / FU + altExcess_;
   cosHorizon_ = SPHERE_R / d;
   if (cosHorizon_ > 1) cosHorizon_ = 1;
   horizonAngle_ = std::acos(cosHorizon_);
@@ -946,6 +946,43 @@ void Renderer::updateCamera(float dt) {
   camQ_.cosHorizon = fToQ30(cosHorizon_);
   for (int l = 0; l <= MAX_SPHERE_LEVEL; l++) {
     camQ_.cullCos[l] = cullCos_[l] <= -1.0f ? INT32_MIN : fToQ30(cullCos_[l]);
+  }
+  // The screen's four sides as planes through the eye, for the wireframe:
+  // a point of the surface at R*u is on the inside of one of them when
+  // R*(u . n) >= C*(camUnit . n), so allowing for the face's own reach it
+  // is one more dot product and one more comparison per face, the same
+  // shape as the horizon cull. Most of what lies within the horizon of a
+  // low camera is behind it or off to the side, and that is also the
+  // closest surface there is, so without this the mesh would spend its
+  // whole budget on faces that are never drawn.
+  {
+    const float tanY = std::tan(camFov_ * 0.5f);
+    const float tanX = tanY * (float)w_ / (float)h_;
+    const float ch = 1.0f / std::sqrt(1.0f + tanX * tanX);  // cos(fovX / 2)
+    const float cv = 1.0f / std::sqrt(1.0f + tanY * tanY);
+    const vec3f right = {view_.m[0], view_.m[4], view_.m[8]};
+    const vec3f up = {view_.m[1], view_.m[5], view_.m[9]};
+    const vec3f fwd = {-view_.m[2], -view_.m[6], -view_.m[10]};
+    const vec3f n[4] = {right * ch + fwd * (tanX * ch),
+                        right * -ch + fwd * (tanX * ch),
+                        up * cv + fwd * (tanY * cv),
+                        up * -cv + fwd * (tanY * cv)};
+    const float cOverR = cosHorizon_ > 1e-3f ? 1.0f / cosHorizon_ : 1000.0f;
+    for (int k = 0; k < 4; k++) {
+      camQ_.cullN[k] = toQ(n[k]);
+      const float side = cOverR * g3::dot(camUnit_, n[k]);
+      for (int l = 0; l <= MAX_SPHERE_LEVEL; l++) {
+        // How far a point of the face can reach past its centre, either
+        // way along the plane's normal (a bound, not the exact figure:
+        // culling a face that has a corner on the screen would take its
+        // whole subtree with it)
+        const float a = 0.6524f / (float)(1 << l);
+        const float reach = std::sin(a) + (1.0f - std::cos(a));
+        const float t = side - reach;
+        camQ_.cullPlane[k][l] =
+            t <= -1.0f ? INT32_MIN : (t >= 1.0f ? INT32_MAX : fToQ30(t));
+      }
+    }
   }
 }
 

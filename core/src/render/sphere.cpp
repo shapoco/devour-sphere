@@ -19,44 +19,49 @@ using sim::Vec3;
 
 static constexpr float SPHERE_R = (float)sim::SPHERE_RADIUS / FU;
 static constexpr float FADE_NEAR = 60.0f, FADE_FAR = 900.0f;  // FU
-// Subdivision: fixed levels chosen by the distance from the player's
-// position on the surface (not by the screen size, which would make the
-// mesh flicker as the camera moves). Two regions around the player are
-// drawn one and two levels finer than the rest.
+// Subdivision: the level a piece of the surface is drawn at is decided by
+// how big its faces come out on the screen, and by nothing else -- not by
+// where the player happens to be, which is no business of the camera's.
 //
-// How coarse the mesh is has to follow the camera, which now pulls a long
-// way back as the player grows (renderer.cpp, "The lens"). Two things do
-// that, and both are steered by the line count alone:
+// For a point of the surface at an angle psi from the point the camera is
+// directly above, the distance to the eye and the tilt away from it both
+// follow from psi alone (C is the eye's distance from the centre, R the
+// sphere's radius):
 //
-//   - the level of the whole sphere (sphereShift_), which can only move in
-//     steps of four times the count, and
-//   - how wide the two fine regions are (sphereBand_), which is continuous.
+//   d(psi)^2 = C^2 + R^2 - 2 C R cos psi      cos i = (C cos psi - R) / d
 //
-// The regions are measured in camera heights, because that is the scale of
-// the picture: a mesh whose cells keep their size on the screen is already
-// half a level coarser LEVEL6_RADIUS camera heights along the surface from
-// the player, and one and a half levels coarser at LEVEL5_RADIUS. As the
-// camera climbs, the horizon comes in from 4.6 camera heights away to about
-// 2, so the same regions cover more and more of what can be seen and the
-// mesh grows more even by itself -- which is what the geometry asks for:
-// the further the camera, the less the distance to a face varies over the
-// visible surface.
-static constexpr int BASE_LEVEL = 4;  // edges of ~34 FU at 11 FU
+// and a cell of edge s covers about s * focal * sqrt(cos i) / d pixels --
+// the square root because it is foreshortened along one axis only. Asking
+// for cells of SPHERE_TARGET_PX pixels therefore gives the wanted level as
+// a function of cos psi alone, so the test stays what it has always been:
+// one dot product per face, now against the camera's own direction, and a
+// comparison against thresholds worked out once a frame.
+//
+// Two things fall out of it. Near the surface the distance runs from a few
+// FU underfoot to the horizon, so the mesh grades steeply; seen from far
+// away, d and cos i barely vary across everything visible, the thresholds
+// fall outside the visible cap and the mesh comes out even -- which is
+// what a sphere seen from far away wants, and grading it there only looks
+// wrong. And the level is naturally finest right below the camera, not
+// around a third party.
+//
+// The pixels the cells are asked to cover is the one number steered: the
+// line count of the last frame nudges it towards the budget. The mesh
+// answers continuously (a face at a time crosses a threshold), so there is
+// no level of the whole sphere to step and nothing to flicker.
+static constexpr float ICO_EDGE = 1.05146f;  // level 0 edge, x sphere radius
+// How big a cell of the mesh wants to be on the screen. The budget below
+// only ever makes them bigger than this.
+static constexpr float SPHERE_TARGET_PX = Renderer::SPHERE_TARGET_PX_INIT;
+static constexpr float SPHERE_TARGET_MAX = 200.0f;
 // Coarsest level while the player is in flight: the far sphere at level 2
 // still reads as a polygon (a 24-gon limb), level 3 as a circle
 static constexpr int FLIGHT_MIN_LEVEL = 3;
-static constexpr float LEVEL5_RADIUS = 1.65f, LEVEL6_RADIUS = 0.5f;  // x height
-// What the band is steered at, as a share of the line budget, and how far
-// it may be stretched or squeezed before the level itself has to move
-static constexpr int WIRE_TARGET_PCT = 70;
-static constexpr float BAND_MAX = 6.0f, BAND_MIN = 0.02f;
-// Frames before the level may move again (a step is four times the count,
-// so the band needs time to take the difference back up)
-static constexpr int SPHERE_RELAX_WAIT = 20;
-// Budget of the line array for the wireframe (UiMetrics::wireLines: 1100 on
-// the reference screen, less on a smaller one). The edges are counted in a
-// dry run first; when they exceed the limit every level is lowered by one
-// for the whole sphere (uniform, no holes) until they fit.
+// Below this share of the budget the cells are let back towards the size
+// they want; above the budget itself they are made bigger until they fit.
+// The gap between the two is what keeps a mesh that is up against the
+// budget from breathing in and out.
+static constexpr int WIRE_TARGET_PCT = 50;
 
 // Integer units of this file: a surface point is a Q30 unit vector; a
 // position relative to the sphere center is in 1/16 world units (the sphere
@@ -297,40 +302,99 @@ void Renderer::emitSplitEdge(const Vec3 &a, const Vec3 &b, int depth,
   }
 }
 
-// The subdivision level wanted at a point of the surface: finer near the
-// player's position on it.
-//
-// "The nearest point of the face is within R FU of the player" is
-// ang - faceAngle < R / SPHERE_R, i.e. cos(ang) > cos(faceAngle + R /
-// SPHERE_R); the right-hand side depends only on the level and the shift,
-// so sphereConstants() tabulates it and the test is one dot product.
+// The subdivision level wanted at a point of the surface. The thresholds
+// are the cosines at which the wanted level steps, already widened by the
+// face's own angular radius so that a face takes the level its nearest
+// corner asks for (see sphereConstants).
 int Renderer::wantLevel(const Vec3 &center, int level) const {
-  const int32_t cosDist = sim::dotQ30(center, camQ_.player);
-  int want = BASE_LEVEL - sphereShift_;
-  if (cosDist > camQ_.cosLevel6[level]) {
-    want += 2;
-  } else if (cosDist > camQ_.cosLevel5[level]) {
-    want += 1;
+  const int32_t cosPsi = sim::dotQ30(center, camQ_.unit);
+  for (int k = SPHERE_LEVEL_STEPS - 1; k >= 0; k--) {
+    if (cosPsi > camQ_.cosStep[level][k]) return camQ_.levelMin + k + 1;
   }
-  if (want < 1) want = 1;
-  return want;
+  return camQ_.levelMin;
 }
 
-// The per-traversal constants: the two cos thresholds of wantLevel() per
-// level, for the current shift (the rest of CameraQ is per frame)
+// The per-traversal constants: where the wanted level steps, for the mesh
+// the camera is looking at now and the size the cells are being asked to
+// come out (sphereTarget_).
+//
+// In units of the sphere's radius, with c = C / R and u = cos psi, the
+// pixels a level-L cell covers are (ICO_EDGE / 2^L) * focal * sqrt(g) with
+//
+//   g(u) = cos i / d^2 = (c u - 1) / (c^2 + 1 - 2 c u)^(3/2)
+//
+// so the level wanted at u is K + log2(g) / 2 for K = log2(ICO_EDGE *
+// focal / target), and the step between L and L - 1 sits where g reaches
+// G = 2^(2 (L - 0.5 - K)). g falls from 1 / (c - 1)^2 under the camera to
+// zero at the horizon, so each step is found by halving the interval --
+// on the squared form, which is a polynomial and needs no square roots.
 void Renderer::sphereConstants() {
-  // The regions are measured in camera heights, so they need no case of
-  // their own for the flight: from up there they are wider than the whole
-  // visible surface and the mesh comes out even, which is what a sphere
-  // seen from far away wants anyway.
-  const float unit = camAltitude_ * sphereBand_;  // radii, FU
-  for (int level = 0; level <= MAX_SPHERE_LEVEL; level++) {
-    const float faceAngle = 0.6524f / (float)(1 << level);  // angular radius
-    float a6 = faceAngle + LEVEL6_RADIUS * unit / SPHERE_R;
-    float a5 = faceAngle + LEVEL5_RADIUS * unit / SPHERE_R;
-    // Beyond a half turn every face qualifies: cos would come back up
-    camQ_.cosLevel6[level] = a6 >= 3.14159265f ? INT32_MIN : q30(std::cos(a6));
-    camQ_.cosLevel5[level] = a5 >= 3.14159265f ? INT32_MIN : q30(std::cos(a5));
+  const float c = 1.0f + camAltitude_ / SPHERE_R;
+  const float uh = 1.0f / c;  // the horizon
+  const float K = std::log2(ICO_EDGE * camFocalNominal_ / sphereTarget_);
+  // The finest level, at the point right below the camera. Rounding it
+  // would flip the whole mesh whenever the camera sat between two levels,
+  // so it only moves once it is well past one (the thresholds themselves
+  // are continuous, and it is only the range of levels they cover).
+  const float topF = K - std::log2(c - 1.0f);
+  int top = sphereTop_;
+  if (topF > (float)top + 0.65f || topF < (float)top - 0.65f) {
+    top = (int)std::floor(topF + 0.5f);
+  }
+  if (top > MAX_SPHERE_LEVEL) top = MAX_SPHERE_LEVEL;
+  if (top < 1) top = 1;
+  sphereTop_ = top;
+  int min = top - SPHERE_LEVEL_STEPS;
+  if (min < 1) {
+    min = 1;
+    if (top < min) top = min;
+  }
+  if (inFlight_ && min < FLIGHT_MIN_LEVEL) {
+    // Far from the sphere the whole limb is the picture, and a coarse one
+    // reads as a polygon rather than a circle
+    min = FLIGHT_MIN_LEVEL;
+    if (top < min) top = min;
+  }
+  camQ_.levelMin = min;
+  // G at the step above the coarsest level, then four times that for each
+  // step after it (a level is two in the pixels, four in g)
+  float G = std::exp2(2.0f * ((float)(min + 1) - 0.5f - K));
+  for (int k = 0; k < SPHERE_LEVEL_STEPS; k++) {
+    float u;
+    if (min + k + 1 > top) {
+      u = 2.0f;  // beyond the finest level this frame: never
+    } else {
+      // Halve the interval on (c u - 1)^2 = G^2 (c^2 + 1 - 2 c u)^3, whose
+      // left side grows with u and right side shrinks
+      float lo = uh, hi = 1.0f;
+      const float G2 = G * G;
+      for (int i = 0; i < 12; i++) {
+        const float m = (lo + hi) * 0.5f;
+        const float l = c * m - 1.0f;
+        const float d2 = c * c + 1.0f - 2.0f * c * m;
+        if (l * l > G2 * d2 * d2 * d2) {
+          hi = m;
+        } else {
+          lo = m;
+        }
+      }
+      u = hi;
+    }
+    for (int level = 0; level <= MAX_SPHERE_LEVEL; level++) {
+      // Widen by the face's own angular radius: cos(psi + a), with the
+      // sine of psi from the cosine
+      const float a = 0.6524f / (float)(1 << level);
+      float t;
+      if (u > 1.0f) {
+        t = 2.0f;
+      } else {
+        const float su = std::sqrt(1.0f - u * u);
+        t = u * std::cos(a) - su * std::sin(a);
+      }
+      camQ_.cosStep[level][k] =
+          t >= 1.0f ? INT32_MAX : (t <= -1.0f ? INT32_MIN : q30(t));
+    }
+    G *= 4.0f;
   }
 }
 
@@ -356,8 +420,17 @@ Renderer::EdgeDepths Renderer::subdivideFace(const Vec3 &a, const Vec3 &b,
                                              const Vec3 &c, int level) {
   if (!sphereDryRun_ && lineCount_ >= wireBudget_) return 0;
   const Vec3 center = sim::normalizeQ30(sum3(a, b, c));
-  // Horizon: skip faces entirely on the far side of the sphere
+  // Horizon: skip faces entirely on the far side of the sphere, and the
+  // screen's own four sides: most of what is within the horizon of a low
+  // camera is behind it or off to the side, and subdividing that finely
+  // (it is the closest surface there is) would spend the whole budget on
+  // faces that are never drawn
   if (sim::dotQ30(center, camQ_.unit) < camQ_.cullCos[level]) return 0;
+  for (int k = 0; k < 4; k++) {
+    if (sim::dotQ30(center, camQ_.cullN[k]) < camQ_.cullPlane[k][level]) {
+      return 0;
+    }
+  }
   if (level >= wantLevel(center, level) || level >= MAX_SPHERE_LEVEL) {
     return 0;  // a leaf: its edges belong to an ancestor
   }
@@ -368,13 +441,13 @@ Renderer::EdgeDepths Renderer::subdivideFace(const Vec3 &a, const Vec3 &b,
   // child 0 = (a, ab, ca), 1 = (ab, b, bc), 2 = (ca, bc, c), 3 = (ab, bc, ca)
   const Vec3 *tri[4][3] = {
       {&a, &ab, &ca}, {&ab, &b, &bc}, {&ca, &bc, &c}, {&ab, &bc, &ca}};
-  // Children nearest to the player first, so that when the line budget
+  // Children nearest to the camera first, so that when the line budget
   // runs out only the far faces end up coarse
   int32_t key[4];
   int order[4] = {0, 1, 2, 3};
   for (int i = 0; i < 4; i++) {
     key[i] =
-        -sim::dotQ30(sum3(*tri[i][0], *tri[i][1], *tri[i][2]), camQ_.player);
+        -sim::dotQ30(sum3(*tri[i][0], *tri[i][1], *tri[i][2]), camQ_.unit);
   }
   for (int i = 1; i < 4; i++) {
     int o = order[i], j = i - 1;
@@ -441,37 +514,25 @@ void Renderer::emitIcoEdges() {
   }
 }
 
-// A level has just moved: the regions were scaled to pay for it, but that
-// only holds while they are small against what can be seen, so the result
-// is counted and squeezed until it fits. Only ever runs on a frame where
-// the level changes, which is a few times a flight and once a size.
-void Renderer::fitSphereBand(int shift, const int *order, int limit) {
-  for (int i = 0; i < 4; i++) {
-    if (countSphereLines(shift, order) <= limit) return;
-    if (sphereBand_ <= BAND_MIN) return;
-    sphereBand_ *= 0.5f;
-    if (sphereBand_ < BAND_MIN) sphereBand_ = BAND_MIN;
-  }
-}
-
-int Renderer::countSphereLines(int shift, const int *order) {
-  sphereShift_ = shift;
+int Renderer::countSphereLines(const int *order) {
   sphereDryRun_ = true;
   sphereCount_ = 0;
+  wireCount_ = 0;
   traverseSphere(order);
   sphereDryRun_ = false;
-  return sphereCount_;
+  return wireCount_;
 }
 
 void Renderer::buildSphere() {
-  // Top-level faces nearest to the player first
+  // Top-level faces nearest to the camera first, so that if the budget
+  // runs out it is the far ones that are left coarse
   int32_t key[20];
   int order[20];
   for (int f = 0; f < 20; f++) {
     key[f] = -sim::dotQ30(
         sum3(ICO_VERTS[ICO_FACES[f][0]], ICO_VERTS[ICO_FACES[f][1]],
              ICO_VERTS[ICO_FACES[f][2]]),
-        camQ_.player);
+        camQ_.unit);
     order[f] = f;
   }
   for (int i = 1; i < 20; i++) {
@@ -492,87 +553,46 @@ void Renderer::buildSphere() {
   wireBudget_ = wireLines;
   const int wireLimit = wireLines - 80 * ui_.scale8 / 8;
   const int wireTarget = wireLimit * WIRE_TARGET_PCT / 100;
-  // In flight the far sphere is kept at FLIGHT_MIN_LEVEL or better however
-  // much of the budget that takes: a polygon limb is what the eye sees
-  // first when the whole sphere is on the screen
-  const int maxShift = inFlight_ ? BASE_LEVEL - FLIGHT_MIN_LEVEL : BASE_LEVEL;
-  int shift = sphereWantShift_;
-  if (sphereRelaxWait_ > 0) sphereRelaxWait_--;
+  // The cells want to be SPHERE_TARGET_PX across, and that is the whole of
+  // the picture's side of it: the budget is a ceiling, not a target. When
+  // a frame draws more lines than it may, the cells grow until it fits;
+  // once there is room to spare they ease back towards the size they want.
+  // (Steering at the budget instead would turn the mesh fine whenever
+  // little of the sphere is on the screen, which is exactly when the count
+  // is low for reasons that have nothing to do with how it should look --
+  // the launch takes the sphere out of the picture altogether.)
+  auto steer = [&](int drawn, float damp) {
+    if (drawn > wireLimit) {
+      float step = std::sqrt((float)drawn / (float)wireLimit);
+      if (damp < 1.0f) step = std::sqrt(step);
+      if (step > 1.3f) step = 1.3f;
+      sphereTarget_ *= step;
+      if (sphereTarget_ > SPHERE_TARGET_MAX) sphereTarget_ = SPHERE_TARGET_MAX;
+      return true;
+    }
+    if (sphereTarget_ > SPHERE_TARGET_PX && drawn < wireTarget) {
+      // Half a second to give back most of whatever the budget took
+      sphereTarget_ += (SPHERE_TARGET_PX - sphereTarget_) * 0.03f;
+      if (sphereTarget_ < SPHERE_TARGET_PX) sphereTarget_ = SPHERE_TARGET_PX;
+      return true;
+    }
+    return false;
+  };
   if (sphereCountValid_) {
-    // Steer from what the last frame actually emitted rather than by trial
-    // traversals: counting the edges costs as much as drawing them, and the
-    // camera moves smoothly enough that reacting a frame late is invisible.
-    // emitEdge() caps the line count either way, so a mesh that is briefly
-    // too fine cannot overflow the buffer.
-    const int count = sphereCount_ > 1 ? sphereCount_ : 1;
-    // The band first: the count grows about as its area, so the radius
-    // goes as the square root of what is missing. Damped, clamped, and
-    // with a dead zone, so that a mesh that is already right stays still.
-    const float ratio = (float)wireTarget / (float)count;
-    if (ratio > 1.1f || ratio < 0.9f) {
-      // Half a correction at a time while there is room, the whole of it
-      // when the mesh is over the budget: over it the count comes back
-      // capped (emitChord stops emitting), so the error is only a lower
-      // bound and there is nothing to be gained by creeping up on it
-      float step = sphereCount_ > wireLimit ? std::sqrt(ratio)
-                                            : std::sqrt(std::sqrt(ratio));
-      if (step > 1.25f) step = 1.25f;
-      sphereBand_ *= step;
-      if (sphereBand_ > BAND_MAX) sphereBand_ = BAND_MAX;
-      if (sphereBand_ < BAND_MIN) sphereBand_ = BAND_MIN;
-    }
-    // Only when the band has run out of room does the level itself move,
-    // and the band takes up the four times a level costs (half the radius)
-    // so that the count lands where it already was
-    if (sphereRelaxWait_ == 0) {
-      if (sphereCount_ > wireLimit && sphereBand_ <= BAND_MIN * 1.01f) {
-        shift += (sphereCount_ > 2 * wireLimit) ? 2 : 1;
-        sphereBand_ *= 2;
-        if (sphereBand_ > BAND_MAX) sphereBand_ = BAND_MAX;
-        sphereRelaxWait_ = SPHERE_RELAX_WAIT;
-      } else if (sphereCount_ < wireTarget && shift > 0 &&
-                 sphereBand_ >= BAND_MAX * 0.99f) {
-        shift--;
-        sphereBand_ *= 0.5f;
-        sphereRelaxWait_ = SPHERE_RELAX_WAIT;
-      }
-    }
-    if (shift < 0) shift = 0;
-    if (shift > BASE_LEVEL) shift = BASE_LEVEL;
-    sphereWantShift_ = shift;
-    if (shift > maxShift) shift = maxShift;
-    // The frame the flight floor engages (or lets go) the whole mesh would
-    // jump a level as well, so the regions take that difference up too
-    if (shift - sphereWantShift_ != sphereFloor_) {
-      const int d = (shift - sphereWantShift_) - sphereFloor_;
-      sphereBand_ *= d < 0 ? 0.5f : 2.0f;
-      if (sphereBand_ > BAND_MAX) sphereBand_ = BAND_MAX;
-      sphereFloor_ = shift - sphereWantShift_;
-    }
-    // Whatever moved the level, the regions were only scaled to pay for
-    // it: count the result and squeeze them until it really fits
-    if (shift != sphereShift_) fitSphereBand(shift, order, wireLimit);
+    // The lines the previous frame kept (off-screen chords are walked but
+    // not drawn, and it is the kept ones the budget is about)
+    steer(wireDrawn_, 0.5f);
   } else {
-    // First frame after init() or after a sphere switch: no count to go on,
-    // so search for a level that fits
-    if (shift < 0) shift = 0;
-    if (shift > BASE_LEVEL) shift = BASE_LEVEL;
-    int count = countSphereLines(shift, order);
-    while (count > wireLimit && shift < BASE_LEVEL) {
-      shift++;
-      count = countSphereLines(shift, order);
+    // First frame after init() or after a sphere switch: nothing to go on,
+    // so count a few trials instead of letting the picture settle on screen
+    for (int i = 0; i < 3; i++) {
+      if (!steer(countSphereLines(order), 1.0f)) break;
     }
-    while (count < wireTarget / 4 && shift > 0) {
-      shift--;
-      count = countSphereLines(shift, order);
-    }
-    sphereWantShift_ = shift;
-    if (shift > maxShift) shift = maxShift;
-    sphereFloor_ = shift - sphereWantShift_;
   }
-  sphereShift_ = shift;
   sphereCount_ = 0;
+  wireCount_ = 0;
   traverseSphere(order);
+  wireDrawn_ = wireCount_;
   sphereCountValid_ = true;
 }
 
