@@ -20,8 +20,8 @@
 //
 //   tip the stick        LEFT / RIGHT, and UP (dash) / DOWN (brake) by
 //                        tipping its far edge away or near
-//   KEY1 (BtnA)          fire, and confirm on the menus
-//   KEY2 (BtnB)          emergency dodge
+//   KEY1 (BtnA, GPIO11)  fire, and confirm on the menus
+//   KEY2 (BtnB, GPIO12)  emergency dodge
 //   shake it             pause, and shake again to resume
 //   both keys            the timing overlay, on the title or pause screen
 //
@@ -150,14 +150,22 @@ void drawBootScreen(ds::Attitude::Side side, bool still) {
     d.drawString("READY", w / 2, h / 2 - 40);
   }
 
-  // Gravity, as a line from the centre: with the mapping right it points at
-  // the floor however the stick is held.
+  // Gravity, as a labelled needle from the centre: with the axis mapping
+  // right the DOWN end points at the floor however the stick is held, and
+  // it is the label rather than the needle that says so -- a needle alone
+  // is read as an attitude indicator, which turns the wrong way round on
+  // purpose (the picture turns with the device, gravity does not).
   const ds::Vec3f g = g_att.gravity();
-  const int cx = w / 2, cy = h / 2 + 20, r = 34;
+  const int cx = w / 2, cy = h / 2 + 20, r = 30;
   d.drawCircle(cx, cy, r, 0x4208);
   const int ex = cx + (int)(g.x * r), ey = cy + (int)(g.y * r);
   d.drawLine(cx, cy, ex, ey, 0x07E0);
   d.fillCircle(ex, ey, 4, 0x07E0);
+  d.setTextColor(0x07E0, 0x0000);
+  d.drawString("DOWN", cx + (int)(g.x * (r + 14)), cy + (int)(g.y * (r + 14)));
+  d.setTextColor(0xFFFF, 0x0000);
+  d.drawString("THIS END", w / 2, cy + r + 32);
+  d.drawString("AT THE FLOOR", w / 2, cy + r + 44);
 
   // ... and the numbers behind it, for the serial-less case
   char line[32];

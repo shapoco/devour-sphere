@@ -25,11 +25,16 @@ namespace sim = devoursphere::sim;
 // this mapping is a fact about the hardware. It cannot be derived from
 // gravity alone -- gravity says which way is down, not which way is right.
 //
-// **Check this on the device.** The boot screen draws an arrow along the
-// gravity this produces: it must point at the floor whichever way the stick
-// is held. If the arrow is mirrored or turned, that is the only thing to
-// fix here, and the controls follow: a left turn has to give LEFT and
-// tipping the far edge away has to give UP (dash).
+// **The BMI270 turns out to sit square with the screen here**: the sensor's
+// own axes are the screen's, signs and all (confirmed on hardware
+// 2026-09-21). The boot screen is what says so -- it draws the gravity this
+// mapping produces as a needle labelled DOWN, and that end has to point at
+// the floor whichever way the stick is held.
+//
+// Reading that needle: it swings the OPPOSITE way to the stick, and that is
+// right. The screen turns with the device and gravity does not, so gravity
+// seen from the screen must turn the other way. What it must never do is
+// point at the ceiling (x and y both inverted) or mirror (one of them).
 //
 //                         which sensor axis    sign
 constexpr int SRC_X = 0, SIGN_X = +1;  // screen right

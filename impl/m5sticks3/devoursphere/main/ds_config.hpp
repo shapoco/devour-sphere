@@ -31,6 +31,8 @@ constexpr int SCREEN_H = 135;
 // panel is mounted. ROTATION_TOP_RIGHT is the one used when the stick's top
 // ends up on the player's right; flipping this one constant swaps both
 // cases at once, and the tilt axes follow it (attitude.cpp).
+//
+// **1 is the one that comes out the right way up on hardware** (2026-09-21).
 constexpr int ROTATION_TOP_RIGHT = 1;
 constexpr int ROTATION_TOP_LEFT = 4 - ROTATION_TOP_RIGHT;  // 3
 static_assert(ROTATION_TOP_RIGHT == 1 || ROTATION_TOP_RIGHT == 3,
