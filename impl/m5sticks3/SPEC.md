@@ -70,6 +70,10 @@ cd impl/m5sticks3/devoursphere
 
 - **ESP-IDF v5.5.x**。M5GFX / M5Unified の ESP-IDF ビルドが検証されているのが 5.5 系まで。
 - `managed_components/` と `sdkconfig` は生成物なので git 管理外。
+- `make_release.sh` はこのターゲットも `m5sticks3/` に含める
+  (`build_release.sh` が bootloader + パーティション表 + app を 1 枚にまとめた
+  `devoursphere.factory.bin` を作り、`assets/release/m5sticks3/upload.sh` が
+  esptool でそれを 0x0 に書く)。
 
 ### sdkconfig.defaults
 
@@ -272,17 +276,34 @@ STK1 1472  STK0 2576
 
 **律速はシミュレーションであって描画ではない。** フレーム 25.1ms の内訳は
 core0 の 16.94ms + core1 待ち 9.40ms で、core1 の tick (11.2ms x 2 = 22.4ms) が
-core0 の 16.9ms に隠れ切っていない。`Game` が PSRAM にあるためで、
-内蔵 SRAM の空きを実機で測ったら 251KB あった (帯 43KB を引いても 208KB) ので、
-`Game` を内蔵に移した (「メモリ配分」)。tick がどれだけ縮んだかは次の実測待ち。
-描画側は余っている ── `CMD` 0.60ms は帯を増やしても平気、
-`SPN` 12/128 と `TRI` 21/53KB はどちらも大きく余裕がある。
-`XFR` は SPI 40MHz の理論値どおりで、`DMA` 待ちも 3.5ms しかないので、
+core0 の 16.9ms に隠れ切っていない。描画側はむしろ余っている ──
+`CMD` 0.60ms は帯を増やしても平気、`SPN` 12/128 と `TRI` 21/53KB はどちらも余裕がある。
+`XFR` は SPI 40MHz の理論値どおりで `DMA` 待ちも 3.5ms しかないので、
 **SPI クロックを上げても効かない**。
+
+### `Game` を内蔵 SRAM に移した後 (45〜51fps)
+
+```
+FPS 46.4   TCK 11.23x1      1 フレームに 1 tick
+BGN 4.70   RAS 10.58
+DMA 0.65   CPU 16.49
+CMD 0.83   W 0.00           core1 を待っていない
+XFR 13.07
+STK1 1460  STK0 2320
+```
+
+**tick 自体はほとんど速くなっていない** (PSRAM でも内蔵 SRAM でも 10〜12ms)。
+ESP32-S3 では PSRAM の代償が思ったより小さい、というのがここで得られた事実。
+
+効いたのは**フレームあたりの tick 数が 2 から 1 に落ちたこと**。
+この系には正のフィードバックがあり、フレームが伸びる → 溜まる tick が増える →
+core1 が core0 に隠れ切らなくなる → `W` が増える → さらにフレームが伸びる、と回る。
+39.8fps 側はその悪い側の平衡点に落ちていて、tick がわずかに速くなっただけで
+1 tick/フレームの側に移り、`W` が 0 に張り付いた。
+**境界は「1 tick が core0 の CPU 時間に収まるか」**で、ここでは 11.2 < 16.5。
 
 ## 未確定
 
 - 振りの閾値 0.70G (誤爆・取りこぼしは今のところ報告されていない)。
-- `Game` を内蔵 SRAM に移した効果 (tick が何 ms になるか、fps がどこまで上がるか)。
-- アリーナ 64KB は `TRI 21/53K` から見て過剰で 48KB 程度まで削れるが、
+- アリーナ 64KB は `TRI` の実測から見て過剰で 48KB 程度まで削れるが、
   内蔵ヒープに余裕があるうちは削る理由が無い。

@@ -23,7 +23,8 @@ and fonts.
 - **M5Stack Tab5:** a prebuilt firmware can be flashed straight from
   [M5Burner](https://docs.m5stack.com/en/download) — look for "Devour Sphere"
   in its ESP32-P4 (Tab5) list.
-- **Other boards:** binaries for Xiamocon (RP2350 / ESP32S3) and PicoSystem are
+- **Other boards:** binaries for Xiamocon (RP2350 / ESP32S3), PicoSystem and
+  M5StickS3 are
   zipped up under [Releases](https://github.com/shapoco/devour-sphere/releases);
   the README.txt inside says how to flash each one.
 - **Browser:** nothing to download, just follow the Play link above.

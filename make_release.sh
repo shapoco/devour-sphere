@@ -29,6 +29,7 @@ mkdir -p "${RELS_DIR}/xiamocon-esp32s3"
 mkdir -p "${RELS_DIR}/xiamocon-rp2350"
 mkdir -p "${RELS_DIR}/picosystem"
 mkdir -p "${RELS_DIR}/m5tab5"
+mkdir -p "${RELS_DIR}/m5sticks3"
 
 pushd "${REPO_DIR}/impl/xiamocon/devoursphere/"
   ./build_esp32s3.sh
@@ -62,6 +63,16 @@ pushd "${REPO_DIR}/impl/m5tab5/devoursphere/"
   cp \
     "${ASSETS_DIR}/release/m5tab5/upload.sh" \
     "${RELS_DIR}/m5tab5/upload.sh"
+popd
+
+pushd "${REPO_DIR}/impl/m5sticks3/devoursphere/"
+  ./build_release.sh
+  cp \
+    "build/devoursphere.factory.bin" \
+    "${RELS_DIR}/m5sticks3/devour-sphere.factory.bin"
+  cp \
+    "${ASSETS_DIR}/release/m5sticks3/upload.sh" \
+    "${RELS_DIR}/m5sticks3/upload.sh"
 popd
 
 sed \
