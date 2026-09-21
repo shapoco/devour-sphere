@@ -66,6 +66,11 @@ constexpr float MARKER_MIN_BRIGHTNESS = 0.25f;
 
 struct Marker2D {
   int16_t x, y;
+  // Which way is down: the screen direction from the marker towards the
+  // centre of the sphere, in brad (a quarter turn = straight down the
+  // screen). The triangle's tip points along it, so a marker at the side
+  // of the screen leans with the horizon instead of standing upright.
+  uint16_t down;
   g2::Color color;
   uint8_t kind;     // 0 = enemy (triangle), else sim::UpgradeKind icon
   uint8_t outline;  // enemy: 0 = dark edge, else white edge brightness
@@ -353,7 +358,14 @@ class Renderer {
   // Camera
   Camera cam_ = {};
   bool camValid_ = false;
-  float camDist_ = 0, camHeight_ = 0, camFov_ = 0, camRoll_ = 0;
+  // The rig is eased in "framing" units -- what the distance would be at
+  // the reference lens (CAM_FOV_REF) -- and scaled to the real distance by
+  // the lens it is actually using, so that a change of lens never moves
+  // the body on screen (see updateCamera)
+  float camFrame_ = 0, camFrameH_ = 0;  // eased: distance and height
+  float camLens_ = 0;    // the lens the body's size asks for (radians)
+  float camFovMul_ = 1;  // what the dash and the brake do to it
+  float camDist_ = 0, camHeight_ = 0, camFov_ = 0, camRoll_ = 0;  // derived
   float camAhead_ = 0, camDown_ = 0;  // look target: ahead / below the player
   // The flight between spheres: the camera circles the player (0 = behind,
   // PI = in front) and the player's frame is pitched along its flight path
@@ -362,7 +374,7 @@ class Renderer {
   g3::vec3f flightFwd_ = {0, 1, 0}, flightUp_ = {0, 0, 1};  // pitched frame
   uint16_t playerPitchBrad_ = 0;
   uint32_t sphereSeedSeen_ = 0;  // a new sphere snaps the camera distance
-  float camNominal_ = 11;  // camera distance without dash/brake (sphere LOD)
+  float camNominal_ = 11;  // framing distance without dash/brake (sphere LOD)
   g3::mat4f view_ = g3::mat4f::identity();
   g3::mat4f proj_ = g3::mat4f::identity();
   g3::mat4f viewProj_ = g3::mat4f::identity();
@@ -523,6 +535,10 @@ class Renderer {
   void drawLines2D(const g2::Surface &dst, int y, int h, int dstY,
                    Layer2D layer);
   void drawMarkers2D(g2::Graphics2D &g, int oy);
+  // The three corners of an enemy marker's triangle, leaning with the
+  // horizon; `grow` pushes every edge that many pixels outwards
+  static void markerTriangle(const Marker2D &mk, int scale8, int grow,
+                             g2::vec2i out[3]);
   void drawVersion(g2::Graphics2D &g, int oy);
   void upgradeStatusExtents(int &leftEnd, int &rightStart) const;
   void queueMarkerOutlines();
@@ -611,6 +627,12 @@ class Renderer {
   void drawBullets();
   void drawStars();
   void drawPresenceAuras();
+  // Which way the centre of the sphere is from a point on the screen, in
+  // brad (Marker2D::down). Every line through the centre of the sphere
+  // meets the same point on the screen, so it is projected once a frame
+  // (markerFocus_) and every marker only has to take a direction to it.
+  uint16_t markerDown(float sx, float sy) const;
+  g3::vec3f markerFocus_ = {};  // x, y on the screen; z: in front (+1 / -1)
   // Horizon marker of an enemy beyond the horizon; `always`: shown whatever
   // its size and distance (carriers of upgrades)
   void addEnemyMarker(const sim::Entity &c, bool always);

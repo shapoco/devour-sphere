@@ -20,6 +20,52 @@ static constexpr float BRAD_TO_RAD = 2.0f * PI / 65536.0f;
 // With this rank or better, markers of every bigger enemy are always shown
 static constexpr int MARKER_ALWAYS_RANK = 5;
 
+// --- The lens -------------------------------------------------------------
+// A 70 degree lens with the camera 3.5 body radii behind the player is the
+// right picture while the player is small. It stops being one as the body
+// grows: the sphere's radius never changes, so the camera of a big player
+// stands high over a small world, the surface curves away a couple of body
+// lengths ahead and the whole picture turns into a fish-eye bowl (worst
+// during a dash, where the camera drops towards the ground).
+//
+// So the lens gets longer as the body grows, and the entire rig -- the
+// distance, the height and the look target -- is scaled by the same factor
+// (CAM_FOV_REF against the lens in use). That part alone leaves the body
+// exactly where it was on the screen and only flattens the perspective;
+// CAM_OPEN then backs the camera off a little further still, which is what
+// actually widens the view and pushes the horizon away.
+static constexpr float CAM_FOV_REF = 70.0f * PI / 180.0f;   // smallest body
+static constexpr float CAM_FOV_LONG = 45.0f * PI / 180.0f;  // fully grown
+static constexpr float CAM_DIST_MIN = 11.0f;  // closest the camera ever is
+// The lens starts to lengthen once the body asks for more than the distance
+// the smallest player is watched from, and is fully long CAM_LENS_OCTAVES
+// doublings later (the largest bodies of the late spheres)
+static constexpr float CAM_LENS_DIST0 = 16.0f;
+static constexpr float CAM_LENS_OCTAVES = 2.5f;
+static constexpr float CAM_OPEN = 0.25f;  // extra pull-back once fully grown
+
+// The plain third-person distance of a body, and how grown that body is
+// (0 = the smallest, 1 = CAM_LENS_OCTAVES doublings of that distance)
+static float camBaseDist(float bodyR) {
+  float d = 3.5f * bodyR + 8.0f;
+  return d < CAM_DIST_MIN ? CAM_DIST_MIN : d;
+}
+static float camGrowth(float bodyR) {
+  float d = camBaseDist(bodyR);
+  if (d <= CAM_LENS_DIST0) return 0;
+  float t = std::log2(d / CAM_LENS_DIST0) / CAM_LENS_OCTAVES;
+  return t > 1 ? 1 : t;
+}
+static float camLensFor(float bodyR) {
+  return CAM_FOV_REF + (CAM_FOV_LONG - CAM_FOV_REF) * camGrowth(bodyR);
+}
+// The framing distance: the camera distance measured at the reference lens.
+// The body covers bodyR / frame of the screen whatever the lens is doing,
+// so the flight can match the framing across a sphere switch by this alone.
+static float camFrameFor(float bodyR) {
+  return camBaseDist(bodyR) * (1.0f + CAM_OPEN * camGrowth(bodyR));
+}
+
 static g3::colorf toColorf(g2::Color c) {
   return {g2::colorR(c) / 255.0f, g2::colorG(c) / 255.0f,
           g2::colorB(c) / 255.0f, 1.0f};
@@ -475,6 +521,27 @@ static void fillTriangle2D(g2::Graphics2D &g, int oy, int ax, int ay, int bx,
   }
 }
 
+// The triangle of an enemy marker: the tip `3/8 scale` from the marker's
+// point towards the centre of the sphere, the base 7/8 further back, half
+// that wide. With `down` straight down the screen these are exactly the
+// upright triangle the markers used to be.
+void Renderer::markerTriangle(const Marker2D &mk, int scale8, int grow,
+                              g2::vec2i out[3]) {
+  // Q12 so that a marker only a few pixels tall still leans
+  const int32_t dx = sim::cosQ30(mk.down) >> 18;
+  const int32_t dy = sim::sinQ30(mk.down) >> 18;
+  const int tip = 3 * scale8 / 8 - grow;
+  const int back = 10 * scale8 / 8 + grow;
+  int hw = 5 * scale8 / 8 + grow;
+  if (hw < 2 + grow) hw = 2 + grow;
+  const int32_t bx = mk.x * 4096 - dx * back, by = mk.y * 4096 - dy * back;
+  // The base is perpendicular to it, a quarter turn the other way
+  out[0] = {(int16_t)((bx + dy * hw) / 4096), (int16_t)((by - dx * hw) / 4096)};
+  out[1] = {(int16_t)((bx - dy * hw) / 4096), (int16_t)((by + dx * hw) / 4096)};
+  out[2] = {(int16_t)((mk.x * 4096 - dx * tip) / 4096),
+            (int16_t)((mk.y * 4096 - dy * tip) / 4096)};
+}
+
 void Renderer::drawMarkers2D(g2::Graphics2D &g, int oy) {
   // Additive like the auras and the pickups unless blending is suppressed
   const bool additive = !DEVOURSPHERE_SUPPRESS_ALPHA;
@@ -486,12 +553,7 @@ void Renderer::drawMarkers2D(g2::Graphics2D &g, int oy) {
     if (mk.kind != 0) {
       n = upgradeIconPolygon(mk.kind, mk.x, mk.y - 10 * ms / 8, pts, ms);
     } else {
-      int yb = mk.y - 3 * ms / 8, yt = yb - 7 * ms / 8;
-      int hw = 5 * ms / 8;
-      if (hw < 2) hw = 2;
-      pts[0] = {mk.x - hw, yt};
-      pts[1] = {mk.x + hw, yt};
-      pts[2] = {mk.x, yb};
+      markerTriangle(mk, ms, 0, pts);
       n = 3;
     }
     if (n < 3) continue;
@@ -516,15 +578,14 @@ void Renderer::queueMarkerOutlines() {
   for (int i = 0; i < markerCount_; i++) {
     const Marker2D &mk = markers_[i];
     if (mk.kind != 0 || !mk.outline) continue;
-    const int ms = ui_.markerScale8;
-    const int yb = mk.y - 3 * ms / 8, yt = yb - 7 * ms / 8;
-    const int hw = 5 * ms / 8 + 1;
+    g2::vec2i pts[3];
+    markerTriangle(mk, ui_.markerScale8, 1, pts);
     const g2::Color c = g2::makeColor(mk.outline, mk.outline, mk.outline);
-    const int32_t x0 = (mk.x - hw) << 4, x1 = (mk.x + hw) << 4;
-    const int32_t y0 = (yt - 1) << 4, y1 = (yb + 1) << 4, xm = mk.x << 4;
-    addLineScreen(x0, y0, x1, y0, c, 255, 255, L2D_OVER);
-    addLineScreen(x1, y0, xm, y1, c, 255, 255, L2D_OVER);
-    addLineScreen(xm, y1, x0, y0, c, 255, 255, L2D_OVER);
+    for (int k = 0; k < 3; k++) {
+      const g2::vec2i &a = pts[k], &b = pts[(k + 1) % 3];
+      addLineScreen(a.x << 4, a.y << 4, b.x << 4, b.y << 4, c, 255, 255,
+                    L2D_OVER);
+    }
   }
 }
 
@@ -601,12 +662,14 @@ void Renderer::updateCamera(float dt) {
   float bodyR = sim::fragmentHalfSize(sim::log2Floor(p.size)) / (float)FU *
                 (2.0f + 0.2f * p.fragmentCount);
 
-  // High and far behind the player, looking down at roughly 45 degrees
-  float wantDist = 3.5f * bodyR + 8.0f;
-  if (wantDist < 11.0f) wantDist = 11.0f;
+  // High and far behind the player, looking down at roughly 45 degrees.
+  // Everything here is in framing units (the distance at the reference
+  // lens); the lens itself scales them to the real rig at the end.
+  float wantDist = camFrameFor(bodyR);
   float nominalDist = wantDist;  // without dash / brake (sphere LOD basis)
   float wantHeight = wantDist * 1.0f;
-  float wantFov = 70.0f * PI / 180.0f;
+  float wantLens = camLensFor(bodyR);
+  float wantFovMul = 1.0f;  // the dash and the brake, relative to the lens
   float wantRoll = 0;
   float wantOrbit = 0;
   float wantAhead = bodyR * 0.5f + 1.0f;  // look target ahead of the player
@@ -623,14 +686,14 @@ void Renderer::updateCamera(float dt) {
       // dash builds up
       wantDist *= 1.0f - 0.45f * dash;
       wantHeight *= 1.0f - 0.78f * dash;
-      wantFov = (70.0f - 10.0f * dash) * PI / 180.0f;
+      wantFovMul = 1.0f - (10.0f / 70.0f) * dash;
       wantAhead = wantAhead + (wantDist * 4.0f - wantAhead) * dash;
       wantDown *= 1.0f - dash;
     }
     if (p.braking) {
       wantDist *= 1.25f;
       wantHeight *= 1.25f;
-      wantFov = 82.0f * PI / 180.0f;
+      wantFovMul = 82.0f / 70.0f;
     }
 #if DEVOURSPHERE_CAMERA_ROLL
     wantRoll =
@@ -679,8 +742,7 @@ void Renderer::updateCamera(float dt) {
       if (sizeAfter < p.size) {
         float bodyRAfter = sim::fragmentHalfSize(sim::log2Floor(sizeAfter)) /
                            (float)FU * (2.0f + 0.2f * p.fragmentCount);
-        float distAfter = 3.5f * bodyRAfter + 8.0f;
-        if (distAfter < 11.0f) distAfter = 11.0f;
+        float distAfter = camFrameFor(bodyRAfter);
         flightDist = bodyR * (distAfter * 1.25f / bodyRAfter);
       }
     }
@@ -718,13 +780,14 @@ void Renderer::updateCamera(float dt) {
     // and easing from the old pitch would swing the body round
     sphereSeedSeen_ = g.sphereSeed();
     sphereCountValid_ = false;  // the level is searched afresh (see sphere.cpp)
-    camDist_ = wantDist;
+    camFrame_ = wantDist;
     camNominal_ = nominalDist;
-    camHeight_ = wantHeight;
+    camFrameH_ = wantHeight;
     camAhead_ = wantAhead;
     camDown_ = wantDown;
     if (!camValid_) {
-      camFov_ = wantFov;
+      camLens_ = wantLens;
+      camFovMul_ = wantFovMul;
       camRoll_ = wantRoll;
     }
     camPitch_ = wantPitch;
@@ -739,10 +802,17 @@ void Renderer::updateCamera(float dt) {
     // The camera eases more slowly after death
     float rate = (st == sim::GameState::DEAD || !p.alive) ? 1.5f : 5.0f;
     float k = 1.0f - std::exp(-dt * rate);
-    camDist_ += (wantDist - camDist_) * k;
+    camFrame_ += (wantDist - camFrame_) * k;
     camNominal_ += (nominalDist - camNominal_) * k;
-    camHeight_ += (wantHeight - camHeight_) * k;
-    camFov_ += (wantFov - camFov_) * k;
+    camFrameH_ += (wantHeight - camFrameH_) * k;
+    camFovMul_ += (wantFovMul - camFovMul_) * k;
+    // The lens follows the body far more slowly than the rig follows the
+    // action: the body's size on screen does not depend on it, so there is
+    // nothing to catch up with, and a sphere switch (which snaps the
+    // framing and hands the lens a much smaller body) is left to drift
+    // back over a couple of seconds instead of zooming the stars
+    float kLens = 1.0f - std::exp(-dt * 1.5f);
+    camLens_ += (wantLens - camLens_) * kLens;
     camRoll_ += (wantRoll - camRoll_) * k;
     camAhead_ += (wantAhead - camAhead_) * k;
     camDown_ += (wantDown - camDown_) * k;
@@ -764,6 +834,16 @@ void Renderer::updateCamera(float dt) {
     if (std::fabs(camPitch_) < 1e-4f) camPitch_ = 0;
   }
 
+  // The rig in world units: the longer the lens, the further everything is
+  // scaled back, so the body keeps its size and its place on the screen and
+  // only the perspective flattens. The dash and the brake are a factor on
+  // the lens and are deliberately left out of the scaling -- their zoom is
+  // meant to be seen.
+  camFov_ = camLens_ * camFovMul_;
+  const float dolly = std::tan(CAM_FOV_REF * 0.5f) / std::tan(camLens_ * 0.5f);
+  camDist_ = camFrame_ * dolly;
+  camHeight_ = camFrameH_ * dolly;
+
   // The frame pitched along the flight path (identical to the frame on the
   // surface), for the camera, the player's body and the dash dust. The
   // flight path is continuous through a sphere switch (the frame is turned
@@ -783,7 +863,7 @@ void Renderer::updateCamera(float dt) {
   vec3f eye = fwdO * (-camDist_) + upP * camHeight_;
   // Look at a point ahead of (and normally slightly below) the player so
   // that the sphere surface fills the lower part of the screen
-  vec3f target = fwdP * camAhead_ - upP * (camHeight_ * camDown_);
+  vec3f target = fwdP * (camAhead_ * dolly) - upP * (camHeight_ * camDown_);
   vec3f dir = g3::normalize(target - eye);
   vec3f upR = rotateAroundAxis(upP, dir, camRoll_);
   cam_.eye = eye;
@@ -801,6 +881,17 @@ void Renderer::updateCamera(float dt) {
   viewDir_ = dir;
 
   sphereCenter_ = toLocal({0, 0, 0});
+  {
+    // Where the radii of the sphere vanish on the screen: the horizon
+    // markers lean towards it (markerDown). Kept as a screen point and a
+    // sign rather than as a direction, because behind the camera (high in
+    // flight) the projection turns it around.
+    float mw;
+    vec3f mc = viewProj_.transformPoint4(sphereCenter_, mw);
+    const float iw = 1.0f / (std::fabs(mw) > 1e-4f ? mw : 1e-4f);
+    markerFocus_ = {(mc.x * iw * 0.5f + 0.5f) * w_,
+                    (0.5f - mc.y * iw * 0.5f) * h_, mw > 0 ? 1.0f : -1.0f};
+  }
   vec3f rel = eye - sphereCenter_;
   float d = g3::length(rel);
   camUnit_ = rel * (1.0f / d);
@@ -1290,6 +1381,19 @@ void Renderer::drawHealthWarning() {
 // the top (rank <= MARKER_ALWAYS_RANK): those are the remaining targets,
 // wherever they are. A carrier's white outline fades the same way. No
 // markers at all during the flight (LAUNCH / ARRIVE): buildScene skips them.
+uint16_t Renderer::markerDown(float sx, float sy) const {
+  // Straight at the vanishing point of the sphere's radii -- or straight
+  // away from it when the centre is behind the camera (high in flight),
+  // where the projection turns the direction around
+  float dx = (markerFocus_.x - sx) * markerFocus_.z;
+  float dy = (markerFocus_.y - sy) * markerFocus_.z;
+  float ax = std::fabs(dx), ay = std::fabs(dy);
+  float m = ax > ay ? ax : ay;  // scaled to fit: the focus can be far off
+  if (m < 1e-3f) return sim::BRAD_QUARTER;
+  const float k = 4096.0f / m;
+  return sim::atan2Brad((int32_t)(dy * k), (int32_t)(dx * k));
+}
+
 void Renderer::addEnemyMarker(const sim::Entity &c, bool always) {
   const sim::Game &g = *game_;
   uint32_t ps = g.player().size;
@@ -1329,6 +1433,7 @@ void Renderer::addEnemyMarker(const sim::Entity &c, bool always) {
   Marker2D &mk = markers_[markerCount_++];
   mk.x = (int16_t)sx;
   mk.y = (int16_t)sy;
+  mk.down = markerDown(sx, sy);
   mk.kind = 0;
   g2::Color col = colorForEntity(c);
   // A bounty holder's marker never fades: it is the target, wherever it is

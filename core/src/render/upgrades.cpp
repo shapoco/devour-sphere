@@ -103,6 +103,7 @@ void Renderer::drawFloatingUpgrades(bool withMarkers) {
       Marker2D &mk = markers_[markerCount_++];
       mk.x = (int16_t)sx;
       mk.y = (int16_t)sy;
+      mk.down = markerDown(sx, sy);  // the icon itself is drawn upright
       mk.color = col;
       mk.kind = u.kind;
       mk.outline = 0;
