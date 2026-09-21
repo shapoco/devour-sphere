@@ -25,21 +25,31 @@ namespace sim = devoursphere::sim;
 // this mapping is a fact about the hardware. It cannot be derived from
 // gravity alone -- gravity says which way is down, not which way is right.
 //
-// **The BMI270 turns out to sit square with the screen here**: the sensor's
-// own axes are the screen's, signs and all (confirmed on hardware
-// 2026-09-21). The boot screen is what says so -- it draws the gravity this
-// mapping produces as a needle labelled DOWN, and that end has to point at
-// the floor whichever way the stick is held.
+// **The BMI270 sits turned half a turn about the screen's x axis** here: its
+// x is the screen's, its y and z are the opposite of the screen's. Measured
+// on hardware 2026-09-21 from four symptoms that only this mapping explains
+// together -- the needle below pointing at the ceiling with the stick
+// upright, the landscape picture coming out the right way up, and both
+// left/right and dash/brake coming out backwards. (With x right, those last
+// two pin the other signs exactly: c.z carries the product of the x and y
+// signs and c.y the z one. It is also the only proper rotation of the
+// three, which is the sanity check that it is a mounting and not a guess.)
+//
+// The boot screen is what says so: it draws the gravity this mapping
+// produces as a needle labelled DOWN, and that end has to point at the
+// floor whichever way the stick is held. Note "whichever way" -- with only
+// y inverted the needle still pointed at the floor once the stick was
+// tipped onto its side, and gave itself away only while it was upright.
 //
 // Reading that needle: it swings the OPPOSITE way to the stick, and that is
 // right. The screen turns with the device and gravity does not, so gravity
-// seen from the screen must turn the other way. What it must never do is
-// point at the ceiling (x and y both inverted) or mirror (one of them).
+// seen from the screen must turn the other way. Watch the label, not the
+// direction of travel.
 //
 //                         which sensor axis    sign
 constexpr int SRC_X = 0, SIGN_X = +1;  // screen right
-constexpr int SRC_Y = 1, SIGN_Y = +1;  // screen down
-constexpr int SRC_Z = 2, SIGN_Z = +1;  // into the screen
+constexpr int SRC_Y = 1, SIGN_Y = -1;  // screen down
+constexpr int SRC_Z = 2, SIGN_Z = -1;  // into the screen
 
 // One pole of exponential smoothing, as a fraction per second rather than
 // per sample: the frame rate varies here and the feel of the controls must

@@ -92,10 +92,14 @@ class Attitude {
   // --- Thresholds -----------------------------------------------------------
   // Tipped this far from neutral, a direction key goes down; it comes back
   // up below the second angle. Compared as sines, which is what the cross
-  // product gives directly. 15 degrees is about as far as a wrist tips
-  // without the screen turning away from the player.
-  static constexpr float TILT_ON = 0.2588f;   // sin 15 deg
-  static constexpr float TILT_OFF = 0.1908f;  // sin 11 deg
+  // product gives directly.
+  //
+  // 7 degrees, halved from the 15 this started at: on the device 15 asked
+  // for a deliberate lean of the whole forearm, and the screen had turned
+  // noticeably away from the player by the time the key went down. The
+  // wrist alone covers 7 either way from wherever it is resting.
+  static constexpr float TILT_ON = 0.1219f;   // sin 7 deg
+  static constexpr float TILT_OFF = 0.0872f;  // sin 5 deg
   // Gravity has to lie this far along the screen's x axis before the boot
   // screen believes the stick has been tipped onto a side.
   static constexpr float SIDE_MIN = 0.342f;  // sin 20 deg

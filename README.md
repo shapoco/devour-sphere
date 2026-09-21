@@ -49,8 +49,8 @@ of it, and pause in the top right corner.
 The M5StickS3 version is played by tipping the stick itself. Whichever way you
 lay it on its side at start up becomes the neutral attitude; tipping it from
 there steers, tipping its far edge away dashes and tipping it near brakes.
-KEY1 fires, KEY2 is the emergency dodge, shaking the stick pauses, and KEY1 +
-KEY2 on the title or pause screen shows the timing overlay.
+KEY1 fires, KEY2 is the emergency dodge, shaking the stick pauses, and KEY2 on
+the title or pause screen shows the timing overlay.
 
 ## Build
 

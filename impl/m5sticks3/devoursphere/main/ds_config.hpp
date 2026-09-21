@@ -88,10 +88,10 @@ constexpr int MAX_CATCHUP = 4;
 // M5Unified's master volume, which its mixer SQUARES: a sample's gain is
 // magnification * master^2 * channel^2, so loudness goes as the square of
 // this number and its default of 64 is not a midpoint. This is a 1 W
-// speaker a hand's width from the player rather than the Tab5's room-filling
-// one, so it starts at the default and is a number to set by ear on the
-// device.
-constexpr uint8_t SE_MASTER_VOLUME = 64;
+// speaker a hand's width from the player rather than the Tab5's
+// room-filling one. 90 is twice the default's loudness and is what sounded
+// right on the device (2026-09-21).
+constexpr uint8_t SE_MASTER_VOLUME = 90;
 
 }  // namespace ds
 

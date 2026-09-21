@@ -23,7 +23,8 @@
 //   KEY1 (BtnA, GPIO11)  fire, and confirm on the menus
 //   KEY2 (BtnB, GPIO12)  emergency dodge
 //   shake it             pause, and shake again to resume
-//   both keys            the timing overlay, on the title or pause screen
+//   KEY2                 the timing overlay, on the title or pause screen
+//                        (where it is not a dodge)
 //
 // The stick has no third button, which is why the pause is a shake: the
 // game wants five controls and there are two. The tilt is held clear while
@@ -234,17 +235,20 @@ uint8_t readInput(float dtSec) {
     if (g_att.takeShake()) buttons |= sim::Button::PAUSE;
   }
 
-  // The overlay: both keys together, on the title or pause screen. It has
-  // to be a chord because the stick's own two buttons are fire and dodge,
-  // and UP -- which every other front end uses here -- is a tilt now.
-  static bool prevBoth = false;
-  const bool both = M5.BtnA.isPressed() && M5.BtnB.isPressed();
-  if (both && !prevBoth &&
-      (hud.state == sim::GameState::TITLE || hud.paused)) {
-    g_prof.toggle();
-    buttons &= (uint8_t)~(sim::Button::A | sim::Button::B);  // not also a fire
+  // The overlay. Every other front end puts this on UP, which is a tilt
+  // here, so it needs a button -- and KEY2 is free on exactly the two
+  // screens that want it: the game reads nothing but A and DOWN on the
+  // title screen and nothing but PAUSE and DOWN while paused, so the dodge
+  // button has nothing to do there.
+  //
+  // It was a chord of both keys first, which cannot work: KEY1 is the
+  // confirm, so by the time the second key of the chord goes down the title
+  // screen has already moved on to the weapon select. Nothing a chord does
+  // afterwards can take that back.
+  if (hud.state == sim::GameState::TITLE || hud.paused) {
+    if (M5.BtnB.wasPressed()) g_prof.toggle();
+    buttons &= (uint8_t)~sim::Button::B;
   }
-  prevBoth = both;
   return buttons;
 }
 
@@ -299,8 +303,8 @@ void setup() {
       "TILT: STEER  KEY1: FIRE",
       "TILT AWAY / NEAR: DASH / BRAKE",
       "TILT AWAY: DASH",
-      "SHAKE AGAIN TO RESUME    TILT DOWN: SOUND    KEY1+KEY2: STATS",
-      "SHAKE: RESUME   KEY1+2: STATS",
+      "SHAKE AGAIN TO RESUME    TILT DOWN: SOUND    KEY2: STATS",
+      "SHAKE: RESUME   KEY2: STATS",
   });
 
   audio::init(audio::Config{-1, audio::Pacing::DMA_TIMER, true});
