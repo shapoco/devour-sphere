@@ -21,23 +21,38 @@ static constexpr float SPHERE_R = (float)sim::SPHERE_RADIUS / FU;
 static constexpr float FADE_NEAR = 60.0f, FADE_FAR = 900.0f;  // FU
 // Subdivision: fixed levels chosen by the distance from the player's
 // position on the surface (not by the screen size, which would make the
-// mesh flicker as the camera moves)
-// The radii scale with the nominal camera distance (11 FU for the smallest
-// player) and every level drops by one each time that distance doubles, so
-// the on-screen density and the line count stay about the same as the
-// player grows
+// mesh flicker as the camera moves). Two regions around the player are
+// drawn one and two levels finer than the rest.
+//
+// How coarse the mesh is has to follow the camera, which now pulls a long
+// way back as the player grows (renderer.cpp, "The lens"). Two things do
+// that, and both are steered by the line count alone:
+//
+//   - the level of the whole sphere (sphereShift_), which can only move in
+//     steps of four times the count, and
+//   - how wide the two fine regions are (sphereBand_), which is continuous.
+//
+// The regions are measured in camera heights, because that is the scale of
+// the picture: a mesh whose cells keep their size on the screen is already
+// half a level coarser LEVEL6_RADIUS camera heights along the surface from
+// the player, and one and a half levels coarser at LEVEL5_RADIUS. As the
+// camera climbs, the horizon comes in from 4.6 camera heights away to about
+// 2, so the same regions cover more and more of what can be seen and the
+// mesh grows more even by itself -- which is what the geometry asks for:
+// the further the camera, the less the distance to a face varies over the
+// visible surface.
 static constexpr int BASE_LEVEL = 4;  // edges of ~34 FU at 11 FU
 // Coarsest level while the player is in flight: the far sphere at level 2
 // still reads as a polygon (a 24-gon limb), level 3 as a circle
 static constexpr int FLIGHT_MIN_LEVEL = 3;
-static constexpr float LEVEL5_RADIUS = 6.0f, LEVEL6_RADIUS = 2.5f;  // x nominal
-static constexpr float NOMINAL_DIST0 = 11.0f;
-// The least one more subdivision level multiplies the visible edge count
-// by: below this share of the budget it is worth counting the finer mesh
-static constexpr int SPHERE_LEVEL_FANOUT = 3;
-// Frames between tries to go finer once a try was refused (a try costs a
-// traversal of the finer mesh)
-static constexpr int SPHERE_RELAX_WAIT = 30;
+static constexpr float LEVEL5_RADIUS = 1.65f, LEVEL6_RADIUS = 0.5f;  // x height
+// What the band is steered at, as a share of the line budget, and how far
+// it may be stretched or squeezed before the level itself has to move
+static constexpr int WIRE_TARGET_PCT = 70;
+static constexpr float BAND_MAX = 6.0f, BAND_MIN = 0.02f;
+// Frames before the level may move again (a step is four times the count,
+// so the band needs time to take the difference back up)
+static constexpr int SPHERE_RELAX_WAIT = 20;
 // Budget of the line array for the wireframe (UiMetrics::wireLines: 1100 on
 // the reference screen, less on a smaller one). The edges are counted in a
 // dry run first; when they exceed the limit every level is lowered by one
@@ -127,7 +142,7 @@ bool Renderer::projectQ(const Vec3 &pos, int32_t &sx, int32_t &sy) const {
 
 // One chord of the wireframe, clipped against the horizon.
 void Renderer::emitChord(const Vec3 &a, const Vec3 &b, int level) {
-  if (!sphereDryRun_ && lineCount_ >= ui_.wireLines) return;
+  if (!sphereDryRun_ && lineCount_ >= wireBudget_) return;
   // Clip against the horizon: the far side of the sphere is never drawn
   const int32_t da = sim::dotQ30(a, camQ_.unit) - camQ_.cosHorizon;
   const int32_t db = sim::dotQ30(b, camQ_.unit) - camQ_.cosHorizon;
@@ -304,20 +319,11 @@ int Renderer::wantLevel(const Vec3 &center, int level) const {
 // The per-traversal constants: the two cos thresholds of wantLevel() per
 // level, for the current shift (the rest of CameraQ is per frame)
 void Renderer::sphereConstants() {
-  // The fine regions around the player's point shrink to nothing over the
-  // first BOOST_FADE_FU of a climb (they would be a fine patch far below a
-  // flying player, and on a large player's mesh they cost more lines than
-  // the whole far sphere); on the surface the factor is 1
-  constexpr float BOOST_FADE_FU = 3.0f * sim::ALTITUDE / FU;
-  float boost = 1.0f - altExcess_ / BOOST_FADE_FU;
-  if (boost <= 0) {
-    for (int level = 0; level <= MAX_SPHERE_LEVEL; level++) {
-      camQ_.cosLevel6[level] = camQ_.cosLevel5[level] = INT32_MAX;  // never
-    }
-    return;
-  }
-  const float unit =
-      camNominal_ / (float)(1 << sphereShift_) * boost;  // radii, FU
+  // The regions are measured in camera heights, so they need no case of
+  // their own for the flight: from up there they are wider than the whole
+  // visible surface and the mesh comes out even, which is what a sphere
+  // seen from far away wants anyway.
+  const float unit = camAltitude_ * sphereBand_;  // radii, FU
   for (int level = 0; level <= MAX_SPHERE_LEVEL; level++) {
     const float faceAngle = 0.6524f / (float)(1 << level);  // angular radius
     float a6 = faceAngle + LEVEL6_RADIUS * unit / SPHERE_R;
@@ -348,7 +354,7 @@ void Renderer::sphereConstants() {
 // edges, which is what its parent needs for the same decision.
 Renderer::EdgeDepths Renderer::subdivideFace(const Vec3 &a, const Vec3 &b,
                                              const Vec3 &c, int level) {
-  if (!sphereDryRun_ && lineCount_ >= ui_.wireLines) return 0;
+  if (!sphereDryRun_ && lineCount_ >= wireBudget_) return 0;
   const Vec3 center = sim::normalizeQ30(sum3(a, b, c));
   // Horizon: skip faces entirely on the far side of the sphere
   if (sim::dotQ30(center, camQ_.unit) < camQ_.cullCos[level]) return 0;
@@ -435,6 +441,19 @@ void Renderer::emitIcoEdges() {
   }
 }
 
+// A level has just moved: the regions were scaled to pay for it, but that
+// only holds while they are small against what can be seen, so the result
+// is counted and squeezed until it fits. Only ever runs on a frame where
+// the level changes, which is a few times a flight and once a size.
+void Renderer::fitSphereBand(int shift, const int *order, int limit) {
+  for (int i = 0; i < 4; i++) {
+    if (countSphereLines(shift, order) <= limit) return;
+    if (sphereBand_ <= BAND_MIN) return;
+    sphereBand_ *= 0.5f;
+    if (sphereBand_ < BAND_MIN) sphereBand_ = BAND_MIN;
+  }
+}
+
 int Renderer::countSphereLines(int shift, const int *order) {
   sphereShift_ = shift;
   sphereDryRun_ = true;
@@ -461,31 +480,6 @@ void Renderer::buildSphere() {
     order[j + 1] = o;
   }
 
-  // Base level reduction from the camera distance, plus what the budget
-  // needs (kept between frames with hysteresis so that it does not flicker)
-  float scale = camNominal_ / NOMINAL_DIST0;
-  int base = 0;
-  while (scale >= 2.0f && base < BASE_LEVEL) scale *= 0.5f, base++;
-  // In flight the base is floored at FLIGHT_MIN_LEVEL. The frame the floor
-  // engages (or lets go) the extra reduction takes up the difference, so the
-  // level drawn does not jump: the budget then relaxes it, one level at a
-  // time, as the fine regions around the player shrink with the altitude
-  if (inFlight_) {
-    int floored = base;
-    if (floored > BASE_LEVEL - FLIGHT_MIN_LEVEL) {
-      floored = BASE_LEVEL - FLIGHT_MIN_LEVEL;
-    }
-    if (!sphereFloored_) sphereExtra_ += base - floored;
-    base = floored;
-  } else if (sphereFloored_) {
-    int floored = base;
-    if (floored > BASE_LEVEL - FLIGHT_MIN_LEVEL) {
-      floored = BASE_LEVEL - FLIGHT_MIN_LEVEL;
-    }
-    sphereExtra_ -= base - floored;
-    if (sphereExtra_ < 0) sphereExtra_ = 0;
-  }
-  sphereFloored_ = inFlight_;
   // The whole array high up in flight (there is little else to draw), the
   // screen's share of it on the surface; blended over the first 100 FU of
   // altitude so that the landing does not change the budget in one step
@@ -495,50 +489,87 @@ void Renderer::buildSphere() {
     if (high > 1) high = 1;
     wireLines += (int)((MAX_WIRE - wireLines) * high);
   }
+  wireBudget_ = wireLines;
   const int wireLimit = wireLines - 80 * ui_.scale8 / 8;
-  const int wireRelax = wireLimit * 6 / 10;  // hysteresis
-  int shift;
+  const int wireTarget = wireLimit * WIRE_TARGET_PCT / 100;
+  // In flight the far sphere is kept at FLIGHT_MIN_LEVEL or better however
+  // much of the budget that takes: a polygon limb is what the eye sees
+  // first when the whole sphere is on the screen
+  const int maxShift = inFlight_ ? BASE_LEVEL - FLIGHT_MIN_LEVEL : BASE_LEVEL;
+  int shift = sphereWantShift_;
   if (sphereRelaxWait_ > 0) sphereRelaxWait_--;
   if (sphereCountValid_) {
-    // Steer the level from what the previous frame actually emitted rather
-    // than by trial traversals: counting the edges costs as much as drawing
-    // them, and the camera moves smoothly enough that reacting a frame late
-    // is invisible. emitEdge() caps the line count either way, so a level
-    // that is briefly too fine cannot overflow the buffer.
-    if (sphereCount_ > wireLimit) {
-      sphereExtra_ += (sphereCount_ > 2 * wireLimit) ? 2 : 1;
-      sphereRelaxWait_ = SPHERE_RELAX_WAIT;
-    } else if (sphereCount_ * SPHERE_LEVEL_FANOUT < wireRelax &&
-               sphereExtra_ > 0 && sphereRelaxWait_ == 0) {
-      // Going finer is only worth considering when the count is small,
-      // but a finer level can cost far more than the fanout (the regions
-      // around the player double their radius as well as their level, up
-      // to 16x), so it is counted first and taken only when it fits with
-      // room to grow. A refusal waits before counting again, so a mesh
-      // that sits at the boundary does not flip every frame.
-      shift = base + sphereExtra_ - 1;
-      if (shift < base) shift = base;
-      const int finer = countSphereLines(shift, order);
-      if (finer <= wireRelax) {
-        sphereExtra_--;
-      } else {
+    // Steer from what the last frame actually emitted rather than by trial
+    // traversals: counting the edges costs as much as drawing them, and the
+    // camera moves smoothly enough that reacting a frame late is invisible.
+    // emitEdge() caps the line count either way, so a mesh that is briefly
+    // too fine cannot overflow the buffer.
+    const int count = sphereCount_ > 1 ? sphereCount_ : 1;
+    // The band first: the count grows about as its area, so the radius
+    // goes as the square root of what is missing. Damped, clamped, and
+    // with a dead zone, so that a mesh that is already right stays still.
+    const float ratio = (float)wireTarget / (float)count;
+    if (ratio > 1.1f || ratio < 0.9f) {
+      // Half a correction at a time while there is room, the whole of it
+      // when the mesh is over the budget: over it the count comes back
+      // capped (emitChord stops emitting), so the error is only a lower
+      // bound and there is nothing to be gained by creeping up on it
+      float step = sphereCount_ > wireLimit ? std::sqrt(ratio)
+                                            : std::sqrt(std::sqrt(ratio));
+      if (step > 1.25f) step = 1.25f;
+      sphereBand_ *= step;
+      if (sphereBand_ > BAND_MAX) sphereBand_ = BAND_MAX;
+      if (sphereBand_ < BAND_MIN) sphereBand_ = BAND_MIN;
+    }
+    // Only when the band has run out of room does the level itself move,
+    // and the band takes up the four times a level costs (half the radius)
+    // so that the count lands where it already was
+    if (sphereRelaxWait_ == 0) {
+      if (sphereCount_ > wireLimit && sphereBand_ <= BAND_MIN * 1.01f) {
+        shift += (sphereCount_ > 2 * wireLimit) ? 2 : 1;
+        sphereBand_ *= 2;
+        if (sphereBand_ > BAND_MAX) sphereBand_ = BAND_MAX;
+        sphereRelaxWait_ = SPHERE_RELAX_WAIT;
+      } else if (sphereCount_ < wireTarget && shift > 0 &&
+                 sphereBand_ >= BAND_MAX * 0.99f) {
+        shift--;
+        sphereBand_ *= 0.5f;
         sphereRelaxWait_ = SPHERE_RELAX_WAIT;
       }
     }
-    shift = base + sphereExtra_;
-    if (shift < base) shift = base;
+    if (shift < 0) shift = 0;
     if (shift > BASE_LEVEL) shift = BASE_LEVEL;
+    sphereWantShift_ = shift;
+    if (shift > maxShift) shift = maxShift;
+    // The frame the flight floor engages (or lets go) the whole mesh would
+    // jump a level as well, so the regions take that difference up too
+    if (shift - sphereWantShift_ != sphereFloor_) {
+      const int d = (shift - sphereWantShift_) - sphereFloor_;
+      sphereBand_ *= d < 0 ? 0.5f : 2.0f;
+      if (sphereBand_ > BAND_MAX) sphereBand_ = BAND_MAX;
+      sphereFloor_ = shift - sphereWantShift_;
+    }
+    // Whatever moved the level, the regions were only scaled to pay for
+    // it: count the result and squeeze them until it really fits
+    if (shift != sphereShift_) fitSphereBand(shift, order, wireLimit);
   } else {
-    // First frame after init(): no previous count to go on, so search
-    shift = base + sphereExtra_;
+    // First frame after init() or after a sphere switch: no count to go on,
+    // so search for a level that fits
+    if (shift < 0) shift = 0;
     if (shift > BASE_LEVEL) shift = BASE_LEVEL;
     int count = countSphereLines(shift, order);
     while (count > wireLimit && shift < BASE_LEVEL) {
       shift++;
       count = countSphereLines(shift, order);
     }
+    while (count < wireTarget / 4 && shift > 0) {
+      shift--;
+      count = countSphereLines(shift, order);
+    }
+    sphereWantShift_ = shift;
+    if (shift > maxShift) shift = maxShift;
+    sphereFloor_ = shift - sphereWantShift_;
   }
-  sphereExtra_ = shift - base;
   sphereShift_ = shift;
   sphereCount_ = 0;
   traverseSphere(order);

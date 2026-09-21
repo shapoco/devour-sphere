@@ -59,6 +59,22 @@ static float camGrowth(float bodyR) {
 static float camLensFor(float bodyR) {
   return CAM_FOV_REF + (CAM_FOV_LONG - CAM_FOV_REF) * camGrowth(bodyR);
 }
+// How much of the dash's camera move is still used at a given body size.
+// The dash pulls the camera in and drops it towards the ground, which is
+// the sense of speed while the player is small -- and exactly what puts
+// the horizon in a grown player's face, when what it needs is to keep
+// seeing the wide view it cruises with, behind it as well as ahead. So it
+// fades out over the first DASH_CAM_OCTAVES doublings of the body and is
+// gone from there on (2^15, thirteen doublings above the size a game
+// starts at). The dash itself -- the speed, the dust, the gauge -- is the
+// simulation's and is not touched.
+static constexpr int DASH_CAM_OCTAVES = 13;
+static float camDashFade(uint32_t size) {
+  const float t = (std::log2((float)size) - sim::PLAYER_START_SIZE_LOG2) /
+                  (float)DASH_CAM_OCTAVES;
+  return t <= 0 ? 1.0f : (t >= 1 ? 0.0f : 1.0f - t);
+}
+
 // The framing distance: the camera distance measured at the reference lens.
 // The body covers bodyR / frame of the screen whatever the lens is doing,
 // so the flight can match the framing across a sphere switch by this alone.
@@ -680,7 +696,7 @@ void Renderer::updateCamera(float dt) {
   if (altExcess_ < 0) altExcess_ = 0;
   wireFadeOffset_ = (int32_t)(altExcess_ * (FU * 16));
   if (st == sim::GameState::PLAYING) {
-    float dash = p.dashLevel / 256.0f;
+    float dash = p.dashLevel / 256.0f * camDashFade(p.size);
     if (dash > 0) {
       // Close behind and low, looking along the heading; blended in as the
       // dash builds up
@@ -895,6 +911,11 @@ void Renderer::updateCamera(float dt) {
   vec3f rel = eye - sphereCenter_;
   float d = g3::length(rel);
   camUnit_ = rel * (1.0f / d);
+  // The height the camera watches from, without the dash and the brake:
+  // the scale the sphere's mesh is drawn at (sphere.cpp). It is the real
+  // height while the player cruises; taking it from the nominal framing
+  // instead of from the eye keeps a dash from rebuilding the mesh.
+  camAltitude_ = camNominal_ * dolly + (float)sim::ALTITUDE / FU + altExcess_;
   cosHorizon_ = SPHERE_R / d;
   if (cosHorizon_ > 1) cosHorizon_ = 1;
   horizonAngle_ = std::acos(cosHorizon_);

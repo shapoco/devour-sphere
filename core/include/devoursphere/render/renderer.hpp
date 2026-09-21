@@ -387,18 +387,28 @@ class Renderer {
   float cosHorizon_ = 0;
   float horizonAngle_ = 0;
   float cullCos_[MAX_SPHERE_LEVEL + 1] = {};
-  int sphereShift_ = 0;        // level reduction used for the current frame
-  int sphereExtra_ = 0;        // extra reduction kept between frames (budget)
+  int sphereShift_ = 0;      // level reduction used for the current frame
+  int sphereWantShift_ = 0;  // ... and what it would be without the flight
+                             // floor, which is what is kept between frames
+  // How wide the fine regions around the player are, as a multiple of what
+  // the camera's height asks for: the continuous half of the detail
+  // control (the level itself can only move in steps of four times the
+  // line count), steered towards the line budget frame by frame
+  float sphereBand_ = 1;
+  int sphereFloor_ = 0;    // levels the flight floor added last frame
+  int wireBudget_ = 1100;  // lines the mesh may use this frame (the flight
+                           // gets the whole array, the surface its share)
+  float camAltitude_ = 11;  // the eye above the surface, FU (the mesh scale,
+                            // without the dash and the brake)
   bool sphereDryRun_ = false;  // count edges instead of emitting them
   int sphereCount_ = 0;        // edges of the last pass (drives the level)
   bool sphereCountValid_ = false;
   int sphereRelaxWait_ = 0;  // frames before the next try to go finer
   // The player off the surface (LAUNCH / ARRIVE): the sphere is seen from
   // afar, so the mesh keeps a floor of FLIGHT_MIN_LEVEL, the fine regions
-  // around the player shrink with the altitude, the fade starts at the
-  // altitude, and the line budget is the whole array
+  // around the player shrink to nothing, the fade starts at the altitude,
+  // and the line budget is the whole array
   bool inFlight_ = false;
-  bool sphereFloored_ = false;  // the floor was applied last frame
   float altExcess_ = 0;         // FU above the cruising altitude (>= 0)
   int32_t wireFadeOffset_ = 0;  // 1/16 units subtracted from the fade distance
 
@@ -656,6 +666,7 @@ class Renderer {
   // sphere.cpp
   void buildSphere();
   int countSphereLines(int shift, const int *order);
+  void fitSphereBand(int shift, const int *order, int limit);
   // Subdivide one face and draw the lines separating its children; returns
   // how deeply the mesh ended up subdivided along the face's own edges. See
   // sphere.cpp for why that is all a face draws.
