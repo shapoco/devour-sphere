@@ -263,7 +263,15 @@ class Renderer {
   // How many levels the mesh may grade over between the point below the
   // camera and the horizon
   static constexpr int SPHERE_LEVEL_STEPS = 5;
-  static constexpr float SPHERE_TARGET_PX_INIT = 24.0f;
+// How big a face of the mesh wants to be on the screen, in pixels. The
+// line budget only ever makes them bigger than this (sphere.cpp), so this
+// is what the mesh costs on a board with time to spare -- and a board
+// without it can ask for bigger cells: the count goes as the square of it,
+// so 36 draws and walks less than half of what 24 does.
+#ifndef DEVOURSPHERE_SPHERE_TARGET_PX
+#define DEVOURSPHERE_SPHERE_TARGET_PX 24
+#endif
+  static constexpr float SPHERE_TARGET_PX_INIT = DEVOURSPHERE_SPHERE_TARGET_PX;
   static constexpr int MAX_GAUGES = 64;
   static constexpr int MAX_MARKERS = 40;
   static constexpr int MAX_ENEMY_MARKERS = 32;  // the rest is kept for upgrades

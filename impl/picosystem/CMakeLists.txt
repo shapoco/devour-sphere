@@ -46,6 +46,11 @@ add_compile_definitions(
     # The wireframe's segment array: 240x240 budgets 550 lines (1100 x
     # scale), so the 1100 the reference screen needs would waste 5.4 KB
     DEVOURSPHERE_MAX_WIRE=560
+    # Faces of the sphere's mesh 36 px across rather than the 24 a screen
+    # with time to spare asks for: the count goes as the square of it, so
+    # 240x240 draws about 185 lines a frame here instead of 340, which is
+    # what this core can afford (3.1: measured on the device)
+    DEVOURSPHERE_SPHERE_TARGET_PX=36
     # The 2D line and point arrays (outlines, effects, far fragments): a
     # crowded 240x240 frame has about 100 lines and 30 points; what does
     # not fit takes the 3D path. 14 and 8 bytes an entry.
