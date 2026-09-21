@@ -45,6 +45,15 @@ ESP-IDF のプロジェクト。640x360 のランドスケープのフレーム�
 
 詳細は impl/m5tab5/SPEC.md を参照のこと。
 
+### M5StickS3 版
+
+impl/m5sticks3/ 配下に M5StickS3 (ESP32-S3 のスティック型開発機) 向けの実装が置かれる。
+ESP-IDF のプロジェクト。135x240 の ST7789 を横倒しにして 240x135 として使い、
+45 行の帯で描く (回転はパネルの MADCTL が行うので、ソフトウェアでの回転もバイト入れ替えも無い)。
+方向キーはデバイスの傾き (BMI270)、射撃と緊急回避が 2 つのキー、ポーズは本体を振る。
+
+詳細は impl/m5sticks3/SPEC.md を参照のこと。
+
 ### PicoSystem 版
 
 impl/picosystem/ 配下に PicoSystem (Pimoroni の RP2040 携帯ゲーム機) 向けの実装が置かれる。
@@ -74,6 +83,7 @@ impl/wasm/           WASM 版 (impl/wasm/SPEC.md)
 impl/xiamocon/       Xiamocon 版 (impl/xiamocon/SPEC.md)
 impl/picosystem/     PicoSystem 版 (impl/picosystem/SPEC.md)
 impl/m5tab5/         M5Tab5 版 (impl/m5tab5/SPEC.md)
+impl/m5sticks3/      M5StickS3 版 (impl/m5sticks3/SPEC.md)
 impl/cli/            CLI 版 (impl/cli/SPEC.md)
 docs/                公開用の静的サイト (docs/play/ がゲーム)
 assets/se/           効果音の素材 (効果音ラボ、assets/se/README.md)
@@ -113,10 +123,11 @@ cmake -S . -B build -DPICO_SDK_PATH=~/pico/pico-sdk
 cmake --build build -j                           # build/devoursphere.uf2
 ```
 
-M5Tab5 版は ESP-IDF v5.5.x のプロジェクト (`DS_IDF_PATH` の既定は `${HOME}/esp/5.5`):
+M5Tab5 版と M5StickS3 版は ESP-IDF v5.5.x のプロジェクト
+(`DS_IDF_PATH` の既定は `${HOME}/esp/5.5`):
 
 ```sh
-cd impl/m5tab5/devoursphere
+cd impl/m5tab5/devoursphere                      # または impl/m5sticks3/devoursphere
 ./build.sh                                       # build/devoursphere.bin
 ./run.sh /dev/ttyACM0                            # ビルドして書き込み
 ```

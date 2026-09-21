@@ -1,0 +1,13 @@
+dependencies:
+  # Both are needed by name: M5Unified brings up the PMIC, the ES8311, the
+  # BMI270 and the buttons, and M5GFX is the ST7789 and the SPI bus the
+  # bands go out on. A caret range on each -- unlike the Tab5 front end,
+  # nothing here reaches into M5GFX's internals; panel_out.cpp uses the
+  # public setWindow / writePixelsDMA / waitDMA.
+  #
+  # 0.2.18 is where M5Unified learned this board (M5StickS3: the panel and
+  # its PM1 power-up, BtnA on GPIO11 and BtnB on GPIO12, the ES8311 register
+  # sequence, the BMI270 on the internal I2C).
+  m5stack/m5gfx: "^0.2.25"
+  m5stack/m5unified: "^0.2.18"
+  idf: ">=5.5"

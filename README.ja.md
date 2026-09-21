@@ -15,7 +15,7 @@
 - **仕様:** [SPEC.md](SPEC.md), [core/SPEC.md](core/SPEC.md),
   [impl/wasm/SPEC.md](impl/wasm/SPEC.md), [impl/xiamocon/SPEC.md](impl/xiamocon/SPEC.md),
   [impl/picosystem/SPEC.md](impl/picosystem/SPEC.md), [impl/m5tab5/SPEC.md](impl/m5tab5/SPEC.md),
-  [impl/cli/SPEC.md](impl/cli/SPEC.md)
+  [impl/m5sticks3/SPEC.md](impl/m5sticks3/SPEC.md), [impl/cli/SPEC.md](impl/cli/SPEC.md)
 
 ## ダウンロード
 
@@ -42,6 +42,11 @@
 ブラウザ版はゲームパッドとタッチ操作 (仮想パッド) にも対応。
 M5Tab5 版はブラウザ版の横画面と同じ配置の仮想パッドで遊ぶ
 (左下の方向ディスク、右下の A、その左上の回避ボタン、右上隅のポーズ)。
+
+M5StickS3 版は本体を倒して遊ぶ。起動時に横倒しにした姿勢が基準になり、
+そこから傾けた方向が方向キー (奥に倒すとダッシュ、手前でブレーキ)。
+KEY1 が攻撃、KEY2 が緊急回避、本体を振るとポーズ、
+計測表示は タイトル / ポーズ画面で KEY1 + KEY2。
 
 ## ビルド
 
@@ -73,6 +78,14 @@ cmake --build build -j         # build/devoursphere.uf2 (効果音のパック�
 
 ```sh
 cd impl/m5tab5/devoursphere
+./build.sh                     # DS_IDF_PATH 既定 ${HOME}/esp/5.5
+./run.sh /dev/ttyACM0          # ビルドして書き込み (ポート省略可)
+```
+
+[M5StickS3](https://docs.m5stack.com/en/core/M5StickS3) (ESP32-S3) 版 (ESP-IDF v5.5.x):
+
+```sh
+cd impl/m5sticks3/devoursphere
 ./build.sh                     # DS_IDF_PATH 既定 ${HOME}/esp/5.5
 ./run.sh /dev/ttyACM0          # ビルドして書き込み (ポート省略可)
 ```
@@ -198,6 +211,7 @@ tick のたびに `pollEffects()` を呼んでください (tick の出すイベ
 | [impl/picosystem/](impl/picosystem/) | 一番制約の厳しい移植 (RP2040 264KB、pico-sdk だけ、帯 + DMA、2 コア) |
 | [impl/xiamocon/](impl/xiamocon/) | 同じソースで RP2350 (pico-sdk) と ESP32S3 (Arduino) の両方を焼く |
 | [impl/m5tab5/](impl/m5tab5/) | ESP-IDF、フルサイズのフレーム + ハードウェアの拡大回転、タッチの仮想パッド |
+| [impl/m5sticks3/](impl/m5sticks3/) | 横倒しの 240x135、傾きで操作 (IMU)、振ってポーズ |
 | [impl/wasm/](impl/wasm/) | ブラウザ (Emscripten)、キーボード / ゲームパッド / タッチ、localStorage |
 | [impl/cli/](impl/cli/) | 一番短い例。全画面を 1 回の `renderBand()` で描いて端末に流すだけ |
 

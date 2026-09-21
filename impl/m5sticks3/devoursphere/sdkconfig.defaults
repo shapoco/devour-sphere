@@ -1,0 +1,38 @@
+# Devour Sphere on M5StickS3 (ESP32-S3-PICO-1-N8R8: 8 MB flash, 8 MB PSRAM).
+CONFIG_IDF_TARGET="esp32s3"
+
+# Reaches the whole tree, which is the point of building from source here:
+# the frame time is spent in ShapoGFX's span loops and in M5GFX's SPI bus,
+# not only in our own translation units.
+CONFIG_COMPILER_OPTIMIZATION_PERF=y
+
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+
+# The simulation state (84 KB) lives in PSRAM, as on the other ESP32S3 board
+# (impl/xiamocon/SPEC.md): it is read once a tick by the core that is not
+# rasterizing, while the internal SRAM is wanted for the arena, the band
+# buffers and the SPI driver's own. Octal at 80 MHz is what the N8R8 package
+# has.
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+
+CONFIG_FREERTOS_HZ=1000
+
+# app_main's task builds the scene and rasterizes, and buildSphere() recurses
+# seven levels deep on top of the rasterizer's locals. The 3584 byte default
+# would not survive it. Keep ds_platform.hpp's STACK_BYTES_CORE0 in step.
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384
+
+# The StickS3 brings out USB-C only.
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+
+CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
+
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# The simulation and the rasterizer each get a core and neither yields for
+# long, so the watchdog would fire on whichever one the idle task never
+# reaches.
+CONFIG_ESP_TASK_WDT_INIT=n

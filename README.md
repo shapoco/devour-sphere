@@ -16,7 +16,7 @@ and fonts.
 - **Specifications (Japanese):** [SPEC.md](SPEC.md), [core/SPEC.md](core/SPEC.md),
   [impl/wasm/SPEC.md](impl/wasm/SPEC.md), [impl/xiamocon/SPEC.md](impl/xiamocon/SPEC.md),
   [impl/picosystem/SPEC.md](impl/picosystem/SPEC.md), [impl/m5tab5/SPEC.md](impl/m5tab5/SPEC.md),
-  [impl/cli/SPEC.md](impl/cli/SPEC.md)
+  [impl/m5sticks3/SPEC.md](impl/m5sticks3/SPEC.md), [impl/cli/SPEC.md](impl/cli/SPEC.md)
 
 ## Download
 
@@ -45,6 +45,12 @@ The browser version also takes a gamepad and touch input (an on-screen pad).
 The M5Tab5 version is played with that same landscape pad layout: a direction
 disc in the bottom left, A in the bottom right, the dodge button above and left
 of it, and pause in the top right corner.
+
+The M5StickS3 version is played by tipping the stick itself. Whichever way you
+lay it on its side at start up becomes the neutral attitude; tipping it from
+there steers, tipping its far edge away dashes and tipping it near brakes.
+KEY1 fires, KEY2 is the emergency dodge, shaking the stick pauses, and KEY1 +
+KEY2 on the title or pause screen shows the timing overlay.
 
 ## Build
 
@@ -76,6 +82,15 @@ For [M5Stack Tab5](https://docs.m5stack.com/en/core/Tab5) (ESP32-P4), with ESP-I
 
 ```sh
 cd impl/m5tab5/devoursphere
+./build.sh                     # DS_IDF_PATH defaults to ${HOME}/esp/5.5
+./run.sh /dev/ttyACM0          # build and flash (the port may be omitted)
+```
+
+For [M5StickS3](https://docs.m5stack.com/en/core/M5StickS3) (ESP32-S3), with
+ESP-IDF v5.5.x:
+
+```sh
+cd impl/m5sticks3/devoursphere
 ./build.sh                     # DS_IDF_PATH defaults to ${HOME}/esp/5.5
 ./run.sh /dev/ttyACM0          # build and flash (the port may be omitted)
 ```
@@ -212,6 +227,7 @@ Knobs for when it does not fit or does not keep up:
 | [impl/picosystem/](impl/picosystem/) | the tightest port: RP2040, 264 KB, pico-sdk alone, bands over DMA, both cores |
 | [impl/xiamocon/](impl/xiamocon/) | one source built for both RP2350 (pico-sdk) and ESP32S3 (Arduino) |
 | [impl/m5tab5/](impl/m5tab5/) | ESP-IDF, a full-size frame plus hardware scale and rotate, a touch pad |
+| [impl/m5sticks3/](impl/m5sticks3/) | 240x135 on its side, steered by tilting the board (IMU), shake to pause |
 | [impl/wasm/](impl/wasm/) | the browser (Emscripten): keyboard, gamepad, touch, localStorage |
 | [impl/cli/](impl/cli/) | the shortest one: one `renderBand()` for the whole frame, out to a terminal |
 
