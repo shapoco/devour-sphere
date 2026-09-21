@@ -49,6 +49,16 @@ struct Gauge2D {
 #define DEVOURSPHERE_SUPPRESS_ALPHA 0
 #endif
 
+// Build-time switch: with DEVOURSPHERE_CAMERA_ROLL=0 the camera no longer
+// rolls into a turn. The body still banks (sim::Entity::bank, which is the
+// simulation's and identical either way); only the view stops leaning. For
+// a platform steered by tilting the device itself, where the screen already
+// rolls in the player's hand and the camera doing it too is one roll
+// too many.
+#ifndef DEVOURSPHERE_CAMERA_ROLL
+#define DEVOURSPHERE_CAMERA_ROLL 1
+#endif
+
 // Horizon markers: shown up to this angle around the sphere from the camera
 // (75 degrees, about 670 FU along the surface), fading to this brightness
 constexpr float MARKER_MAX_ANGLE = 75.0f * 3.14159265358979f / 180.0f;
@@ -72,6 +82,16 @@ void drawUpgradeIcon(g2::Graphics2D &g, int kind, int cx, int cy, g2::Color c,
 // The screen size the HUD layout is written against; every distance below is
 // that layout's pixel value scaled by UiMetrics::scale8
 constexpr int UI_REF_W = 480, UI_REF_H = 320;
+
+// The screen height the entity detail thresholds are written against (the
+// handhelds). A body's radius on screen is proportional to the focal length,
+// which is proportional to the height (the vertical field of view is fixed),
+// so a shorter screen makes every entity fewer pixels across and the
+// thresholds bite earlier -- on 240x135 an enemy right in front of the
+// player came out as the far-away outline. Renderer::lodScale_ scales them
+// by the height below this, and not at all above it: a large screen keeps
+// the thresholds it was tuned with.
+constexpr int LOD_REF_H = 240;
 
 // How the HUD adapts to the frame buffer size (computed by init()). The
 // layout is expressed in the reference screen's pixels and multiplied by
@@ -321,6 +341,10 @@ class Renderer {
     int v = ui(refPx);
     return v < minPx ? minPx : v;
   }
+  // The entity detail thresholds of this screen (see LOD_REF_H): a radius in
+  // the reference screen's pixels, in the pixels this one projects it to
+  float lod(float refPx) const { return refPx * lodScale_; }
+  float lodScale_ = 1.0f;  // h_ / LOD_REF_H, never above 1
   g3::Graphics3D g3d_;
   const sim::Game *game_ = nullptr;
   float time_ = 0;

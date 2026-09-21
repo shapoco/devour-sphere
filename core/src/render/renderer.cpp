@@ -93,6 +93,7 @@ void Renderer::init(int width, int height, void *arena, size_t arenaSize,
   w_ = width;
   h_ = height;
   ui_ = computeUi(width, height);
+  lodScale_ = height < LOD_REF_H ? (float)height / LOD_REF_H : 1.0f;
   g3::Config cfg =
       g3::defaultConfig((int16_t)width, (int16_t)height, arena, arenaSize);
   cfg.spanCapacity = spanCapacity;
@@ -631,8 +632,10 @@ void Renderer::updateCamera(float dt) {
       wantHeight *= 1.25f;
       wantFov = 82.0f * PI / 180.0f;
     }
+#if DEVOURSPHERE_CAMERA_ROLL
     wantRoll =
         (p.turnLevel / 256.0f) * (p.braking ? 14.0f : 9.0f) * PI / 180.0f;
+#endif
   } else if (inFlight_) {
     // The flight between spheres. The camera circles the player from
     // behind to the front during the launch (the sphere left behind comes
@@ -942,7 +945,7 @@ void Renderer::drawEntity(const sim::Entity &c, const sim::Vec3 &pos, float px,
                          center - sim::scaleToLength(right, s)};
     putLineLoopQ(pts, 4, carrier ? outline : colorForEntity(c),
                  palette_[PAL_LINE], L2D_UNDER);
-    if (px >= 4.0f) {
+    if (px >= lod(4.0f)) {
       putKiteQ(pos + sim::scaleToLength(fwd, coreY), fwd, right, coreHalf,
                coreHalf * 5 / 2, palette_[PAL_CORE]);
     }
@@ -1462,14 +1465,14 @@ void Renderer::buildScene() {
   for (int k = 0; k < n; k++) {
     const sim::Entity &c = g.entities[vis_[k].idx];
     int fullTris = (1 + 2 * c.fragmentCount) * 2;
-    bool full = vis_[k].px >= 6.0f && triBudget >= fullTris;
+    bool full = vis_[k].px >= lod(6.0f) && triBudget >= fullTris;
     triBudget -= full ? fullTris : 6;
     const sim::Vec3 posQ = sim::scaleToLength(c.frame.n, c.r) - origin_;
     bool blink =
         c.invincible > 0 && ((g.tickCount() / (sim::TICK_RATE / 8)) & 1);
     drawEntity(c, posQ, vis_[k].px, full, blink);
     // Health gauge over enemies
-    if (!c.isPlayer && vis_[k].px >= 2.5f && gaugeCount_ < MAX_GAUGES) {
+    if (!c.isPlayer && vis_[k].px >= lod(2.5f) && gaugeCount_ < MAX_GAUGES) {
       const vec3f pos = {posQ.x * (1.0f / FU), posQ.y * (1.0f / FU),
                          posQ.z * (1.0f / FU)};
       float bodyR = c.bodyRadius / (float)FU;
