@@ -33,6 +33,16 @@ int32_t fragmentHalfSize(int sizeLog2) {
   return HALF_SIZE[sizeLog2];
 }
 
+// The fragment attraction scales with the body, so a fragment reaches a
+// huge player as readily as it reaches a new one (see ATTRACT_ACCEL)
+int32_t attractScaleQ8(uint32_t size) {
+  int32_t q8 = (int32_t)(((int64_t)fragmentHalfSize(log2Floor(size)) << 8) /
+                         fragmentHalfSize(PLAYER_START_SIZE_LOG2));
+  if (q8 < 256) q8 = 256;
+  if (q8 > ATTRACT_SCALE_MAX_Q8) q8 = ATTRACT_SCALE_MAX_Q8;
+  return q8;
+}
+
 int32_t altitudeForSize(uint32_t size) {
   (void)size;
   return ALTITUDE;

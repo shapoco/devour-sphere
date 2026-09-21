@@ -26,6 +26,10 @@ int32_t fragmentHalfSize(int sizeLog2);
 // Altitude above the sphere surface for an entity of the given size
 int32_t altitudeForSize(uint32_t size);
 
+// How much the pull on nearby floating fragments is scaled (Q8) for a player
+// of the given size: the body's visual scale relative to the starting player
+int32_t attractScaleQ8(uint32_t size);
+
 // Cruise speed (units per tick) of an entity of the given size
 int32_t cruiseSpeedForSize(uint32_t size);
 
@@ -98,6 +102,8 @@ struct Entity {
                          // while absorbed)
   bool bounty : 1;       // has been the largest on the sphere: must be killed
                          // for the sphere to be cleared (see updateRanks)
+  bool noScore : 1;      // spawned to help the player back after a death:
+                         // worth no score (see RESPAWN_PACK_MAX)
   Weapon weapon;
   uint8_t hue;          // 0..255 color hue (render hint)
   int8_t turn;          // -1 left, 0, +1 right (current input)

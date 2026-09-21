@@ -309,7 +309,7 @@ void Game::damageEntity(int idx, int32_t dmg, int attacker, bool allowCrit) {
     }
   }
   if (c.hp <= 0) {
-    if (!c.isPlayer && attacker == playerIndex_) {
+    if (!c.isPlayer && !c.noScore && attacker == playerIndex_) {
       // Kill score grows with the square of the size ratio
       const Entity &p = entities[playerIndex_];
       int64_t pct = p.size > 0 ? (int64_t)c.size * 100 / p.size : 100;
@@ -346,21 +346,27 @@ void Game::killEntity(int idx, int killer) {
                  (int32_t)c.size);
     }
   }
-  Vec3 center = worldPos(c.frame.n, c.r);
-  Vec3 right = c.frame.right();
-  for (int i = 0; i < c.fragmentCount; i++) {
-    const Fragment &p = c.fragments[i];
-    for (int side = -1; side <= 1; side += 2) {
-      int32_t x = p.x * side;
-      Vec3 off = scaleToLength(right, x) + scaleToLength(c.frame.t, p.y);
-      Vec3 dir = off;
-      if (dir.x == 0 && dir.y == 0 && dir.z == 0) dir = right;
-      dir = normalizeQ30(dir);
-      // Scatter briskly, bigger bodies burst wider
-      int32_t sp =
-          (FU / 4 + rng_.range(0, FU / 4)) * (8 + log2Floor(c.size)) / 8;
-      Vec3 drift = scaleToLength(dir, sp);
-      spawnFloatingFragment(normalizeQ30(center + off), c.r, p.sizeLog2, drift);
+  // The player's wreck leaves nothing behind: it can never take its own
+  // fragments back (they are guarded for 3 s and it respawns elsewhere), so
+  // they only ever fed the enemies that just killed it
+  if (!c.isPlayer) {
+    Vec3 center = worldPos(c.frame.n, c.r);
+    Vec3 right = c.frame.right();
+    for (int i = 0; i < c.fragmentCount; i++) {
+      const Fragment &p = c.fragments[i];
+      for (int side = -1; side <= 1; side += 2) {
+        int32_t x = p.x * side;
+        Vec3 off = scaleToLength(right, x) + scaleToLength(c.frame.t, p.y);
+        Vec3 dir = off;
+        if (dir.x == 0 && dir.y == 0 && dir.z == 0) dir = right;
+        dir = normalizeQ30(dir);
+        // Scatter briskly, bigger bodies burst wider
+        int32_t sp =
+            (FU / 4 + rng_.range(0, FU / 4)) * (8 + log2Floor(c.size)) / 8;
+        Vec3 drift = scaleToLength(dir, sp);
+        spawnFloatingFragment(normalizeQ30(center + off), c.r, p.sizeLog2,
+                              drift);
+      }
     }
   }
   releaseUpgrade(idx);
@@ -391,7 +397,7 @@ void Game::transferSize(int from, int to) {
     if (S.isPlayer) events_ |= Event::PLAYER_HIT;
     if (S.hp <= 0) {
       // Drained dry: devoured (the body bursts into fragments)
-      if (B.isPlayer) addScore((int64_t)SCORE_DEVOUR_BASE * 256);
+      if (B.isPlayer && !S.noScore) addScore((int64_t)SCORE_DEVOUR_BASE * 256);
       killEntity(from, to);
       stats_.absorbs++;
       return;
@@ -433,7 +439,7 @@ void Game::transferSize(int from, int to) {
       pushSound(S.absorbedBig ? SoundKind::ENEMY_KILLED_BIG
                               : SoundKind::ENEMY_KILLED_SMALL);
     }
-    if (B.isPlayer) addScore((int64_t)SCORE_DEVOUR_BASE * 256);
+    if (B.isPlayer && !S.noScore) addScore((int64_t)SCORE_DEVOUR_BASE * 256);
     return;
   }
   syncFragments(S, 0, 0);
@@ -498,6 +504,12 @@ void Game::updateFloatingFragments() {
   const Entity &p = entities[playerIndex_];
   bool attract = p.alive && state_ == GameState::PLAYING;
   int32_t attractRange = p.bodyRadius + ATTRACT_RANGE_FU * FU;
+  // The pull grows with the player (see ATTRACT_ACCEL)
+  const int32_t attractScale = attractScaleQ8(p.size);
+  const int32_t attractAccel =
+      (int32_t)(((int64_t)ATTRACT_ACCEL * attractScale) >> 8);
+  const int32_t attractMaxSpeed =
+      p.bodyRadius > ATTRACT_MAX_SPEED ? p.bodyRadius : ATTRACT_MAX_SPEED;
   Vec3 playerPos = worldPos(p.frame.n, p.r);
   for (int i = 0; i < MAX_FLOATING_FRAGMENTS; i++) {
     FloatingFragment &fp = floatingFragments[i];
@@ -511,10 +523,10 @@ void Game::updateFloatingFragments() {
         tangentialDist2(fp.n, p.frame.n, attractRange, d2) &&
         d2 < (int64_t)attractRange * attractRange) {
       Vec3 dir = normalizeQ30(playerPos - worldPos(fp.n, fp.r));
-      fp.drift = fp.drift + scaleToLength(dir, ATTRACT_ACCEL);
+      fp.drift = fp.drift + scaleToLength(dir, attractAccel);
       int64_t v2 = length2_64(fp.drift);
-      if (v2 > (int64_t)ATTRACT_MAX_SPEED * ATTRACT_MAX_SPEED) {
-        fp.drift = scaleToLength(normalizeQ30(fp.drift), ATTRACT_MAX_SPEED);
+      if (v2 > (int64_t)attractMaxSpeed * attractMaxSpeed) {
+        fp.drift = scaleToLength(normalizeQ30(fp.drift), attractMaxSpeed);
       }
     }
     applyDrift(fp.n, fp.r, fp.drift, 5 + RATE_SHIFT);

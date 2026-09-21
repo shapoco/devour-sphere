@@ -182,9 +182,10 @@ bool Game::respawnPlayer() {
     if (upgradeLevels_[i] > 0) upgradeLevels_[i]--, lost[i] = 1;
   }
   Entity &p = entities[playerIndex_];
-  uint32_t size = p.size / RESPAWN_SIZE_DIV;
+  uint32_t size = (uint32_t)((uint64_t)p.size * RESPAWN_SIZE_KEEP_PCT / 100);
   uint32_t minSize = 1u << PLAYER_START_SIZE_LOG2;
   if (size < minSize) size = minSize;
+  uint32_t lostSize = p.size > size ? p.size - size : 0;
   Weapon w = p.weapon;
   uint8_t hue = p.hue;
   initEntity(p, log2Floor(size), w);
@@ -207,6 +208,8 @@ bool Game::respawnPlayer() {
     for (int j = 0; j < MAX_ENTITIES; j++) {
       const Entity &o = entities[j];
       if (!o.alive || j == playerIndex_) continue;
+      // Only the ones big enough to end the comeback count (RESPAWN_THREAT_PCT)
+      if ((int64_t)o.size * 100 < (int64_t)size * RESPAWN_THREAT_PCT) continue;
       int64_t d2;
       if (tangentialDist2(f.n, o.frame.n, 400 * FU, d2) && d2 < nearest)
         nearest = d2;
@@ -220,8 +223,60 @@ bool Game::respawnPlayer() {
   p.frame = best;
   p.r = bestR;
   scatterLostUpgrades(lost, p.frame.n, p.r);
+  spawnRespawnPack(lostSize);
   events_ |= Event::PLAYER_RESPAWNED;
   return true;
+}
+
+// Enemies to grow back on, on a circle of RESPAWN_PACK_FU around the player
+// (see RESPAWN_PACK_MAX). They are ordinary enemies but for `noScore`
+void Game::spawnRespawnPack(uint32_t lost) {
+  const Entity &p = entities[playerIndex_];
+  // The enemy one rank above the player: the smallest one still bigger
+  uint32_t above = 0;
+  for (int i = 0; i < MAX_ENTITIES; i++) {
+    const Entity &e = entities[i];
+    if (!e.alive || e.isPlayer || e.size <= p.size) continue;
+    if (above == 0 || e.size < above) above = e.size;
+  }
+  if (above == 0) return;  // nothing to catch up with
+  uint64_t total = above - p.size;
+  // Never more than the death cost plus half: growing back is the point,
+  // and dying must not become a way to get ahead
+  uint64_t cap = (uint64_t)lost * RESPAWN_PACK_MASS_NUM / RESPAWN_PACK_MASS_DEN;
+  if (total > cap) total = cap;
+  if (total * 100 < (uint64_t)p.size * RESPAWN_PACK_MIN_PCT) return;
+
+  uint32_t chunkMax = (uint32_t)((uint64_t)p.size * RESPAWN_PACK_CHUNK_PCT / 100);
+  if (chunkMax < 1) chunkMax = 1;
+  int n = (int)((total + chunkMax - 1) / chunkMax);
+  if (n > RESPAWN_PACK_MAX) n = RESPAWN_PACK_MAX;
+
+  Vec3 center = p.frame.n;
+  Vec3 helper = absI32(center.x) < absI32(center.y) ? Vec3{Q30_ONE, 0, 0}
+                                                   : Vec3{0, Q30_ONE, 0};
+  Vec3 t1 = normalizeQ30(crossQ30(center, helper));
+  Vec3 t2 = crossQ30(center, t1);
+  const int32_t tanQ30 =
+      (int32_t)(((int64_t)(RESPAWN_PACK_FU * FU) << Q30_SHIFT) / SPHERE_RADIUS);
+  for (int i = 0; i < n; i++) {
+    uint32_t each = (uint32_t)(total / n);
+    if ((uint64_t)i < total % (uint64_t)n) each++;  // the remainder first
+    if (each < 1) continue;
+    int idx = findFreeEntity();
+    if (idx < 0) return;  // the sphere is full: no room for the rest either
+    spawnEnemy(idx, log2Floor(each), false);
+    Entity &e = entities[idx];
+    setEntitySize(e, each);
+    syncFragments(e, 0, 0);
+    e.hp = e.hpMax;
+    e.noScore = true;
+    uint16_t a = rng_.brad();
+    Vec3 dir = scaleQ30(t1, cosQ30(a)) + scaleQ30(t2, sinQ30(a));
+    e.frame.n = normalizeQ30(center + scaleQ30(dir, tanQ30));
+    e.frame.t = orthonormalizeQ30(e.frame.t, e.frame.n);
+    e.r = p.r;
+  }
 }
 
 }  // namespace devoursphere::sim

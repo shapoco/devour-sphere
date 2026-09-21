@@ -330,6 +330,9 @@ class Game {
                            int32_t r);
   void updateShieldRegen();
   bool respawnPlayer();
+  // The enemies placed around the respawn point for the player to grow back
+  // on (see RESPAWN_PACK_MAX). `lost` is the size the death cost
+  void spawnRespawnPack(uint32_t lost);
   // In flight (after clearing a sphere and until landing on the next) the
   // player is frozen: no hits, no eating, no absorption in either direction,
   // so the body keeps its shape; the AI ignores it too

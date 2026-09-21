@@ -738,6 +738,67 @@ static int32_t maxHitDrop(Game &g, int shooter, int victim, int32_t power,
 // own fire never scales, the shield is applied before the per-hit cap, a hit
 // is followed by mercy ticks, the dodge lets bullets pass, and an enemy under
 // fire breaks off only from the second sphere on
+// The pull on floating fragments scales with the player's body: a fragment
+// planted beside a huge player is drawn in sooner than the same fragment
+// beside a starting player, even though the huge one cruises away faster
+// and has a wider body to bring it across.
+// `PLANTED` marks the fragment: the slot is reused the moment it is taken
+static constexpr int16_t PLANTED = -2;
+
+static int ticksToTakeFragment(Game &g, int32_t distFU) {
+  const Entity &p = g.player();
+  clearAround(g, p.frame.n);
+  // Beside the player, not ahead of it: only the pull can bring it in
+  Vec3 n = normalizeQ30(
+      p.frame.n +
+      scaleQ30(p.frame.right(),
+               (int32_t)((((int64_t)distFU * FU) << Q30_SHIFT) >>
+                         SPHERE_RADIUS_SHIFT)));
+  FloatingFragment &f = g.floatingFragments[0];
+  f = {};
+  f.alive = true;
+  f.n = n;
+  f.r = SPHERE_RADIUS + ALTITUDE;
+  f.sizeLog2 = 0;
+  f.owner = PLANTED;
+  for (int t = 1; t <= 10 * TICK_RATE; t++) {
+    g.tick(0);
+    if (!f.alive || f.owner != PLANTED) return t;
+  }
+  return -1;
+}
+
+static void testFragmentAttraction() {
+  // The scale is the body's: x2 every four levels, capped
+  CHECK(attractScaleQ8(1u << PLAYER_START_SIZE_LOG2) == 256);
+  CHECK(attractScaleQ8(1u << (PLAYER_START_SIZE_LOG2 + 4)) == 512);
+  CHECK(attractScaleQ8(1u << (PLAYER_START_SIZE_LOG2 + 8)) == 1024);
+  CHECK(attractScaleQ8(1u << MAX_SIZE_LOG2) == ATTRACT_SCALE_MAX_Q8);
+  CHECK(attractScaleQ8(1) == 256);  // never weaker than a starting player
+
+  int small = -1, big = -1;
+  {
+    Game g;
+    g.reset(31);
+    g.debugStartSphere(1, 0);
+    for (int t = 0; t < TICK_RATE; t++) g.tick(0);
+    small = ticksToTakeFragment(g, 20 + g.player().bodyRadius / FU);
+  }
+  {
+    Game g;
+    g.reset(31);
+    g.debugStartSphere(1, 0);
+    for (int i = 0; i < 10; i++) g.debugScaleSize(true);  // ten levels up
+    for (int t = 0; t < TICK_RATE; t++) g.tick(0);
+    const Entity &p = g.player();
+    CHECK(log2Floor(p.size) >= PLAYER_START_SIZE_LOG2 + 9);
+    big = ticksToTakeFragment(g, 20 + p.bodyRadius / FU);  // the same gap
+  }
+  CHECK(small > 0);
+  CHECK(big > 0);
+  CHECK(big * 2 <= small);
+}
+
 static void testDifficultyAndEvade() {
   // Enemy bullet damage: x (100 + 10 * 3) % on sphere 4 against the player
   int32_t playerDrop[2] = {0, 0}, enemyDrop[2] = {0, 0}, giantDrop = 0;
@@ -1054,6 +1115,135 @@ static void testBounty() {
 
 // A death scatters the lost upgrade levels around the respawn point (up to
 // two of a kind on the sphere), and an enemy under sustained fire from the
+// A death hands the player something to grow back on: its own wreck leaves
+// nothing for the enemies, and a pack of score-less enemies appears around
+// the respawn point (see RESPAWN_PACK_MAX)
+static void testRespawnHelp() {
+  // The wreck of the player scatters nothing; an enemy's still does
+  {
+    Game g;
+    g.reset(5);
+    g.debugStartSphere(2, 0);
+    g.debugTakeUpgrade(UpgradeKind::EXTRA_CORE);
+    Entity &p = g.entities[g.playerIndex()];
+    clearAround(g, p.frame.n);
+    int before = 0;
+    for (const FloatingFragment &f : g.floatingFragments) before += f.alive;
+    p.invincible = 0;
+    p.hp = 1;
+    int e = firstEnemy(g, 4);
+    CHECK(e > 0);
+    plantBullet(g, 0, e, g.playerIndex(), 1000, false);
+    g.tick(0);
+    CHECK(!g.player().alive);
+    int after = 0;
+    for (const FloatingFragment &f : g.floatingFragments) after += f.alive;
+    CHECK(after <= before);  // nothing came out of the player
+  }
+  {
+    // An enemy of the same size, killed the same way, does scatter
+    Game g;
+    g.reset(5);
+    g.debugStartSphere(2, 0);
+    Entity &p = g.entities[g.playerIndex()];
+    clearAround(g, p.frame.n);
+    int e = firstEnemy(g, 4);
+    CHECK(e > 0);
+    int before = 0;
+    for (const FloatingFragment &f : g.floatingFragments) before += f.alive;
+    g.entities[e].invincible = 0;
+    g.entities[e].hp = 1;
+    plantBullet(g, 0, g.playerIndex(), e, 1000, true);
+    g.tick(0);
+    CHECK(!g.entities[e].alive);
+    int after = 0;
+    for (const FloatingFragment &f : g.floatingFragments) after += f.alive;
+    CHECK(after > before);
+  }
+  // The pack: capped by what the death cost, never a piece bigger than
+  // RESPAWN_PACK_CHUNK_PCT of the player, and worth no score
+  {
+    Game g;
+    g.reset(9);
+    g.debugStartSphere(2, 0);
+    g.debugTakeUpgrade(UpgradeKind::EXTRA_CORE);
+    Entity &p = g.entities[g.playerIndex()];
+    for (int i = 0; i < 8; i++) g.debugScaleSize(true);  // far above the sphere
+    for (int t = 0; t < TICK_RATE; t++) g.tick(0);
+    // One giant left to catch up with, far out of reach of the pack's mass
+    int boss = g.largestEnemy();
+    CHECK(boss >= 0);
+    g.entities[boss].size = p.size * 8;
+    const uint32_t before = p.size;
+    p.invincible = 0;
+    p.alive = false;
+    bool respawned = false;
+    for (int t = 0; t < RESPAWN_DELAY_TICKS + 5 && !respawned; t++) {
+      g.tick(0);
+      if (g.events() & Event::PLAYER_RESPAWNED) respawned = true;
+    }
+    CHECK(respawned);
+    const uint32_t after = g.player().size;
+    const uint32_t lost = before - after;
+    uint64_t mass = 0;
+    int n = 0;
+    int pack = -1;
+    for (int i = 0; i < MAX_ENTITIES; i++) {
+      const Entity &e = g.entities[i];
+      if (!e.alive || e.isPlayer || !e.noScore) continue;
+      n++;
+      mass += e.size;
+      pack = i;
+      // Never big enough to make the help an execution
+      CHECK((int64_t)e.size * 100 <= (int64_t)after * RESPAWN_PACK_CHUNK_PCT);
+      // Placed around the respawn point, not across the sphere: within
+      // twice RESPAWN_PACK_FU, i.e. cos(140/512) = 0.963
+      CHECK(dotQ30(e.frame.n, g.player().frame.n) > (int32_t)(0.963 * Q30_ONE));
+    }
+    CHECK(n > 0 && n <= RESPAWN_PACK_MAX);
+    // Growing back, not getting ahead: the pack cannot return more than the
+    // death cost plus half
+    CHECK(mass <= (uint64_t)lost * RESPAWN_PACK_MASS_NUM / RESPAWN_PACK_MASS_DEN);
+    CHECK(after + mass > after);
+
+    CHECK(pack >= 0);
+    CHECK(g.entities[pack].noScore);
+  }
+  // The flag itself: the same kill pays nothing with it, and pays without it.
+  // The player is left in an empty patch of sphere so that nothing else it
+  // runs into can score while the kill is arranged
+  for (int flagged = 0; flagged <= 1; flagged++) {
+    Game g;
+    g.reset(17);
+    g.debugStartSphere(1, 0);
+    for (int t = 0; t < TICK_RATE; t++) g.tick(0);
+    clearAround(g, g.player().frame.n);
+    int e = -1;
+    for (int i = 0; i < MAX_ENTITIES; i++) {
+      if (i != g.playerIndex() && g.entities[i].alive && g.entities[i].size >= 4) {
+        e = i;
+        break;
+      }
+    }
+    CHECK(e > 0);
+    g.entities[e].noScore = flagged != 0;
+    const int64_t before = g.score();
+    for (int t = 0; t < 8 && g.entities[e].alive; t++) {
+      g.entities[e].invincible = 0;
+      g.entities[e].hp = 1;  // one hit from now on, whatever the crits do
+      plantBullet(g, 0, g.playerIndex(), e, 1 << 20, true);
+      g.tick(0);
+    }
+    CHECK(!g.entities[e].alive);
+    const int64_t delta = g.score() - before;
+    if (flagged) {
+      CHECK(delta == 0);
+    } else {
+      CHECK(delta > 0);
+    }
+  }
+}
+
 // player turns on it whatever the distance or the size ratio
 static void testGrudgeAndScatter() {
   {
@@ -1094,8 +1284,8 @@ static void testGrudgeAndScatter() {
     for (const FloatingUpgrade &u : g.floatingUpgrades) {
       if (!u.alive || u.kind != (uint8_t)UpgradeKind::OVERDRIVE) continue;
       int32_t d = dotQ30(u.n, p.frame.n);  // cos of the angle
-      // 55 FU around a 512 FU sphere: cos(0.107) = 0.9943
-      if (d > (int32_t)(0.990 * Q30_ONE) && d < (int32_t)(0.998 * Q30_ONE)) near++;
+      // 110 FU around a 512 FU sphere: cos(0.215) = 0.9770
+      if (d > (int32_t)(0.973 * Q30_ONE) && d < (int32_t)(0.981 * Q30_ONE)) near++;
     }
     CHECK(near == 1);
   }
@@ -1393,11 +1583,13 @@ int main() {
   testRenderBands();
   testCombatAndLayout();
   testDifficultyAndEvade();
+  testFragmentAttraction();
   testTimeLimitAndScore();
   testHighScoreRecord();
   testLargestEnemy();
   testBounty();
   testGrudgeAndScatter();
+  testRespawnHelp();
   testDeterminism();
   testGameplay();
   if (failures) {

@@ -15,9 +15,9 @@ namespace devoursphere::sim {
 // makes older scores incomparable (scoring, the time limit, the difficulty
 // structure); a platform that stores the high score keeps the major with it
 // and drops the score when the major differs. Anything else bumps the minor.
-constexpr int VERSION_MAJOR = 2;
+constexpr int VERSION_MAJOR = 3;
 constexpr int VERSION_MINOR = 0;
-constexpr const char *VERSION_STRING = "v2.0";
+constexpr const char *VERSION_STRING = "v3.0";
 
 constexpr int32_t FU_UNITS = 256;  // units per fragment unit (see FU below)
 
@@ -55,8 +55,9 @@ constexpr int32_t SPHERE_RADIUS = 1 << SPHERE_RADIUS_SHIFT;
 // because the whole Game is a static on the embedded targets and these three
 // arrays are most of it. Measured over levels 1-7 x 3 seeds with the AI
 // driving, 10 s and 3 min per run: at most 201 entities alive (INITIAL_ENTITIES
-// plus the player; the respawn logic never goes above that), 336 floating
-// fragments and 84 bullets. Each cap keeps at least 1.5x the peak. The arrays
+// plus the player; the respawn logic never goes above that, and only a
+// respawn pack may, by RESPAWN_PACK_MAX), 336 floating fragments and 84
+// bullets. Each cap keeps at least 1.5x the peak. The arrays
 // never overflow anyway -- a spawn into a full array is skipped or replaces the
 // oldest -- so a cap only ever costs a spawn, not correctness. Keeping
 // MAX_ENTITIES below 256 also leaves room to store an entity index in a byte.
@@ -218,8 +219,16 @@ constexpr uint32_t FOOD_NOTICE_RATIO = 32;
 // Floating fragments within bodyRadius + ATTRACT_RANGE_FU of the player are
 // drawn towards it
 constexpr int32_t ATTRACT_RANGE_FU = 32;
+// The pull is the one for a player of PLAYER_START_SIZE_LOG2 and is scaled up
+// with the body (attractScaleQ8): a big player cruises faster and catches
+// fragments over a wider radius, so a fixed pull leaves them trailing behind.
+// The scale is the body's, the fourth root of the size (x2 every four levels).
 constexpr int32_t ATTRACT_ACCEL =
     FU * 128 / (TICK_RATE * TICK_RATE);  // 128 FU/s^2, per tick per tick
+constexpr int32_t ATTRACT_SCALE_MAX_Q8 = 16 * 256;  // never more than x16
+// The speed limit, relaxed to the player's body radius per tick once the body
+// outgrows it. A fragment that crossed more than that in a tick could pass
+// through the body between two ticks without being caught.
 constexpr int32_t ATTRACT_MAX_SPEED = fuPerSec(480);
 
 // --- Floating fragments ------------------------------------------------------
@@ -289,17 +298,40 @@ constexpr int32_t THRUSTER_DASH_PCT[UPGRADE_MAX_LEVEL + 1] = {100, 125, 150,
                                                               200};
 // Score for an upgrade taken at max level
 constexpr int32_t SCORE_UPGRADE_BONUS_BASE = 500;
-// Respawn after losing a core: size divided, all upgrade levels -1
-constexpr int RESPAWN_SIZE_DIV = 2;
+// Respawn after losing a core: a quarter of the size, all upgrade levels -1
+// (halving it left the player too small to survive from sphere 5-6 on)
+constexpr int RESPAWN_SIZE_KEEP_PCT = 75;
 constexpr int RESPAWN_CANDIDATES = 24;
 constexpr int RESPAWN_INVINCIBLE_TICKS = 2 * TICK_RATE;
 // The upgrade levels lost with the core are scattered around the respawn
-// point on a circle of this radius (about half the distance to the
-// horizon, ~111 FU at the cruising altitude): a chance to take them back
-// before the neighbours close in. At most UPGRADE_KIND_MAX_ON_SPHERE of a
-// kind exist on a sphere (floating or carried) when scattering
-constexpr int32_t UPGRADE_SCATTER_FU = 55;
+// point on a circle of this radius (about the distance to the horizon,
+// ~111 FU at the cruising altitude): a chance to take them back, but a
+// trip worth making. At most UPGRADE_KIND_MAX_ON_SPHERE of a kind exist
+// on a sphere (floating or carried) when scattering
+constexpr int32_t UPGRADE_SCATTER_FU = 110;
 constexpr int UPGRADE_KIND_MAX_ON_SPHERE = 2;
+// A hand back into the game after a death. From sphere 5-6 on, the player
+// outgrows the whole sphere within a couple of minutes: the entities that
+// keep being spawned to refill it are capped at 4 + sphereLevel (see
+// updateRespawns), so what is left around a big player is the few surviving
+// giants and small fry worth nothing to eat. Coming back at 3/4 of the size
+// there is no way to grow back. So the respawn places a few enemies around
+// the player, carrying between them the size it would take to catch up with
+// the enemy one rank above it -- but never more than RESPAWN_PACK_MASS_NUM /
+// _DEN of what the death cost, so that dying is never a way to grow, and
+// never in a piece bigger than RESPAWN_PACK_CHUNK_PCT of the player (which
+// could turn the help into an execution). They carry `noScore`: killing them
+// pays nothing, or dying on purpose would be worth points.
+constexpr int RESPAWN_PACK_MAX = 4;             // at most this many enemies
+constexpr int32_t RESPAWN_PACK_MASS_NUM = 3;    // x1.5 of the size the death
+constexpr int32_t RESPAWN_PACK_MASS_DEN = 2;    // cost, at most
+constexpr int32_t RESPAWN_PACK_CHUNK_PCT = 90;  // each, of the player's size
+constexpr int32_t RESPAWN_PACK_MIN_PCT = 12;    // below this, no pack at all
+constexpr int32_t RESPAWN_PACK_FU = 70;  // ring around the respawn point
+// Picking the respawn point only keeps away from enemies this big (percent of
+// the player's size). Smaller ones are not what kills a comeback, and keeping
+// away from them as well costs the distance from the ones that do.
+constexpr int32_t RESPAWN_THREAT_PCT = 50;
 constexpr int RESPAWN_DELAY_TICKS = 3 * TICK_RATE;  // watch the wreck first
 // Difficulty: enemies get a little stronger with the player's total upgrade
 // level (the upgrades are the reward; the sphere level is the difficulty)
