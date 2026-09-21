@@ -87,6 +87,134 @@ cd impl/cli
 make && ./build/devoursphere   # also --mode=braille / --mode=half (see --help)
 ```
 
+## How it is built
+
+Devour Sphere comes in two layers. The **core module** on top is plain C++17
+with no platform of its own: the rules of the game and the whole 3D renderer
+live there. Only the layer below it is written per machine.
+
+![](./docs/image/stack.png)
+
+### The core module (what you do not have to write)
+
+- **Simulator** ([core/src/sim/](core/src/sim/)) is the rules and the physics.
+  Integer arithmetic only, so the same input gives the same result on every
+  machine. It knows nothing about drawing.
+- **Renderer** ([core/src/render/](core/src/render/)) reads the simulation and
+  draws it with ShapoGFX. It is platform independent, but the buffer it draws
+  into is handed to it from below.
+- **ShapoGFX** is a library of its own (a submodule). The platform layer may
+  use it directly too, for an on-screen pad or a timing overlay.
+
+The core never allocates and never calls an OS or an SDK. A C++17 compiler is
+the whole dependency.
+
+### What a port has to provide
+
+The **main loop, the input and the display** are required; sound and the stored
+high score can be left out and the game still plays.
+
+#### Main loop
+
+```cpp
+#include "devoursphere/devoursphere.hpp"
+namespace ds = devoursphere;
+namespace g2 = shapoco::gfx2d;
+
+static ds::sim::Game game;            // ~84 KB -- never on a stack
+static ds::render::Renderer renderer; // ~24 KB
+static uint8_t arena[64 * 1024];      // working memory of the 3D renderer
+static uint8_t band[W * BAND_H * 2];  // a band, not a frame buffer
+
+renderer.init(W, H, arena, sizeof(arena));
+game.reset(seed);
+
+for (;;) {
+  while (tickIsDue()) {          // fixed rate (60 Hz by default)
+    game.tick(readButtons());    // the input driver
+    renderer.pollEffects(game);
+    playSounds(game.sounds());   // the sound driver (optional)
+  }
+  renderer.beginFrame(game, dt); // camera and scene for this frame
+  for (int y = 0; y < H; y += BAND_H) {
+    auto s = g2::makeSurface(g2::PixelFormat::RGB565BE, W, BAND_H, band);
+    renderer.renderBand(s, y, BAND_H);
+    pushBand(band, y, BAND_H);   // the display driver (SPI + DMA, ...)
+  }
+  renderer.endFrame();
+}
+```
+
+The simulation steps at a fixed rate (60 Hz, or 30 Hz with
+`DEVOURSPHERE_TICK_RATE=30`); the frame rate is whatever the device manages. If
+a frame runs several ticks to catch up, call `pollEffects()` after each one --
+the events a tick raises are cleared by the next.
+
+#### Input (required)
+
+All `tick()` takes is seven bits of button state
+(`Button::LEFT / RIGHT / UP / DOWN / A / B / PAUSE`, in
+[entities.hpp](core/include/devoursphere/sim/entities.hpp)). Keys, a d-pad,
+a touch screen -- anything that can be reduced to those bits will do. The lines
+of help on the title screen are replaced with `Renderer::setControlHints()`.
+
+#### Display (required)
+
+**No frame buffer is needed.** `renderBand()` draws any range of rows, so one
+or two buffers a few dozen rows tall are enough: draw a band, push it, repeat
+(the PicoSystem port alternates two 240x40 bands; the terminal port draws the
+whole frame in one call). The target is a ShapoGFX `Surface` in `GRAY1`,
+`RGB444`, `ARGB4444` or `RGB565BE`. The screen size is just what you pass to
+`init()` -- the HUD scales itself to it. If the platform paints part of the
+frame itself, `setHudInsets()` keeps the HUD out of the way.
+
+#### Sound (optional)
+
+`Game::sounds()` returns what the last tick asked to be played, one bit per
+`SoundKind`. The core only says what to play: the waveforms and the mixing
+belong to the platform. A machine with a single voice picks one by priority
+(both handheld ports do). The source material is in [assets/se/](assets/se/).
+
+#### Stored high score (optional)
+
+Encode and decode the 16-byte record in
+[high_score_record.hpp](core/include/devoursphere/sim/high_score_record.hpp)
+(magic, major version, CRC32) and keep it wherever the device keeps things.
+Blank flash, a record of another major version and a damaged one all read back
+as "no record". When to write it is the platform's call --
+`Game::keepHighScore()` returning true is the cue.
+
+### What it costs
+
+| | |
+|---|---|
+| RAM | ~150 KB and up (`sim::Game` 84 KB + `Renderer` 24 KB + a 40-64 KB arena + the bands) |
+| Flash | ~240 KB of code (the sound waveforms are extra) |
+| CPU | 28 fps at 240x240 on an RP2040 (Cortex-M0+, 133 MHz) |
+
+Knobs for when it does not fit or does not keep up:
+
+- `DEVOURSPHERE_TICK_RATE=30` -- half the simulation rate, same behaviour
+- `DEVOURSPHERE_SUPPRESS_ALPHA=1` -- no blending, so nothing reads the frame back
+- `DEVOURSPHERE_MAX_WIRE` / `MAX_LINES2D` / `MAX_POINTS2D` -- the wireframe and
+  2D primitive arrays
+- `spanCapacity` of `Renderer::init()` and `setDetailTriangles()` -- how the
+  arena is divided, and a cap on the triangles spent on enemy bodies (with it,
+  the frame time stops depending on how many are in view)
+
+[core/SPEC.md](core/SPEC.md) (in Japanese) covers this in its "メモリ" and
+"描画 (render)" sections, as does [impl/xiamocon/SPEC.md](impl/xiamocon/SPEC.md).
+
+### Ports to read
+
+| Directory | What it is an example of |
+|---|---|
+| [impl/picosystem/](impl/picosystem/) | the tightest port: RP2040, 264 KB, pico-sdk alone, bands over DMA, both cores |
+| [impl/xiamocon/](impl/xiamocon/) | one source built for both RP2350 (pico-sdk) and ESP32S3 (Arduino) |
+| [impl/m5tab5/](impl/m5tab5/) | ESP-IDF, a full-size frame plus hardware scale and rotate, a touch pad |
+| [impl/wasm/](impl/wasm/) | the browser (Emscripten): keyboard, gamepad, touch, localStorage |
+| [impl/cli/](impl/cli/) | the shortest one: one `renderBand()` for the whole frame, out to a terminal |
+
 ## License
 
 MIT
