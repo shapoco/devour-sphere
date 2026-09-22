@@ -16,15 +16,16 @@ and fonts.
 - **Specifications (Japanese):** [SPEC.md](SPEC.md), [core/SPEC.md](core/SPEC.md),
   [impl/wasm/SPEC.md](impl/wasm/SPEC.md), [impl/xiamocon/SPEC.md](impl/xiamocon/SPEC.md),
   [impl/picosystem/SPEC.md](impl/picosystem/SPEC.md), [impl/m5tab5/SPEC.md](impl/m5tab5/SPEC.md),
-  [impl/m5sticks3/SPEC.md](impl/m5sticks3/SPEC.md), [impl/cli/SPEC.md](impl/cli/SPEC.md)
+  [impl/m5sticks3/SPEC.md](impl/m5sticks3/SPEC.md), [impl/espboy/SPEC.md](impl/espboy/SPEC.md),
+  [impl/cli/SPEC.md](impl/cli/SPEC.md)
 
 ## Download
 
 - **M5Stack Tab5:** a prebuilt firmware can be flashed straight from
   [M5Burner](https://docs.m5stack.com/en/download) — look for "Devour Sphere"
   in its ESP32-P4 (Tab5) list.
-- **Other boards:** binaries for Xiamocon (RP2350 / ESP32S3), PicoSystem and
-  M5StickS3 are
+- **Other boards:** binaries for Xiamocon (RP2350 / ESP32S3), PicoSystem,
+  M5StickS3 and ESPboy are
   zipped up under [Releases](https://github.com/shapoco/devour-sphere/releases);
   the README.txt inside says how to flash each one.
 - **Browser:** nothing to download, just follow the Play link above.
@@ -94,6 +95,15 @@ ESP-IDF v5.5.x:
 cd impl/m5sticks3/devoursphere
 ./build.sh                     # DS_IDF_PATH defaults to ${HOME}/esp/5.5
 ./run.sh /dev/ttyACM0          # build and flash (the port may be omitted)
+```
+
+For [ESPboy](https://www.espboy.com/) (ESP8266), with ESP8266_RTOS_SDK v3.4
+(not Arduino; see [impl/espboy/SPEC.md](impl/espboy/SPEC.md) for the toolchain):
+
+```sh
+cd impl/espboy/devoursphere
+./build.sh                     # IDF_PATH defaults to ${HOME}/esp/ESP8266_RTOS_SDK
+./flash.sh /dev/ttyUSB0        # esptool over the WeMos D1 mini's USB serial
 ```
 
 For a terminal (half a joke: colored ASCII art; C++17 and cmake are all it needs):
@@ -229,6 +239,7 @@ Knobs for when it does not fit or does not keep up:
 | [impl/xiamocon/](impl/xiamocon/) | one source built for both RP2350 (pico-sdk) and ESP32S3 (Arduino) |
 | [impl/m5tab5/](impl/m5tab5/) | ESP-IDF, a full-size frame plus hardware scale and rotate, a touch pad |
 | [impl/m5sticks3/](impl/m5sticks3/) | 240x135 on its side, steered by tilting the board (IMU), shake to pause |
+| [impl/espboy/](impl/espboy/) | the smallest machine: ESP8266, 96 KB, one core, the core built in a reduced configuration, bands pushed by the CPU |
 | [impl/wasm/](impl/wasm/) | the browser (Emscripten): keyboard, gamepad, touch, localStorage |
 | [impl/cli/](impl/cli/) | the shortest one: one `renderBand()` for the whole frame, out to a terminal |
 

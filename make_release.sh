@@ -30,6 +30,7 @@ mkdir -p "${RELS_DIR}/xiamocon-rp2350"
 mkdir -p "${RELS_DIR}/picosystem"
 mkdir -p "${RELS_DIR}/m5tab5"
 mkdir -p "${RELS_DIR}/m5sticks3"
+mkdir -p "${RELS_DIR}/espboy"
 
 pushd "${REPO_DIR}/impl/xiamocon/devoursphere/"
   ./build_esp32s3.sh
@@ -73,6 +74,16 @@ pushd "${REPO_DIR}/impl/m5sticks3/devoursphere/"
   cp \
     "${ASSETS_DIR}/release/m5sticks3/upload.sh" \
     "${RELS_DIR}/m5sticks3/upload.sh"
+popd
+
+pushd "${REPO_DIR}/impl/espboy/devoursphere/"
+  ./build_release.sh
+  # The RTOS SDK's esptool (v2.4) has no merge-bin: the three images go in
+  # as they are and upload.sh writes each at its offset
+  cp "build/bootloader/bootloader.bin" "${RELS_DIR}/espboy/bootloader.bin"
+  cp "build/partition_table/partition-table.bin" "${RELS_DIR}/espboy/partition-table.bin"
+  cp "build/devoursphere.bin" "${RELS_DIR}/espboy/devour-sphere.bin"
+  cp "${ASSETS_DIR}/release/espboy/upload.sh" "${RELS_DIR}/espboy/upload.sh"
 popd
 
 sed \

@@ -62,6 +62,15 @@ ST7789 を 16 ビットモードで帯ごとに駆動する。フレームルー
 
 詳細は impl/picosystem/SPEC.md を参照のこと。
 
+### ESPboy 版
+
+impl/espboy/ 配下に ESPboy (ESP8266 の携帯ゲーム機、128x128 の ST7735) 向けの実装が置かれる。
+Arduino ではなく ESP8266_RTOS_SDK v3 のプロジェクト (DRAM 96KB を全部リンカに見せ、WiFi を初期化しない)。
+core は縮小構成 (半径 2^16 のスフィアに 48 体、深度なし、フラットシェーディング) でビルドし、
+16 行の帯 1 枚を CPU で転送する。音はタイマー割り込みの矩形波。
+
+詳細は impl/espboy/SPEC.md を参照のこと。
+
 ### CLI 版
 
 impl/cli/ 配下に Linux の端末で遊ぶ実装が置かれる (半分冗談)。320x240 のフレームバッファに描き、
@@ -84,6 +93,7 @@ impl/xiamocon/       Xiamocon 版 (impl/xiamocon/SPEC.md)
 impl/picosystem/     PicoSystem 版 (impl/picosystem/SPEC.md)
 impl/m5tab5/         M5Tab5 版 (impl/m5tab5/SPEC.md)
 impl/m5sticks3/      M5StickS3 版 (impl/m5sticks3/SPEC.md)
+impl/espboy/         ESPboy 版 (impl/espboy/SPEC.md)
 impl/cli/            CLI 版 (impl/cli/SPEC.md)
 docs/                公開用の静的サイト (docs/play/ がゲーム)
 assets/se/           効果音の素材 (効果音ラボ、assets/se/README.md)

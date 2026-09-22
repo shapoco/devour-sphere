@@ -1,0 +1,49 @@
+# Devour Sphere on the ESPboy (ESP8266 on a WeMos D1 mini, 4 MB flash).
+# ESP8266_RTOS_SDK v3.4. See ../SPEC.md "メモリ配分" for what these buy.
+
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+# DIO at 40 MHz is what every WeMos D1 mini boots with; the code runs from
+# this flash through a 16 KB cache, so 80 MHz would be worth a try on a
+# board known to take it (CONFIG_ESPTOOLPY_FLASHFREQ_80M).
+CONFIG_ESPTOOLPY_FLASHMODE_DIO=y
+CONFIG_ESPTOOLPY_FLASHFREQ_40M=y
+
+# 160 MHz: the simulation is the critical path and there is one core
+CONFIG_ESP8266_DEFAULT_CPU_FREQ_160=y
+
+# -Os. The 200 KB of code executes from flash through the cache, so the
+# smaller it is the more of the hot loops stay resident. (The SDK's
+# "release" level is -Os; "debug" is -Og.)
+CONFIG_COMPILER_OPTIMIZATION_LEVEL_RELEASE=y
+CONFIG_OPTIMIZATION_LEVEL_RELEASE=y
+CONFIG_COMPILER_OPTIMIZATION_ASSERTIONS_SILENT=y
+CONFIG_OPTIMIZATION_ASSERTIONS_SILENT=y
+
+# 16 KB instruction cache, 48 KB IRAM (the default). The SDK's own IRAM
+# code is 23 KB; what is left holds ShapoGFX's span loops (SHAPOGFX3D_HOT_ATTR
+# in components/shapogfx/CMakeLists.txt) and the rest is a 32-bit-only
+# heap nothing here asks for. SOC_FULL_ICACHE=y would trade the IRAM for
+# a 32 KB cache.
+# CONFIG_SOC_FULL_ICACHE is not set
+
+# The one task: it builds the scene and rasterizes the bands, and
+# buildSphere() recurses. FreeRTOS takes this from the heap at start-up.
+# Keep ds_config.hpp's STACK_BYTES in step.
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
+
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# The boot log (memory figures, see app_main.cpp) on the USB serial
+CONFIG_ESP_CONSOLE_UART_BAUDRATE=115200
+CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+
+# The task watchdog stays: the game task feeds it once a frame. The idle
+# task, which would otherwise feed it, never runs -- the frame loop never
+# blocks.
+CONFIG_ESP_TASK_WDT=y
+CONFIG_ESP_TASK_WDT_PANIC=y
+CONFIG_ESP_TASK_WDT_TIMEOUT_15N=y
+
+CONFIG_FREERTOS_HZ=100
+CONFIG_NEWLIB_NANO_FORMAT=y

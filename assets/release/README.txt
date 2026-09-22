@@ -3,9 +3,9 @@ Built from commit @COMMIT@
 https://github.com/shapoco/devour-sphere
 
 Firmware for Xiamocon (a XIAO RP2350 / ESP32S3 handheld), for PicoSystem
-(Pimoroni, RP2040), for M5Stack Tab5 (ESP32-P4) and for M5StickS3
-(ESP32-S3). The browser version needs no download: see docs/play/ on the
-project page.
+(Pimoroni, RP2040), for M5Stack Tab5 (ESP32-P4), for M5StickS3 (ESP32-S3)
+and for ESPboy (ESP8266). The browser version needs no download: see
+docs/play/ on the project page.
 
 Controls on the handhelds: LEFT / RIGHT turn, UP dashes, DOWN brakes, A / Y
 fire and confirm, B is the emergency dodge (a 0.3 s barrel roll that enemy
@@ -62,3 +62,14 @@ m5sticks3/        - for M5StickS3
     so it is written in one go at 0x0. The board talks over USB-Serial/JTAG,
     so esptool resets it into the bootloader by itself; if no port appears
     at all, try another cable.
+
+espboy/           - for ESPboy (ESP8266)
+  bootloader.bin, partition-table.bin, devour-sphere.bin, upload.sh
+    ./upload.sh [PORT] [BAUD]        (PORT defaults to /dev/ttyUSB0)
+    The script calls esptool ("pip install esptool" if you do not have it)
+    and writes the three images at 0x0, 0x8000 and 0x10000. A smaller game
+    than the others (a quarter-size sphere with 48 enemies): the ESP8266 has
+    96 KB of RAM and one core. The buttons: the D-pad turns, dashes and
+    brakes, A fires, B is the emergency dodge, the left shoulder pauses; on
+    the title or pause screen DOWN toggles mute and the right shoulder the
+    timing overlay. The sound is a one-voice square wave on the speaker.

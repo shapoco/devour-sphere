@@ -15,13 +15,14 @@
 - **仕様:** [SPEC.md](SPEC.md), [core/SPEC.md](core/SPEC.md),
   [impl/wasm/SPEC.md](impl/wasm/SPEC.md), [impl/xiamocon/SPEC.md](impl/xiamocon/SPEC.md),
   [impl/picosystem/SPEC.md](impl/picosystem/SPEC.md), [impl/m5tab5/SPEC.md](impl/m5tab5/SPEC.md),
-  [impl/m5sticks3/SPEC.md](impl/m5sticks3/SPEC.md), [impl/cli/SPEC.md](impl/cli/SPEC.md)
+  [impl/m5sticks3/SPEC.md](impl/m5sticks3/SPEC.md), [impl/espboy/SPEC.md](impl/espboy/SPEC.md),
+  [impl/cli/SPEC.md](impl/cli/SPEC.md)
 
 ## ダウンロード
 
 - **M5Stack Tab5:** ビルド済みのファームウェアを [M5Burner](https://docs.m5stack.com/en/download)
   から書き込めます。M5Burner の ESP32-P4 (Tab5) のリストで "Devour Sphere" を探してください。
-- **その他のボード:** Xiamocon (RP2350 / ESP32S3)、PicoSystem、M5StickS3 のバイナリは
+- **その他のボード:** Xiamocon (RP2350 / ESP32S3)、PicoSystem、M5StickS3、ESPboy のバイナリは
   [Releases](https://github.com/shapoco/devour-sphere/releases) に zip で置いてあります
   (書き込み方は zip 内の README.txt)。
 - **ブラウザ版:** ダウンロード不要。上の「遊ぶ」のリンクから。
@@ -88,6 +89,15 @@ cd impl/m5tab5/devoursphere
 cd impl/m5sticks3/devoursphere
 ./build.sh                     # DS_IDF_PATH 既定 ${HOME}/esp/5.5
 ./run.sh /dev/ttyACM0          # ビルドして書き込み (ポート省略可)
+```
+
+[ESPboy](https://www.espboy.com/) (ESP8266) 版 (ESP8266_RTOS_SDK v3.4。Arduino ではない。
+ツールチェーンは [impl/espboy/SPEC.md](impl/espboy/SPEC.md)):
+
+```sh
+cd impl/espboy/devoursphere
+./build.sh                     # IDF_PATH 既定 ${HOME}/esp/ESP8266_RTOS_SDK
+./flash.sh /dev/ttyUSB0        # WeMos D1 mini の USB シリアル経由で esptool
 ```
 
 端末版 (半分冗談。色付きの ASCII アートで遊ぶ。C++17 と cmake だけ):
@@ -212,6 +222,7 @@ tick のたびに `pollEffects()` を呼んでください (tick の出すイベ
 | [impl/xiamocon/](impl/xiamocon/) | 同じソースで RP2350 (pico-sdk) と ESP32S3 (Arduino) の両方を焼く |
 | [impl/m5tab5/](impl/m5tab5/) | ESP-IDF、フルサイズのフレーム + ハードウェアの拡大回転、タッチの仮想パッド |
 | [impl/m5sticks3/](impl/m5sticks3/) | 横倒しの 240x135、傾きで操作 (IMU)、振ってポーズ |
+| [impl/espboy/](impl/espboy/) | 一番小さな機械 (ESP8266、96KB、1 コア)。core を縮小構成でビルドし、帯を CPU で転送する |
 | [impl/wasm/](impl/wasm/) | ブラウザ (Emscripten)、キーボード / ゲームパッド / タッチ、localStorage |
 | [impl/cli/](impl/cli/) | 一番短い例。全画面を 1 回の `renderBand()` で描いて端末に流すだけ |
 

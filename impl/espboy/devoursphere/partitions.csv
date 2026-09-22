@@ -1,0 +1,8 @@
+# Name,    Type, SubType, Offset,   Size,     Flags
+# nvs and phy_init are where the SDK's bootloader expects them (nothing
+# here uses either); the app has 1 MB of the 4; the high score record
+# (ds_platform.cpp) has a 4 KB sector of its own, type 0x40 subtype 0.
+nvs,       data, nvs,     0x9000,   0x6000,
+phy_init,  data, phy,     0xf000,   0x1000,
+factory,   app,  factory, 0x10000,  0x100000,
+hiscore,   0x40, 0x00,    0x110000, 0x1000,
