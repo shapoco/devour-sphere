@@ -18,10 +18,12 @@ constexpr int SCREEN_H = 128;
 
 // The frame is rasterized and pushed one band at a time; there is one band
 // buffer, because the ESP8266 pushes the pixels itself (no DMA reaches the
-// SPI), so nothing could overlap a second one. 16 rows is 4 KB: the
-// per-band fixed cost measured on the RP2350 was +5% at 40 rows, +14% at
-// 20 and +36% at 8, so 8 rows would buy 2 KB for a fifth of the frame.
-constexpr int BAND_H = 16;
+// SPI), so nothing could overlap a second one. 32 rows is 8 KB and four
+// bands a frame: the per-band fixed cost (the wire segments clipped once
+// per band, the 3D setup, the HUD's two bands) measured on the RP2350 was
+// +5% at 40 rows, +14% at 20 and +36% at 8. The first readings used 16
+// rows (4 KB); the DRAM has the room (about 20 KB of heap left).
+constexpr int BAND_H = 32;
 constexpr int BAND_COUNT = SCREEN_H / BAND_H;
 static_assert(SCREEN_H % BAND_H == 0, "the bands must tile the screen exactly");
 

@@ -50,7 +50,9 @@ set(DS_CORE_DEFS
     # PicoSystem's value on 240 px). The first device reading (32 px, 45
     # lines) spent 22 ms a frame walking the mesh -- a third of the frame
     # -- and the user asked for one step coarser. 10 bytes a segment.
-    DEVOURSPHERE_SPHERE_TARGET_PX=48
+    # ... and 64 after the fifth (the walk is a third of beginFrame at 48;
+    # the host counts 51 -> 43 lines a frame)
+    DEVOURSPHERE_SPHERE_TARGET_PX=64
     DEVOURSPHERE_MAX_WIRE=160
     # The 2D line and point arrays (outlines, effects, far fragments); what
     # does not fit takes the 3D path. 14 and 8 bytes an entry.
