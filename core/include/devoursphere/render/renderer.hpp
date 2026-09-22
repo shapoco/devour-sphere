@@ -751,6 +751,14 @@ class Renderer {
 
   // hud.cpp
   void drawHud(g2::Graphics2D &g, int offsetY);
+  // Whether the band g is clipped to (frame rows [clip.y - oy, ...)) lies
+  // between the HUD's top strip and its bottom strip with nothing of the
+  // HUD in between: while playing, that is every band but the first and
+  // the last. drawHud() then draws nothing, which is what it would have
+  // drawn, only without formatting and measuring every string first --
+  // which, done once per band, was near half of a band's 2D time on a
+  // 128 px screen.
+  bool hudBandIdle(g2::Graphics2D &g, int oy) const;
   void drawUpgradeStatus(g2::Graphics2D &g, int offsetY);
   void setHudFont(g2::Graphics2D &g, HudFont role) const;
   void drawCenteredText(g2::Graphics2D &g, int y, const char *text,

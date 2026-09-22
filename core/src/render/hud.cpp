@@ -339,6 +339,7 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
     case sim::GameState::LAUNCH:
     case sim::GameState::ARRIVE:
     case sim::GameState::DEAD: {
+      if (hudBandIdle(g, oy)) return;  // nothing of the HUD in this band
       // Health gauge (top left)
       const int gx = margin, gy = oy + hudY0() + margin;
       const int gw = ui_.gaugeW, gh = ui_.gaugeH, gb = ui(1, 1);
@@ -561,6 +562,40 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
     }
   }
   drawVersion(g, oy);
+}
+
+// The rows the HUD may touch while playing are the top strip (the gauge,
+// the score, the rank line, the time / sphere / weapon lines) and the
+// bottom strip (the upgrade status, the version line). Anything else --
+// the hit flash border, the banners of the flight and the game over, the
+// pause screen, the opening hint, the cheat notice -- is a state this
+// answers false for, so the bounds below only have to cover the two
+// strips, with a line of slack each.
+bool Renderer::hudBandIdle(g2::Graphics2D &g, int oy) const {
+  const HudState &hud = hud_;
+  if (hud.state != sim::GameState::PLAYING || hud.paused || hud.timeUp ||
+      hud.debugMode || (hud.events & sim::Event::PLAYER_HIT)) {
+    return false;
+  }
+  if (hud.stateTimer < 3 * sim::TICK_RATE && hud.sphereLevel == 1 &&
+      hud.spheresCleared == 0) {
+    return false;  // the opening hint, near the bottom
+  }
+  const g2::Rect &clip = g.clipRect();
+  const int y0 = clip.y - oy, y1 = clip.bottom() - oy;  // frame rows [y0, y1)
+  setHudFont(g, HudFont::MEDIUM);
+  const int advM = g.lineAdvance();
+  setHudFont(g, HudFont::SMALL);
+  const int advS = g.lineAdvance();
+  const int gy = hudY0() + ui_.margin;
+  int topEnd = gy + ui_.gaugeH + ui(12, 4) + 2 * advM;  // the rank line
+  const int rightEnd = gy + 3 * (advS + ui(2, 1)) + advS;  // the right column
+  if (rightEnd > topEnd) topEnd = rightEnd;
+  const int half = 7 * ui_.iconScale8 / 8;
+  int bottomStart = hudY1() - ui(14, half + 2) - half - ui(7, 3);  // the icons
+  const int version = hudY1() - ui_.margin - (advS + ui(6, 2)) - advS;
+  if (version < bottomStart) bottomStart = version;
+  return y0 >= topEnd && y1 <= bottomStart;
 }
 
 // The extent of the upgrade status at the bottom: where the upgrade pips
