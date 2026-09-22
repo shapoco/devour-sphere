@@ -48,3 +48,5 @@ target_compile_definitions(${COMPONENT_LIB} PRIVATE
     "SHAPOGFX3D_HOT_ATTR=__attribute__((section(\".iram1.gfx3d\")))"
     SHAPOGFX3D_HOT_INSTANTIATE=1
 )
+# -O2 over the SDK's -Os (the later flag wins), as for the core component
+target_compile_options(${COMPONENT_LIB} PRIVATE -O2)

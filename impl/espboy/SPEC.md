@@ -75,6 +75,8 @@ cd impl/espboy/devoursphere
   コンポーネントを REQUIRES に持つとリンクグループ内で解決する。
 - この SDK の `idf_build_set_property(COMPILE_DEFINITIONS ...)` は値をそのまま渡す (`-D` を付けない) ので、
   コンポーネントの CMakeLists は `-DNAME=VALUE` の形で書いている。
+- **sdkconfig.defaults を変えたら `./build.sh clean`**: `sdkconfig` は既存のものが優先されるうえ、
+  リンカスクリプト (`esp8266_out.ld`) は sdkconfig から再生成されない。
 - `build.sh` の最後に `merge_bin.py` が bootloader (0x0)、パーティションテーブル (0x8000)、app (0x10000) を
   0xFF で詰めて 1 つにした `build/devoursphere.factory.bin` を作る (SDK 同梱の esptool v2.4 には merge_bin が無い)。
   オフセット 0 に 1 ファイルを書く書き込み器ならこれで済む: リリースの upload.sh、
@@ -283,11 +285,34 @@ bands: D0.8 U15.2 V22.3 T11.x
      `addWireSegment` / `projectQ`)、`normalizeQ30` / `isqrt32` / `isqrt64`。IRAM は 23.6 → 31.1KB / 32KB
      (`.iram1.ds` 6.5KB + ShapoGFX 3.9KB + リテラル)。残り 1.7KB。
   2. **SPI 40MHz** (`SPI_CLK_DIV` 2): 転送 11 → 7.5ms の見込み。LcdTap は追従する。実機のパネルで化けたら 3 に戻す。
-- 次に読むもの: FPS のみ表示の `FPS`、全部表示の `S` / `U` / `T`。フレームが 66ms を切ると owed tick が
+
+4 回目 (core の最内ループを IRAM に、SPI 40MHz。プレイ中 RANK 17/48、全部表示 / FPS のみ):
+
+```
+FPS 9.2 (FPS のみ: 13.2)   TCK 32.73x3   BGN 25.66  RAS 39.89  DMA 7.85  CPU 73.41
+TRI 64  ARN 5K  L52  XFR 7.71  STK0 2360
+tick: A1.1 M3.0 L4.3 X2.4
+beginFrame: S12.1 O7.8 H2.6 X2.8
+bands: D1.1 U16.2 V22.3 T7.8
+```
+
+- 転送 `T` は 11.1 → 7.8ms で SPI の分だけ下がった。
+- **IRAM に置いた `S` (12.5 → 12.1) と `U` (15.2 → 16.2、線は 49 → 52 本) は変わらなかった。**
+  キャッシュが 32KB になった後のこの 2 つは fetch ではなく演算そのものが重い。
+  ESPboy 版は `DEVOURSPHERE_HOT_ATTR` を外した (フックは core に残る)。
+- 代わりに 2 つ:
+  1. **HUD の帯ごとの早期スキップ** (`Renderer::hudBandIdle()`、core/SPEC.md): プレイ中の HUD は上の帯と
+     下の帯にしかないのに、8 帯すべてで文字列の整形と `measureText` をやり直していた (host の gprof で
+     `renderBand` の 4 割)。中間の帯では `drawHud()` に入らずに返る。固定条件のフレームハッシュは
+     240x240 (帯 40 行) と 128x128 (帯 16 行) の両方で変更前後一致。
+  2. **core と ShapoGFX を `-O2`** (SDK の `-Os` の後ろに付ける)。フラッシュのコードは 216 → 271KB。
+- 併せて見つけた: `build/esp-idf/esp8266/esp8266_out.ld` は sdkconfig を変えても再生成されず、
+  `SOC_FULL_ICACHE` を切り替えた後も IRAM の長さが 0xC000 のままだった (3〜4 回目は IRAM 31KB で
+  たまたま 32KB に収まっていた)。設定を変えたら `./build.sh clean` してからビルドする。
+- 次に読むもの: FPS のみ表示の `FPS`、全部表示の `S` / `U` / tick。フレームが 66ms を切ると owed tick が
   2 回になって sim の分も減る (tick 数の崖)。
-- まだ手を付けていない候補: `drawHud` の帯ごとの早期スキップ (上下の帯以外は HUD が無い。host で
-  帯時間の 4 割)、`-Os` → `-O2` (キャッシュ 32KB なら試す価値あり)、`updateCamera` の float 3ms、
-  面 64px (host では線 51 → 43 本)。
+- まだ手を付けていない候補: 面 64px (host では線 51 → 43 本)、`updateCamera` の float 3ms、
+  `subdivideFace` の再帰 (`normalizeQ30` が self time 1 位) の軽量化。
 
 ### 未確認の事項
 
