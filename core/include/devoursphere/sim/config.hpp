@@ -29,6 +29,17 @@ constexpr int32_t FU_UNITS = 256;  // units per fragment unit (see FU below)
 #ifndef DEVOURSPHERE_TICK_RATE
 #define DEVOURSPHERE_TICK_RATE 60
 #endif
+
+// An attribute put on the core's innermost loops -- the wireframe's DDA and
+// the 2D line pass of a band, the walk of the sphere's mesh, the
+// normalize and the integer square roots -- for a target that runs its
+// code from flash through a small cache and has a little RAM for code:
+// e.g. __attribute__((section(".iram1.ds"))) on the ESP8266 (about 8 KB
+// of Xtensa code). Empty by default, and it changes nothing but where the
+// code lives. The same idea as ShapoGFX's SHAPOGFX3D_HOT_ATTR.
+#ifndef DEVOURSPHERE_HOT_ATTR
+#define DEVOURSPHERE_HOT_ATTR
+#endif
 constexpr int TICK_RATE = DEVOURSPHERE_TICK_RATE;
 static_assert(TICK_RATE == 30 || TICK_RATE == 60,
               "only 30 and 60 Hz are tuned and tested");

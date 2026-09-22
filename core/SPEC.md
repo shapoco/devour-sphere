@@ -1017,6 +1017,7 @@ RAM か CPU が足りないターゲット (impl/espboy/SPEC.md) のために、
 | `DEVOURSPHERE_MAX_GAUGES` / `_MAX_MARKERS` / `_MAX_ENEMY_MARKERS` / `_MAX_DEBRIS` / `_MAX_DUST` / `_MAX_STARS` | 64 / 40 / 32 / 64 / 64 / 120 | `Renderer` のフレームごとの配列 (8 / 16 / — / 72 / 16 / 24 バイト)。溢れた分は描かれないだけ |
 | `DEVOURSPHERE_MAX_WIRE` / `_MAX_LINES2D` / `_MAX_POINTS2D` / `_SPHERE_TARGET_PX` | 1100 / 512 / 256 / 24 | (以前からある。「星とワイヤーフレームは 2D で描く」「2D の線・点・マーカー」「ワイヤーフレームの分割判定」) |
 | `DEVOURSPHERE_SUPPRESS_ALPHA` / `_NO_DEPTH` / `_CAMERA_ROLL` / `_TICK_RATE` | 0 / 0 / 1 / 60 | 規則の切り替え (それぞれの節) |
+| `DEVOURSPHERE_HOT_ATTR` | (空) | 最内のループ (ワイヤーフレームの DDA と帯の 2D 線、網の走査 `subdivideFace` / `emitChord` / `addWireSegment`、`projectQ`、`normalizeQ30`、`isqrt32` / `isqrt64`) の定義に付ける属性。ESPboy 版は `__attribute__((section(".iram1.ds")))` で IRAM に置く (Xtensa で約 8KB)。ShapoGFX の `SHAPOGFX3D_HOT_ATTR` と同じ発想で、コードの置き場所以外は何も変えない |
 
 ### 深度なしの世界 (DEVOURSPHERE_NO_DEPTH)
 

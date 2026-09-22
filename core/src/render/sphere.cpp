@@ -130,7 +130,8 @@ static inline Vec3 surfacePos(const Vec3 &u) {
 
 // Screen coordinates (1/16 px) of a position relative to the sphere center.
 // False when the point is not in front of the near plane.
-bool Renderer::projectQ(const Vec3 &pos, int32_t &sx, int32_t &sy) const {
+DEVOURSPHERE_HOT_ATTR bool Renderer::projectQ(const Vec3 &pos, int32_t &sx,
+                                              int32_t &sy) const {
   const Vec3 d = {pos.x - camQ_.eye.x, pos.y - camQ_.eye.y,
                   pos.z - camQ_.eye.z};
   const int32_t zv = sim::dotQ30(d, camQ_.fwd);  // 1/16 units, forward
@@ -146,7 +147,8 @@ bool Renderer::projectQ(const Vec3 &pos, int32_t &sx, int32_t &sy) const {
 }
 
 // One chord of the wireframe, clipped against the horizon.
-void Renderer::emitChord(const Vec3 &a, const Vec3 &b, int level) {
+DEVOURSPHERE_HOT_ATTR void Renderer::emitChord(const Vec3 &a, const Vec3 &b,
+                                               int level) {
   if (!sphereDryRun_ && lineCount_ >= wireBudget_) return;
   // Clip against the horizon: the far side of the sphere is never drawn
   const int32_t da = sim::dotQ30(a, camQ_.unit) - camQ_.cosHorizon;
@@ -175,7 +177,8 @@ void Renderer::emitChord(const Vec3 &a, const Vec3 &b, int level) {
 // end behind the near plane is dropped, which is what the 3D pipeline did
 // with such a line; the rest is clipped to the screen (Liang-Barsky) so the
 // band drawing never has to test a coordinate.
-void Renderer::addWireSegment(const Vec3 &ua, const Vec3 &ub, int level) {
+DEVOURSPHERE_HOT_ATTR void Renderer::addWireSegment(const Vec3 &ua,
+                                                    const Vec3 &ub, int level) {
   if (wireCount_ >= MAX_WIRE) return;
   const Vec3 pa = surfacePos(ua), pb = surfacePos(ub);
   int32_t x0, y0, x1, y1;
@@ -416,7 +419,8 @@ void Renderer::sphereConstants() {
 //
 // Returns how deeply the mesh is subdivided along this face's own three
 // edges, which is what its parent needs for the same decision.
-Renderer::EdgeDepths Renderer::subdivideFace(const Vec3 &a, const Vec3 &b,
+DEVOURSPHERE_HOT_ATTR Renderer::EdgeDepths Renderer::subdivideFace(
+    const Vec3 &a, const Vec3 &b,
                                              const Vec3 &c, int level) {
   if (!sphereDryRun_ && lineCount_ >= wireBudget_) return 0;
   const Vec3 center = sim::normalizeQ30(sum3(a, b, c));
@@ -693,8 +697,9 @@ static void walkSegment(int X0, int Y0, int X1, int Y1, int B0, int B1, int y,
   }
 }
 
-void Renderer::drawWireSegment(const g2::Surface &dst, const WireSeg &s, int y,
-                               int h, int dstY) {
+DEVOURSPHERE_HOT_ATTR void Renderer::drawWireSegment(const g2::Surface &dst,
+                                                     const WireSeg &s, int y,
+                                                     int h, int dstY) {
   if (directWord(dst.format)) {
     walkSegment(s.x0, s.y0, s.x1, s.y1, s.b0, s.b1, y, h, w_,
                 [&](int px, int py, int b) {
@@ -711,8 +716,9 @@ void Renderer::drawWireSegment(const g2::Surface &dst, const WireSeg &s, int y,
   }
 }
 
-void Renderer::drawLines2D(const g2::Surface &dst, int y, int h, int dstY,
-                           Layer2D layer) {
+DEVOURSPHERE_HOT_ATTR void Renderer::drawLines2D(const g2::Surface &dst, int y,
+                                                 int h, int dstY,
+                                                 Layer2D layer) {
   const bool wide = directWord(dst.format);
   g2::Graphics2D g(dst);
   const g2::Color black = g2::makeColor(0, 0, 0);
@@ -770,8 +776,8 @@ void Renderer::drawLines2D(const g2::Surface &dst, int y, int h, int dstY,
 }
 
 // The stars and the wireframe of one band, before the 3D layers
-void Renderer::drawBackdropBand(const g2::Surface &dst, int y, int h,
-                                int dstY) {
+DEVOURSPHERE_HOT_ATTR void Renderer::drawBackdropBand(const g2::Surface &dst,
+                                                      int y, int h, int dstY) {
   if (!wireNativeValid_ || wireNativeFormat_ != dst.format) {
     for (int i = 0; i < 32; i++) {
       wireNative_[i] = memoryWord(

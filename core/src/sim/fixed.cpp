@@ -1,5 +1,7 @@
 #include "devoursphere/sim/fixed.hpp"
 
+#include "devoursphere/sim/config.hpp"  // DEVOURSPHERE_HOT_ATTR
+
 namespace devoursphere::sim {
 
 static const int32_t SIN_TABLE[1025] = {
@@ -27,7 +29,7 @@ int32_t divQ30(int32_t a, int32_t b) {
 // monotonically to floor(sqrt(v)). Integer only, hence deterministic. The
 // division is 32-bit, which every target does in hardware (the RP2040 through
 // its SIO divider).
-uint32_t isqrt32(uint32_t v) {
+DEVOURSPHERE_HOT_ATTR uint32_t isqrt32(uint32_t v) {
   if (v < 2) return v;
   int bits = 32 - __builtin_clz(v);
   uint32_t r = 1u << ((bits + 1) >> 1);
@@ -44,7 +46,7 @@ uint32_t isqrt32(uint32_t v) {
 // every embedded target (some hundred cycles on a Cortex-M0+); this is called
 // about two thousand times a tick (the fragment layout forces and every
 // normalize), so it was most of the tick's division cost.
-uint32_t isqrt64(uint64_t v) {
+DEVOURSPHERE_HOT_ATTR uint32_t isqrt64(uint64_t v) {
   if (v < ((uint64_t)1 << 32)) return isqrt32((uint32_t)v);
   // Start at the highest even bit position at or below the top set bit
   int top = 63 - __builtin_clzll(v);
@@ -93,7 +95,7 @@ uint16_t atan2Brad(int32_t y, int32_t x) {
 // operations that stay cheap. The result is within a few Q30 steps of the
 // exact quotient (the harness measured 4 at worst), which is far below what
 // the simulation resolves; it is not bit-identical to the older forms.
-Vec3 normalizeQ30(const Vec3 &in) {
+DEVOURSPHERE_HOT_ATTR Vec3 normalizeQ30(const Vec3 &in) {
   // 64-bit working copies: the scaling below multiplies and shifts signed
   // values, and 64 bits keeps every step in range (and away from the
   // undefined left shift of a negative int32)
