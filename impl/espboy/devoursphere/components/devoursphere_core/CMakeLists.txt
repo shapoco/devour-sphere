@@ -72,5 +72,12 @@ set(DS_CORE_DEFS
 foreach(def ${DS_CORE_DEFS})
     idf_build_set_property(COMPILE_DEFINITIONS "-D${def}" APPEND)
 endforeach()
+# The core's innermost loops (the wireframe DDA, the 2D line pass, the
+# mesh walk, normalize and the square roots: about 8 KB) run from IRAM,
+# next to ShapoGFX's span loops. The linker fragments put .iram1.* there.
+# On the second device reading the mesh walk (S 12.5 ms) and the 2D band
+# pass (U 15 ms) were the largest parts of the frame after the simulation.
+idf_build_set_property(COMPILE_DEFINITIONS
+    "-DDEVOURSPHERE_HOT_ATTR=__attribute__((section(\"\.iram1.ds\")))" APPEND)
 
 target_compile_options(${COMPONENT_LIB} PRIVATE -Wall -Wextra)

@@ -60,11 +60,12 @@ constexpr uint32_t STACK_BYTES = 8192;
 // ESPboy wires it to the MCP23017 (GPB0) and holds it low (input.cpp).
 // D/C is GPIO16; there is no reset line (a software reset does it).
 constexpr int PIN_DC = 16;
-// The SPI clock is 80 MHz divided by this: 3 is 26.7 MHz, what the ESPboy
-// library runs the panel at ("more than 27 MHz may not work" on the
-// ST7735). 2 would be 40 MHz; the transfer is CPU time here, so it is
-// worth a try on a panel that takes it.
-constexpr int SPI_CLK_DIV = 3;
+// The SPI clock is 80 MHz divided by this. 2 is 40 MHz: the transfer is
+// the CPU's time here (11 ms a frame at 26.7 MHz, 7.5 at 40), and the
+// WildCardBoy's LcdTap, where this build is played, follows 62.5 MHz. The
+// ESPboy library runs a real ST7735 at 27 MHz (divider 3; "more than
+// 27 MHz may not work"), so a real panel that shows stray pixels wants 3.
+constexpr int SPI_CLK_DIV = 2;
 constexpr uint32_t SPI_HZ = 80000000u / SPI_CLK_DIV;
 // Where the 128x128 glass sits in the controller's 132x162 memory
 // (TFT_eSPI's ST7735_GREENTAB3 at rotation 0: MADCTL 0xC8)

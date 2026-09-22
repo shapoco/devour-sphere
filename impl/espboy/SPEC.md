@@ -258,9 +258,36 @@ beginFrame: S22.2 O5.8 H6.9 X3.8
   2. ワイヤーフレームの面を 32 → 48px (ユーザーの指示「1 段粗く」)。
   3. 計測パネルの追加行を 5 → 3 行 (`A M L X` / `S O H X` / `D U V T`) にして 11 行を画面に収める。
 - `STK0` 2,376 (8KB のうち)。単位が word なら 4 倍で 9.5KB になり溢れているはずなので、バイトで正しい。
-- 次に読むもの: 同じ場面の `S` と `RAS` と `FPS`。キャッシュが効いていれば両方とも数分の 1 になるはず。
-  効かなければ、帯の 2D 描画 (`drawBackdropBand()` の線分 DDA、ShapoGFX の `fillRect` / テキスト) と
-  網の走査を IRAM に置く (32KB のうち 8KB 空いている) のが次の手。
+
+3 回目 (キャッシュ 32KB、面 48px。プレイ中 RANK 24/48、全部表示 / FPS のみ):
+
+```
+FPS 8.9 (FPS のみ: 12.4)   TCK 32.80x3   BGN 25.77  RAS 38.49  DMA 11.31  CPU 75.58
+TRI 21  ARN 3K  L49  SPN 12  XFR 11.14  STK0 2360
+tick: A1.0 M3.1 L4.7 X2.3        (1 tick 10.9ms、16 → 11)
+beginFrame: S12.5 O6.4 H3.6 X3.0 (22 → 12.5)
+bands: D0.8 U15.2 V22.3 T11.x
+```
+
+- 「目に見えて軽くなった」(ユーザー)。ARRIVE 演出で瞬間 19fps。
+- キャッシュ 32KB で tick が 16 → 11ms、`S` が 22 → 12.5ms。フラッシュ実行の疑いは当たっていた。
+- FPS のみ表示で 81ms/フレーム。内訳は tick 2.4 回平均 26ms (フレーム時間の 1/3 は必ず sim)、
+  `BGN` 26ms、`U` (帯の 2D) 15ms、`T` (転送) 11ms、`D` 1ms。パネル自体 `V` は 22ms で、全部表示の
+  8.9fps はそのぶん遅い。
+- host の gprof (同じ構成、128x128、16 行の帯) で中身を見た: `renderBand` の半分近くが `drawHud`
+  (帯ごとに文字列の整形と計測をやり直す。グリフ単位のクリップはある)、`S` は `subdivideFace` の再帰と
+  `emitChord`、`normalizeQ30` (self time の 1 位、`isqrt32`)、tick は `moveEntity` と `updateLayout`。
+- そこで次の 2 つを入れた:
+  1. **core の最内ループを IRAM に** (`DEVOURSPHERE_HOT_ATTR`、core/SPEC.md): ワイヤーフレームの DDA
+     (`drawWireSegment` / `drawLines2D` / `drawBackdropBand`)、網の走査 (`subdivideFace` / `emitChord` /
+     `addWireSegment` / `projectQ`)、`normalizeQ30` / `isqrt32` / `isqrt64`。IRAM は 23.6 → 31.1KB / 32KB
+     (`.iram1.ds` 6.5KB + ShapoGFX 3.9KB + リテラル)。残り 1.7KB。
+  2. **SPI 40MHz** (`SPI_CLK_DIV` 2): 転送 11 → 7.5ms の見込み。LcdTap は追従する。実機のパネルで化けたら 3 に戻す。
+- 次に読むもの: FPS のみ表示の `FPS`、全部表示の `S` / `U` / `T`。フレームが 66ms を切ると owed tick が
+  2 回になって sim の分も減る (tick 数の崖)。
+- まだ手を付けていない候補: `drawHud` の帯ごとの早期スキップ (上下の帯以外は HUD が無い。host で
+  帯時間の 4 割)、`-Os` → `-O2` (キャッシュ 32KB なら試す価値あり)、`updateCamera` の float 3ms、
+  面 64px (host では線 51 → 43 本)。
 
 ### 未確認の事項
 
