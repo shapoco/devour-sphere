@@ -19,12 +19,17 @@ CONFIG_OPTIMIZATION_LEVEL_RELEASE=y
 CONFIG_COMPILER_OPTIMIZATION_ASSERTIONS_SILENT=y
 CONFIG_OPTIMIZATION_ASSERTIONS_SILENT=y
 
-# 16 KB instruction cache, 48 KB IRAM (the default). The SDK's own IRAM
-# code is 23 KB; what is left holds ShapoGFX's span loops (SHAPOGFX3D_HOT_ATTR
-# in components/shapogfx/CMakeLists.txt) and the rest is a 32-bit-only
-# heap nothing here asks for. SOC_FULL_ICACHE=y would trade the IRAM for
-# a 32 KB cache.
-# CONFIG_SOC_FULL_ICACHE is not set
+# 32 KB instruction cache, 32 KB IRAM. The SDK's own IRAM code is 20 KB
+# and ShapoGFX's span loops (SHAPOGFX3D_HOT_ATTR in
+# components/shapogfx/CMakeLists.txt) 4 KB, so the 32 KB still hold them;
+# the 16 KB that the default (48 KB IRAM, 16 KB cache) would have left as
+# a 32-bit-only heap nothing asks for goes to the cache instead. The first
+# device reading (16 KB cache) had the mesh walk and the band rasterizing
+# running 5-10x slower than the same code on the RP2040, which is what
+# code executing from flash past the cache looks like. To compare, set
+# this to n and delete sdkconfig before building (sdkconfig.defaults is
+# only read when there is no sdkconfig).
+CONFIG_SOC_FULL_ICACHE=y
 
 # The one task: it builds the scene and rasterizes the bands, and
 # buildSphere() recurses. FreeRTOS takes this from the heap at start-up.

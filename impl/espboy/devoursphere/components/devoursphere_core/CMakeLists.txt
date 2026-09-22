@@ -46,10 +46,11 @@ set(DS_CORE_DEFS
     DEVOURSPHERE_FRAGMENT_KEEP_LARGEST=1
 
     # --- The renderer (render/renderer.hpp) ---
-    # Faces of the sphere's mesh 32 px across on a 128 px screen: about 16
-    # cells in view and 75 lines a frame (the PicoSystem draws 48 px faces
-    # on 240 px, 120 lines). 10 bytes a segment.
-    DEVOURSPHERE_SPHERE_TARGET_PX=32
+    # Faces of the sphere's mesh 48 px across on a 128 px screen (the
+    # PicoSystem's value on 240 px). The first device reading (32 px, 45
+    # lines) spent 22 ms a frame walking the mesh -- a third of the frame
+    # -- and the user asked for one step coarser. 10 bytes a segment.
+    DEVOURSPHERE_SPHERE_TARGET_PX=48
     DEVOURSPHERE_MAX_WIRE=160
     # The 2D line and point arrays (outlines, effects, far fragments); what
     # does not fit takes the 3D path. 14 and 8 bytes an entry.

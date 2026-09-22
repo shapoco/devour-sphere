@@ -221,9 +221,9 @@ PicoSystem 版の `DS_SIM_ON_CORE1=0` の経路と同じ構成で、ループは
 
 シリアル (UART0、115200) には起動時に DRAM / IRAM の空き、`Game` 等のサイズ、全画面転送の実測を出す。
 それ以外は画面の計測パネル (右肩で切り替え) で、行の意味は impl/xiamocon/SPEC.md「デバッグ表示」と
-impl/picosystem/SPEC.md の 5 行の内訳。違いは `DMA` 行が転送の CPU 時間になること、最後の内訳行が
-`D U V T` (T は転送) になること、`STK1` が常に 0 なこと。21 桁 × 6px = 126px なので幅は収まるが、
-全部表示の 13 行は下端で切れる。
+impl/picosystem/SPEC.md の内訳。違いは `DMA` 行が転送の CPU 時間になること、内訳が 3 行
+(`A M L X` = tick の AI / 移動 / 配置 / 残り全部、`S O H X` = beginFrame、`D U V T` = 帯の 3D / 2D / パネル自体 / 転送)
+なこと、`STK1` が常に 0 なこと。21 桁 × 6px = 126px、11 行 × 9px + 26px = 125px で画面に収まる。
 
 ## 実機の記録
 
@@ -236,8 +236,31 @@ impl/picosystem/SPEC.md の 5 行の内訳。違いは `DMA` 行が転送の CPU
   `SPI_BIT_ORDER_MSB_FIRST` と名付けている。最初のビルドはその定数を使っていたので、
   全バイトがビット反転して出ていた (コマンドもデータも)。`bit_tx_order = 0` に直した (display.cpp)。
   I2C (ボタン) と GPIO0 (音) は SPI と無関係なので動いていた、という報告と整合する。
-- ESPboy の実機と WildCardBoy の LcdTap のどちらもまだ絵を確認していない。次に見るもの:
-  起動ログの空きヒープ、`XFR` (全画面転送)、`FPS` / `TCK` / `BGN` / `RAS`、`STK0` (8KB に対して)、`ARN`。
+
+2 回目 (ビット順の修正後、WildCardBoy。プレイ中、RANK 29/48、全部表示):
+
+```
+FPS 6.4   TCK 48.45x3   BGN 38.83  RAS 56.93  DMA 11.67  CPU 107.4
+TRI 18  ARN 3K  L45  SPN 12  XFR 11.19  STK0 2376
+tick: A1.8 M6.1 L5.7 F0.0  B0.2 F0.2 K1.2 X0.9      (1 tick 16ms)
+beginFrame: S22.2 O5.8 H6.9 X3.8
+```
+
+- **動いた** (ユーザーの報告: 「正直無理じゃないかと思ってた」)。ARRIVE 演出で自機と星と塵だけの瞬間は 10fps。
+- 計測パネルは 13 行が画面に入りきらず、全部表示自体で 1fps 落ちる。
+- フレーム 156ms の内訳: tick 3 回 48ms (`MAX_CATCHUP` に張り付き、ゲームはスローモーション)、
+  `BGN` 39ms、`RAS` 57ms (うち転送 11ms)。tick 16ms は 48 体の見込み (12ms) に近い。
+- 異常に大きいのは `S` 22ms (線 45 本の走査。PicoSystem は線 115 本で 4〜6ms) と `RAS` の転送を除いた
+  45ms (128x128 の 16K 画素。PicoSystem は 58K 画素で 11ms)。どちらも ShapoGFX の 2D と render 層の
+  帯描画・網の走査で、IRAM に置いたスパン描画 (3.9KB) の外。**16KB の命令キャッシュからあふれて
+  フラッシュ実行になっている**と見て、次の 3 つを入れた:
+  1. `CONFIG_SOC_FULL_ICACHE=y` (キャッシュ 32KB、IRAM 32KB。IRAM の使用は 23.5KB で収まる)。
+  2. ワイヤーフレームの面を 32 → 48px (ユーザーの指示「1 段粗く」)。
+  3. 計測パネルの追加行を 5 → 3 行 (`A M L X` / `S O H X` / `D U V T`) にして 11 行を画面に収める。
+- `STK0` 2,376 (8KB のうち)。単位が word なら 4 倍で 9.5KB になり溢れているはずなので、バイトで正しい。
+- 次に読むもの: 同じ場面の `S` と `RAS` と `FPS`。キャッシュが効いていれば両方とも数分の 1 になるはず。
+  効かなければ、帯の 2D 描画 (`drawBackdropBand()` の線分 DDA、ShapoGFX の `fillRect` / テキスト) と
+  網の走査を IRAM に置く (32KB のうち 8KB 空いている) のが次の手。
 
 ### 未確認の事項
 
