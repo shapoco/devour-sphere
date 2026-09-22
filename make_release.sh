@@ -78,12 +78,12 @@ popd
 
 pushd "${REPO_DIR}/impl/espboy/devoursphere/"
   ./build_release.sh
-  # The RTOS SDK's esptool (v2.4) has no merge-bin: the three images go in
-  # as they are and upload.sh writes each at its offset
-  cp "build/bootloader/bootloader.bin" "${RELS_DIR}/espboy/bootloader.bin"
-  cp "build/partition_table/partition-table.bin" "${RELS_DIR}/espboy/partition-table.bin"
-  cp "build/devoursphere.bin" "${RELS_DIR}/espboy/devour-sphere.bin"
-  cp "${ASSETS_DIR}/release/espboy/upload.sh" "${RELS_DIR}/espboy/upload.sh"
+  cp \
+    "build/devoursphere.factory.bin" \
+    "${RELS_DIR}/espboy/devour-sphere.factory.bin"
+  cp \
+    "${ASSETS_DIR}/release/espboy/upload.sh" \
+    "${RELS_DIR}/espboy/upload.sh"
 popd
 
 sed \

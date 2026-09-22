@@ -36,6 +36,7 @@ impl/espboy/
     partitions.csv           factory 1MB + hiscore 4KB (type 0x40)
     env.sh                   IDF_PATH (既定 ~/esp/ESP8266_RTOS_SDK)、ツールチェーン、Python 環境を PATH に
     build.sh / flash.sh / monitor.sh / build_release.sh
+    merge_bin.py             bootloader + パーティションテーブル + app を 1 つの .bin に (0xFF 詰め)
     components/
       devoursphere_core/     core/ をコンポーネントとしてビルド。縮小構成のマクロはここ
       shapogfx/              ShapoGFX をコンポーネントとしてビルド。フラット・不透明・固定小数点、スパン描画を IRAM に
@@ -57,6 +58,7 @@ Xiamocon 版のものをそのディレクトリから直接コンパイルし�
 ```sh
 cd impl/espboy/devoursphere
 ./build.sh                    # build/devoursphere.bin (+ bootloader, partition-table)
+                              # と 3 つを 1 つにした build/devoursphere.factory.bin
 ./flash.sh [/dev/ttyUSB0]     # esptool で書き込み (WeMos の CH340 経由)
 ./monitor.sh [/dev/ttyUSB0]   # 起動ログ (メモリの実数)
 ```
@@ -73,7 +75,26 @@ cd impl/espboy/devoursphere
   コンポーネントを REQUIRES に持つとリンクグループ内で解決する。
 - この SDK の `idf_build_set_property(COMPILE_DEFINITIONS ...)` は値をそのまま渡す (`-D` を付けない) ので、
   コンポーネントの CMakeLists は `-DNAME=VALUE` の形で書いている。
-- `make_release.sh` はこのターゲットも `espboy/` に含める (bootloader、partition-table、app の 3 つと upload.sh)。
+- `build.sh` の最後に `merge_bin.py` が bootloader (0x0)、パーティションテーブル (0x8000)、app (0x10000) を
+  0xFF で詰めて 1 つにした `build/devoursphere.factory.bin` を作る (SDK 同梱の esptool v2.4 には merge_bin が無い)。
+  オフセット 0 に 1 ファイルを書く書き込み器ならこれで済む: リリースの upload.sh、
+  そして **WildCardBoy の ESPboy カード** (ホストが TF カードの `.bin` を esp-serial-flasher でオフセット 0 から
+  ストリーミングし、ヘッダを書き換えない。`/WCB/Cards/ESPboy/Apps/` に置いて Apps メニューから選ぶ)。
+  イメージ先頭のフラッシュモード / サイズ / 周波数のバイトは bootloader.bin のもの (`e9 03 02 40` = DIO、4MB、40MHz)
+  で、sdkconfig から elf2image が書いたものがそのまま使われる。
+- `make_release.sh` はこのターゲットも `espboy/` に含める (`devour-sphere.factory.bin` と upload.sh)。
+
+### WildCardBoy の ESPboy カードで動かすとき
+
+カード (wildcardboy/cards/ESPboy/SPEC.md) は実機と次の点で違うが、このファームウェアはどれも実機と同じ手順で
+触るので、そのまま動く見込み:
+
+- LCD は無く、HSPI の信号を LcdTap が ST7789 系として復号する (`ESPboy` プリセット: 136x136 に
+  オフセット (6, 5) で 128x128 を切り出し、回転 2、RB 入れ替え、INVOFF)。CASET / RASET / MADCTL / COLMOD は
+  ESPboy ライブラリと同じものを送っているので、実機と同じ絵になるはず。
+- MCP23017 はホストが模擬する (0x20。IODIR / GPPU / OLAT の書き込みは受け、GPIOA はボタンを返す)。
+  MCP4725 (0x60) は模擬されず NACK になり、`setBacklight()` は失敗を無視する。
+- 音は GPIO0 が RC フィルタ経由で LCAUDIO に出る。UART0 (起動ログ) はホストの ISP 線に出る (無害)。
 
 ## メモリ配分
 

@@ -64,10 +64,13 @@ m5sticks3/        - for M5StickS3
     at all, try another cable.
 
 espboy/           - for ESPboy (ESP8266)
-  bootloader.bin, partition-table.bin, devour-sphere.bin, upload.sh
+  devour-sphere.factory.bin, upload.sh
     ./upload.sh [PORT] [BAUD]        (PORT defaults to /dev/ttyUSB0)
-    The script calls esptool ("pip install esptool" if you do not have it)
-    and writes the three images at 0x0, 0x8000 and 0x10000. A smaller game
+    The script calls esptool ("pip install esptool" if you do not have it).
+    The image is bootloader + partition table + app merged at their offsets,
+    so it is written in one go at 0x0 -- which is also what the WildCardBoy
+    host does with a .bin from its TF card (put it under
+    /WCB/Cards/ESPboy/Apps/ and pick it from the Apps menu). A smaller game
     than the others (a quarter-size sphere with 48 enemies): the ESP8266 has
     96 KB of RAM and one core. The buttons: the D-pad turns, dashes and
     brakes, A fires, B is the emergency dodge, the left shoulder pauses; on

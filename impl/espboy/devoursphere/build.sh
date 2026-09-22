@@ -6,6 +6,7 @@
 # see ../SPEC.md "ビルドと書き込み" for how they were set up).
 #
 #   ./build.sh            # build/devoursphere.bin (+ bootloader, partition table)
+#                         # and build/devoursphere.factory.bin, the three merged
 #   ./build.sh clean      # idf.py fullclean
 set -eu
 cd "$(dirname "$0")"
@@ -15,3 +16,9 @@ if [ "${1:-}" = "clean" ]; then
   exit 0
 fi
 idf.py build
+# One image for a flasher that writes a single file at 0x0 (the WildCardBoy
+# host does; so does upload.sh in the release)
+python3 ./merge_bin.py build/devoursphere.factory.bin \
+  0x0 build/bootloader/bootloader.bin \
+  0x8000 build/partition_table/partition-table.bin \
+  0x10000 build/devoursphere.bin

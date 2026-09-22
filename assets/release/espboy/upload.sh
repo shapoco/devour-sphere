@@ -6,19 +6,17 @@
 # PORT defaults to $PORT or /dev/ttyUSB0 (COM3 and the like on Windows),
 # BAUD to $BAUD or 921600. Needs esptool (`pip install esptool`).
 #
-# The board's CH340 resets it into the bootloader by itself. The three
-# images are written at their offsets: bootloader 0x0, partition table
-# 0x8000, app 0x10000.
+# The board's CH340 resets it into the bootloader by itself. The image is
+# bootloader + partition table + app merged at their offsets, written in
+# one go at 0x0.
 
 set -eu
 
 PORT="${1:-${PORT:-/dev/ttyUSB0}}"
 BAUD="${2:-${BAUD:-921600}}"
-DIR="$(cd "$(dirname "$0")" && pwd)"
+BIN="$(cd "$(dirname "$0")" && pwd)/devour-sphere.factory.bin"
 
-for f in bootloader.bin partition-table.bin devour-sphere.bin; do
-  [ -f "$DIR/$f" ] || { echo "firmware not found: $DIR/$f" >&2; exit 1; }
-done
+[ -f "$BIN" ] || { echo "firmware not found: $BIN" >&2; exit 1; }
 
 # esptool is installed as `esptool`, as `esptool.py`, or as a python module
 if command -v esptool >/dev/null 2>&1; then
@@ -35,6 +33,4 @@ fi
 $ESPTOOL --chip esp8266 --port "$PORT" --baud "$BAUD" \
   --before default_reset --after hard_reset write_flash \
   --flash_mode dio --flash_freq 40m --flash_size 4MB \
-  0x0 "$DIR/bootloader.bin" \
-  0x8000 "$DIR/partition-table.bin" \
-  0x10000 "$DIR/devour-sphere.bin"
+  0x0 "$BIN"
