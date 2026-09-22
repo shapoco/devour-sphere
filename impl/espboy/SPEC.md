@@ -227,8 +227,17 @@ impl/picosystem/SPEC.md の 5 行の内訳。違いは `DMA` 行が転送の CPU
 
 ## 実機の記録
 
-まだ無い (2026-09-22: ビルドが通った段階。実機に書いていない)。最初に見るもの:
-起動ログの空きヒープ、`XFR` (全画面転送)、`FPS` / `TCK` / `BGN` / `RAS`、`STK0` (8KB に対して)、`ARN`。
+1 回目 (2026-09-22、WildCardBoy の ESPboy カードに `devoursphere.factory.bin` を書いた。ユーザーの報告):
+**画面は真っ黒のまま、A を 2 回押すと効果音が鳴った**。キー入力と音は生きていてゲームは起動している。
+同じカードで ESPboy_Anarch は画面も出る。
+
+- 原因は SPI のビット順。SDK の `spi_set_interface()` は `bit_tx_order` を `SPI_CTRL.wr_bit_order` にそのまま
+  書き、レジスタでは 1 が LSB first (spi_struct.h) なのに、driver/spi.h はその 1 を
+  `SPI_BIT_ORDER_MSB_FIRST` と名付けている。最初のビルドはその定数を使っていたので、
+  全バイトがビット反転して出ていた (コマンドもデータも)。`bit_tx_order = 0` に直した (display.cpp)。
+  I2C (ボタン) と GPIO0 (音) は SPI と無関係なので動いていた、という報告と整合する。
+- ESPboy の実機と WildCardBoy の LcdTap のどちらもまだ絵を確認していない。次に見るもの:
+  起動ログの空きヒープ、`XFR` (全画面転送)、`FPS` / `TCK` / `BGN` / `RAS`、`STK0` (8KB に対して)、`ARN`。
 
 ### 未確認の事項
 

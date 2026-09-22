@@ -94,12 +94,21 @@ void Display::init() {
   // The HSPI as a master with MOSI and SCK only: no MISO, and no chip
   // select (GPIO15 stays a plain pin; the panel's CS is on the expander).
   // Mode 0, MSB first, bytes in memory order.
+  //
+  // The bit order is written as the register wants it, not through the
+  // SDK's constants: spi_set_interface() copies bit_tx_order straight into
+  // SPI_CTRL.wr_bit_order, where 1 means LSB first (spi_struct.h), while
+  // driver/spi.h names the value 1 SPI_BIT_ORDER_MSB_FIRST. The first
+  // build used that constant and the WildCardBoy's LcdTap saw every byte
+  // mirrored: a black screen with the game audibly running (2026-09-22).
+  // 0 for the byte order is the memory order (W0 bits 7:0 go first), which
+  // is what the Arduino SPI library uses for writeBytes() too.
   spi_config_t cfg = {};
   cfg.interface.val = 0;
   cfg.interface.cpol = 0;
   cfg.interface.cpha = 0;
-  cfg.interface.bit_tx_order = SPI_BIT_ORDER_MSB_FIRST;
-  cfg.interface.byte_tx_order = SPI_BYTE_ORDER_LSB_FIRST;
+  cfg.interface.bit_tx_order = 0;   // SPI_CTRL.wr_bit_order: 0 = MSB first
+  cfg.interface.byte_tx_order = 0;  // SPI_USER.wr_byte_order: 0 = memory order
   cfg.interface.mosi_en = 1;
   cfg.interface.miso_en = 0;
   cfg.interface.cs_en = 0;
