@@ -463,16 +463,31 @@ void Game::transferSize(int from, int to) {
 
 void Game::spawnFloatingFragment(const Vec3 &n, int32_t r, int sizeLog2,
                                  const Vec3 &drift, int owner) {
-  int slot = -1, oldest = -1;
+  int slot = -1, victim = -1;
   for (int i = 0; i < MAX_FLOATING_FRAGMENTS; i++) {
-    if (!floatingFragments[i].alive) {
+    const FloatingFragment &q = floatingFragments[i];
+    if (!q.alive) {
       slot = i;
       break;
     }
-    if (oldest < 0 || floatingFragments[i].age > floatingFragments[oldest].age)
-      oldest = i;
+#if DEVOURSPHERE_FRAGMENT_KEEP_LARGEST
+    // A full array gives up its smallest fragment (the oldest of the
+    // smallest), and only for one at least as big
+    if (victim < 0 || q.sizeLog2 < floatingFragments[victim].sizeLog2 ||
+        (q.sizeLog2 == floatingFragments[victim].sizeLog2 &&
+         q.age > floatingFragments[victim].age))
+      victim = i;
+#else
+    // A full array gives up its oldest fragment
+    if (victim < 0 || q.age > floatingFragments[victim].age) victim = i;
+#endif
   }
-  if (slot < 0) slot = oldest;
+  if (slot < 0) {
+#if DEVOURSPHERE_FRAGMENT_KEEP_LARGEST
+    if (sizeLog2 < floatingFragments[victim].sizeLog2) return;
+#endif
+    slot = victim;
+  }
   FloatingFragment &fp = floatingFragments[slot];
   fp.alive = true;
   fp.n = n;

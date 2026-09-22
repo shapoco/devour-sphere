@@ -1102,6 +1102,15 @@ void Renderer::drawEntity(const sim::Entity &c, const sim::Vec3 &pos, float px,
   entitiesDrawn_++;
 }
 
+// One entity of buildScene()'s visible list, as the budget decided
+void Renderer::drawVisible(const sim::Game &g, const Vis &v) {
+  const sim::Entity &c = g.entities[v.idx];
+  const sim::Vec3 posQ = sim::scaleToLength(c.frame.n, c.r) - origin_;
+  const bool blink =
+      c.invincible > 0 && ((g.tickCount() / (sim::TICK_RATE / 8)) & 1);
+  drawEntity(c, posQ, v.px, v.full, blink);
+}
+
 void Renderer::drawFloatingFragments() {
   const sim::Game &g = *game_;
   g2::Color pointColor = hueColor(sim::FRAGMENT_HUE, 200, 200);
@@ -1210,7 +1219,7 @@ static inline uint32_t mix32(uint32_t h) {
 }
 
 void Renderer::drawStars() {
-  constexpr int STARS = 120;
+  constexpr int STARS = MAX_STARS;
   constexpr int32_t DIST = 1500 * FU * 16;  // 1/16 units, inside the far plane
   if (!starsValid_) {
     // Fixed directions and colors: the float work happens once
@@ -1552,8 +1561,13 @@ void Renderer::buildScene() {
   // ones opened before it, so the depth sort only has to resolve what is
   // inside one. Opening them back to front is this function's job.
   //
-  // The world: everything standing on the surface, depth sorted.
+  // The world: everything standing on the surface, depth sorted -- or,
+  // with DEVOURSPHERE_NO_DEPTH, ordered by hand below (see renderer.hpp).
+#if DEVOURSPHERE_NO_DEPTH
+  g3d_.beginLayer(g3::LayerFlags::NO_DEPTH);
+#else
   g3d_.beginLayer();
+#endif
   // Upgrades first: their horizon markers must never be crowded out by
   // the enemies' markers; then the enemies carrying one or a bounty, shown
   // whatever their size and distance; the other enemies take what is left.
@@ -1602,7 +1616,7 @@ void Renderer::buildScene() {
       vis_[k] = vis_[k - 1];
       k--;
     }
-    vis_[k] = {d, px, (int16_t)i};
+    vis_[k] = {d, px, (int16_t)i, false};
   }
 
   // Triangle budget: what is left after the wireframe, minus a reserve for
@@ -1625,17 +1639,16 @@ void Renderer::buildScene() {
   if (reserve > slots / 3) reserve = slots / 3;
   int triBudget = slots - reserve;
   if (detailTris_ > 0 && triBudget > detailTris_) triBudget = detailTris_;
+  // Nearest first: the budget goes to the bodies closest to the camera
   for (int k = 0; k < n; k++) {
     const sim::Entity &c = g.entities[vis_[k].idx];
     int fullTris = (1 + 2 * c.fragmentCount) * 2;
     bool full = vis_[k].px >= lod(6.0f) && triBudget >= fullTris;
     triBudget -= full ? fullTris : 6;
-    const sim::Vec3 posQ = sim::scaleToLength(c.frame.n, c.r) - origin_;
-    bool blink =
-        c.invincible > 0 && ((g.tickCount() / (sim::TICK_RATE / 8)) & 1);
-    drawEntity(c, posQ, vis_[k].px, full, blink);
+    vis_[k].full = full;
     // Health gauge over enemies
     if (!c.isPlayer && vis_[k].px >= lod(2.5f) && gaugeCount_ < MAX_GAUGES) {
+      const sim::Vec3 posQ = sim::scaleToLength(c.frame.n, c.r) - origin_;
       const vec3f pos = {posQ.x * (1.0f / FU), posQ.y * (1.0f / FU),
                          posQ.z * (1.0f / FU)};
       float bodyR = c.bodyRadius / (float)FU;
@@ -1661,9 +1674,21 @@ void Renderer::buildScene() {
     }
   }
 
+#if DEVOURSPHERE_NO_DEPTH
+  // No depth in the layer: the later primitive covers the earlier one. The
+  // fragments go under the bodies (a fragment behind a body is what is
+  // usually meant by their overlap), the bodies farthest first, and the
+  // bullets, small and bright, over everything.
+  drawFloatingFragments();
+  frameProfile_.stamp(FP_FRAGMENTS);
+  for (int k = n - 1; k >= 0; k--) drawVisible(g, vis_[k]);
+  frameProfile_.stamp(FP_ENTITIES);
+#else
+  for (int k = 0; k < n; k++) drawVisible(g, vis_[k]);
   frameProfile_.stamp(FP_ENTITIES);
   drawFloatingFragments();
   frameProfile_.stamp(FP_FRAGMENTS);
+#endif
   drawBullets();
   frameProfile_.stamp(FP_BULLETS);
   drawEffects();

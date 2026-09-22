@@ -49,6 +49,20 @@ struct Gauge2D {
 #define DEVOURSPHERE_SUPPRESS_ALPHA 0
 #endif
 
+// Build-time switch: with DEVOURSPHERE_NO_DEPTH=1 the world layer carries
+// no depth either (LayerFlags::NO_DEPTH, like the overlay layer always
+// has): its records lose the depth plane (12 bytes each) and the span
+// resolution its depth compare, and what is drawn later covers what was
+// drawn earlier. buildScene() then orders the world itself, back to front
+// as far as it can: the floating fragments first, the bodies farthest
+// first, the bullets and the effects on top. The scene is mostly looked
+// down on from above, where bodies rarely overlap, so what is wrong (a
+// fragment behind a body drawn over it, a bullet under a body) is rare and
+// small. For a target short of arena and time.
+#ifndef DEVOURSPHERE_NO_DEPTH
+#define DEVOURSPHERE_NO_DEPTH 0
+#endif
+
 // Build-time switch: with DEVOURSPHERE_CAMERA_ROLL=0 the camera no longer
 // rolls into a turn. The body still banks (sim::Entity::bank, which is the
 // simulation's and identical either way); only the view stops leaning. For
@@ -272,11 +286,35 @@ class Renderer {
 #define DEVOURSPHERE_SPHERE_TARGET_PX 24
 #endif
   static constexpr float SPHERE_TARGET_PX_INIT = DEVOURSPHERE_SPHERE_TARGET_PX;
-  static constexpr int MAX_GAUGES = 64;
-  static constexpr int MAX_MARKERS = 40;
-  static constexpr int MAX_ENEMY_MARKERS = 32;  // the rest is kept for upgrades
-  static constexpr int MAX_DEBRIS = 64;
-  static constexpr int MAX_DUST = 64;
+// The per-frame arrays of the overlay and the effects (gauges 8 B, markers
+// 16 B, debris 72 B, dust 16 B, stars 24 B an entry). A small target may cap
+// them; what does not fit is not drawn, nothing else changes.
+#ifndef DEVOURSPHERE_MAX_GAUGES
+#define DEVOURSPHERE_MAX_GAUGES 64
+#endif
+#ifndef DEVOURSPHERE_MAX_MARKERS
+#define DEVOURSPHERE_MAX_MARKERS 40
+#endif
+#ifndef DEVOURSPHERE_MAX_ENEMY_MARKERS
+#define DEVOURSPHERE_MAX_ENEMY_MARKERS 32
+#endif
+#ifndef DEVOURSPHERE_MAX_DEBRIS
+#define DEVOURSPHERE_MAX_DEBRIS 64
+#endif
+#ifndef DEVOURSPHERE_MAX_DUST
+#define DEVOURSPHERE_MAX_DUST 64
+#endif
+#ifndef DEVOURSPHERE_MAX_STARS
+#define DEVOURSPHERE_MAX_STARS 120
+#endif
+  static constexpr int MAX_GAUGES = DEVOURSPHERE_MAX_GAUGES;
+  static constexpr int MAX_MARKERS = DEVOURSPHERE_MAX_MARKERS;
+  // the rest is kept for upgrades
+  static constexpr int MAX_ENEMY_MARKERS = DEVOURSPHERE_MAX_ENEMY_MARKERS;
+  static constexpr int MAX_DEBRIS = DEVOURSPHERE_MAX_DEBRIS;
+  static constexpr int MAX_DUST = DEVOURSPHERE_MAX_DUST;
+  static constexpr int MAX_STARS = DEVOURSPHERE_MAX_STARS;
+  static_assert(MAX_ENEMY_MARKERS <= MAX_MARKERS, "markers");
 
   // arena: working memory of the 3D renderer. The triangle buffer it is
   // divided into is what binds: about 37 KB on a 32-bit target holds the
@@ -469,8 +507,8 @@ class Renderer {
   CameraQ camQ_ = {};
   bool projectQ(const sim::Vec3 &pos, int32_t &sx, int32_t &sy) const;
   // The stars' directions (Q30) and colors, fixed at init()
-  sim::Vec3 starDir_[120];
-  g2::Color starColor_[120];
+  sim::Vec3 starDir_[MAX_STARS];
+  g2::Color starColor_[MAX_STARS];
   bool starsValid_ = false;
   // Visible entities of the frame, sorted by distance. A member rather than
   // a local: 256 of these is 3 KB, which is most of the 4 KB stack a core
@@ -480,6 +518,7 @@ class Renderer {
     int32_t d;  // eye distance, units
     float px;   // body radius on screen, pixels
     int16_t idx;
+    bool full;  // drawn with every fragment (the triangle budget's choice)
   };
   Vis vis_[sim::MAX_ENTITIES];
 
@@ -504,7 +543,6 @@ class Renderer {
     int16_t x, y;
     g2::Color c;
   };
-  static constexpr int MAX_STARS = 120;
   StarPt stars_[MAX_STARS];
   int starCount_ = 0;
   // Native pixels of the wireframe ramp, 32 steps of brightness, built for
@@ -654,6 +692,7 @@ class Renderer {
   sim::Vec3 eyeQ_ = {};  // cam_.eye in world units relative to origin_
   void drawEntity(const sim::Entity &c, const sim::Vec3 &pos, float px,
                   bool full, bool blink);
+  void drawVisible(const sim::Game &g, const Vis &v);
   void drawFloatingFragments();
   void drawBullets();
   void drawStars();

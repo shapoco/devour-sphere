@@ -46,9 +46,20 @@ constexpr int32_t fuPerSec(int32_t fuPerSecond) {
 constexpr int RATE_SHIFT = (TICK_RATE >= 60) ? 1 : 0;
 
 // --- World scale ------------------------------------------------------------
-constexpr int32_t FU = FU_UNITS;         // units per fragment unit
-constexpr int SPHERE_RADIUS_SHIFT = 17;  // R = 2^17 units = 512 FU
+constexpr int32_t FU = FU_UNITS;  // units per fragment unit
+// The sphere's radius as a power of two of units: 2^17 = 512 FU. A small
+// target may build a smaller sphere (2^16 = 256 FU, a quarter of the
+// surface) and populate it in proportion (see the population constants
+// below): the encounters then come as often on a fraction of the entities.
+// Distances in FU (sight, the respawn ring, the time limits) stay what they
+// are, so the game is not the same one, only a shorter one.
+#ifndef DEVOURSPHERE_SPHERE_RADIUS_SHIFT
+#define DEVOURSPHERE_SPHERE_RADIUS_SHIFT 17
+#endif
+constexpr int SPHERE_RADIUS_SHIFT = DEVOURSPHERE_SPHERE_RADIUS_SHIFT;
 constexpr int32_t SPHERE_RADIUS = 1 << SPHERE_RADIUS_SHIFT;
+static_assert(SPHERE_RADIUS_SHIFT >= 15 && SPHERE_RADIUS_SHIFT <= 17,
+              "the radius is a shift of Q30 angles and must stay in range");
 
 // --- Capacities -------------------------------------------------------------
 // Sized from what the arrays really hold rather than from round numbers,
@@ -61,9 +72,30 @@ constexpr int32_t SPHERE_RADIUS = 1 << SPHERE_RADIUS_SHIFT;
 // never overflow anyway -- a spawn into a full array is skipped or replaces the
 // oldest -- so a cap only ever costs a spawn, not correctness. Keeping
 // MAX_ENTITIES below 256 also leaves room to store an entity index in a byte.
-constexpr int MAX_ENTITIES = 224;
-constexpr int MAX_FLOATING_FRAGMENTS = 512;
-constexpr int MAX_BULLETS = 128;
+//
+// A small target overrides the three (DEVOURSPHERE_MAX_*) together with the
+// population constants below; the Game is 224 B an entity, 44 B a floating
+// fragment and 68 B a bullet.
+#ifndef DEVOURSPHERE_MAX_ENTITIES
+#define DEVOURSPHERE_MAX_ENTITIES 224
+#endif
+#ifndef DEVOURSPHERE_MAX_FLOATING_FRAGMENTS
+#define DEVOURSPHERE_MAX_FLOATING_FRAGMENTS 512
+#endif
+#ifndef DEVOURSPHERE_MAX_BULLETS
+#define DEVOURSPHERE_MAX_BULLETS 128
+#endif
+constexpr int MAX_ENTITIES = DEVOURSPHERE_MAX_ENTITIES;
+constexpr int MAX_FLOATING_FRAGMENTS = DEVOURSPHERE_MAX_FLOATING_FRAGMENTS;
+constexpr int MAX_BULLETS = DEVOURSPHERE_MAX_BULLETS;
+// What happens when a floating fragment is shed into a full array. 0: the
+// oldest one is replaced (every build until 2026-09-22). 1: the smallest
+// one is, and a fragment smaller than everything afloat is not spawned at
+// all -- for a target whose array is sized well under the peak, so that
+// what it keeps is what is worth flying to.
+#ifndef DEVOURSPHERE_FRAGMENT_KEEP_LARGEST
+#define DEVOURSPHERE_FRAGMENT_KEEP_LARGEST 0
+#endif
 constexpr int MAX_FRAGMENTS_PER_ENTITY = 8;
 constexpr int MAX_SIZE_LOG2 = 20;  // largest fragment exponent handled
 
@@ -236,12 +268,29 @@ constexpr int32_t FLOATING_DRIFT_TICKS =
     3 * TICK_RATE;  // initial scatter duration
 
 // --- Sphere population ------------------------------------------------------
-constexpr int INITIAL_ENTITIES = 200;
+// The enemies a sphere starts with and is topped up to, and the free food
+// (fragments that condense out of the cyber space). Tuned for the 512 FU
+// sphere; a target that builds a smaller sphere (DEVOURSPHERE_SPHERE_RADIUS_
+// SHIFT) scales these with its surface to keep the density, and its arrays
+// (DEVOURSPHERE_MAX_*) above them.
+#ifndef DEVOURSPHERE_INITIAL_ENTITIES
+#define DEVOURSPHERE_INITIAL_ENTITIES 200
+#endif
+#ifndef DEVOURSPHERE_INITIAL_FOOD_FRAGMENTS
+#define DEVOURSPHERE_INITIAL_FOOD_FRAGMENTS 320
+#endif
+#ifndef DEVOURSPHERE_FOOD_TARGET
+#define DEVOURSPHERE_FOOD_TARGET 400
+#endif
+constexpr int INITIAL_ENTITIES = DEVOURSPHERE_INITIAL_ENTITIES;
 constexpr int PLAYER_START_SIZE_LOG2 = 2;  // size 4
 constexpr int RESPAWN_INTERVAL = TICK_RATE / 2;
-// Free food: fragments that condense out of the cyber space
-constexpr int INITIAL_FOOD_FRAGMENTS = 320;
-constexpr int FOOD_TARGET = 400;  // keep at least this many floating fragments
+constexpr int INITIAL_FOOD_FRAGMENTS = DEVOURSPHERE_INITIAL_FOOD_FRAGMENTS;
+constexpr int FOOD_TARGET = DEVOURSPHERE_FOOD_TARGET;  // keep at least this many afloat
+static_assert(INITIAL_ENTITIES < MAX_ENTITIES, "the player needs a slot too");
+static_assert(INITIAL_FOOD_FRAGMENTS <= MAX_FLOATING_FRAGMENTS &&
+                  FOOD_TARGET <= MAX_FLOATING_FRAGMENTS,
+              "the food must fit the array");
 constexpr int FOOD_SPAWN_INTERVAL = ticks30(4);  // ticks
 constexpr int FOOD_MAX_SIZE_LOG2 = 3;
 // Time limit of a sphere (the clock runs only while the player plays and is
