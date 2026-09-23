@@ -1268,6 +1268,16 @@ void Renderer::drawStars() {
 // color fades from the enemy's color at the center to black at the rim,
 // added onto the frame). Nearer enemies get bigger and brighter auras.
 //
+// "Close" is measured against the view, not in fixed units: the camera
+// backs off as the body grows (updateCamera()), and a range that suited
+// the smallest body would then lie entirely inside the screen, leaving
+// the auras with nothing to show. So the range is a multiple of the half
+// height of the view at the rig distance (camDist_ * tan(fov / 2)): about
+// 110 FU for the smallest body, and from 2^12 or so it takes in most of
+// the sphere, where the nearest MAX_AURAS enemies are the ones drawn --
+// a big body always has more than that just outside the screen, and
+// taking the first ones by index would light up an arbitrary set.
+//
 // With DEVOURSPHERE_SUPPRESS_ALPHA the glow is a solid triangle in the
 // enemy's color instead, its tip on the screen edge pointing at the enemy,
 // bigger the nearer the enemy. A fan is thirteen vertices, twelve
@@ -1277,7 +1287,7 @@ void Renderer::drawStars() {
 void Renderer::drawPresenceAuras() {
   const sim::Game &g = *game_;
   if (g.state() != sim::GameState::PLAYING) return;
-  constexpr float RANGE = 100.0f;  // FU
+  constexpr float RANGE_PER_HALF_VIEW = 10.0f;
   constexpr int SEGMENTS = 12;
   constexpr int MAX_AURAS = 12;
   constexpr float DEPTH = 2.0f;  // view-space distance of the fan
@@ -1287,22 +1297,50 @@ void Renderer::drawPresenceAuras() {
   vec3f up = g3::cross(right, viewDir_);
   float tanY = std::tan(camFov_ * 0.5f);
   float tanX = tanY * (float)w_ / (float)h_;
-  // Within RANGE of the player: an angle of 2 asin(RANGE / 2 / R) = 0.196
-  // around the sphere; tested in Q30 (with a margin) before any float, as
-  // most of the two hundred entities are far beyond it
-  constexpr int32_t COS_RANGE = (int32_t)(0.98007 * (1 << 30));  // cos 0.2
-  int drawn = 0;
-  for (int i = 0; i < sim::MAX_ENTITIES && drawn < MAX_AURAS; i++) {
+  const float range = RANGE_PER_HALF_VIEW * camDist_ * tanY;  // FU
+  // Within range of the player: a chord of range on a sphere of radius R
+  // subtends 2 asin(range / 2 / R), whose cosine is 1 - 2 (range / 2 / R)^2;
+  // tested in Q30 (with a 2 % margin) before any float, as for a small
+  // body most of the two hundred entities are far beyond it. A range past
+  // the antipode passes everything.
+  int32_t cosRange = -(1 << 30);
+  {
+    const float R = (float)(sim::SPHERE_RADIUS + sim::ALTITUDE) / FU;
+    const float x = range * 1.02f / (2.0f * R);
+    if (x < 1.0f) cosRange = (int32_t)((1.0f - 2.0f * x * x) * (1 << 30));
+  }
+  // The nearest MAX_AURAS candidates, nearest first
+  struct Candidate {
+    float d;
+    uint8_t index;
+  };
+  static_assert(sim::MAX_ENTITIES <= 256, "Candidate::index");
+  Candidate cands[MAX_AURAS];
+  int count = 0;
+  for (int i = 0; i < sim::MAX_ENTITIES; i++) {
     const sim::Entity &c = g.entities[i];
     if (!c.alive || c.isPlayer) continue;
-    if (sim::dotQ30(c.frame.n, camQ_.player) < COS_RANGE) continue;
+    if (sim::dotQ30(c.frame.n, camQ_.player) < cosRange) continue;
     vec3f pos = toLocal(sim::scaleToLength(c.frame.n, c.r));
     float d = g3::length(pos);  // distance from the player
-    if (d > RANGE || d < 0.1f) continue;
+    if (d > range || d < 0.1f) continue;
+    if (count == MAX_AURAS && d >= cands[MAX_AURAS - 1].d) continue;
     float sx, sy;
     if (project(pos, sx, sy) && sx >= 0 && sx < w_ && sy >= 0 && sy < h_) {
       continue;  // visible: no aura needed
     }
+    // Insert in order of distance, dropping the farthest when full
+    int k = count < MAX_AURAS ? count++ : MAX_AURAS - 1;
+    while (k > 0 && cands[k - 1].d > d) {
+      cands[k] = cands[k - 1];
+      k--;
+    }
+    cands[k] = {d, (uint8_t)i};
+  }
+  for (int n = 0; n < count; n++) {
+    const sim::Entity &c = g.entities[cands[n].index];
+    const float d = cands[n].d;
+    vec3f pos = toLocal(sim::scaleToLength(c.frame.n, c.r));
     // Direction on the screen from the view-space position
     vec3f v = view_.transformPoint(pos);
     float dx = v.x, dy = -v.y;  // screen y points down
@@ -1314,7 +1352,7 @@ void Renderer::drawPresenceAuras() {
     float tx = dx != 0 ? hx / std::fabs(dx) : 1e9f;
     float ty = dy != 0 ? hy / std::fabs(dy) : 1e9f;
     float tEdge = tx < ty ? tx : ty;
-    float near = 1.0f - d / RANGE;  // 0 far .. 1 close
+    float near = 1.0f - d / range;  // 0 far .. 1 close
     float radiusPx = (20.0f + 50.0f * near) * ui_.scale8 / 8.0f;
     float cx = hx + dx * tEdge;
     float cy = hy + dy * tEdge;
@@ -1336,7 +1374,6 @@ void Renderer::drawPresenceAuras() {
                           toView(bx + dy * half, by - dx * half)};
     static const uint16_t triIdx[3] = {0, 1, 2};
     putSolid(tri, 3, triIdx, 3, materialForEntity(c));
-    drawn++;
     continue;
 #endif
     vec3f center = toView(cx, cy);
@@ -1367,7 +1404,6 @@ void Renderer::drawPresenceAuras() {
                           (uint16_t)(SEGMENTS + 2), idx,
                           &palette_[PAL_LINE_ADD]};
     g3d_.putPrimitive(prim);
-    drawn++;
   }
 }
 
