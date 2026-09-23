@@ -1683,10 +1683,11 @@ void Renderer::buildScene() {
   // The triangle buffer is a byte budget, not a slot count: ShapoGFX stores
   // each primitive in the record layout it needs. Entity bodies are the
   // cheapest kind -- flat (putKite / putQuad give every vertex the same
-  // color) and depth sorted -- so their record is the header plus the depth
-  // plane, and the buffer also spends 4 bytes on an entry for each. The
-  // 64-bit figure is used on a host so the budget is never optimistic there.
-  constexpr int TRI_BYTES = sizeof(void *) > 4 ? 76 : 64;
+  // color) and in the world layer, depth sorted unless
+  // DEVOURSPHERE_NO_DEPTH -- and ShapoGFX tells what one of them costs
+  // (record and entry) for the build at hand.
+  const int TRI_BYTES =
+      (int)g3d_.primitiveBytes(!DEVOURSPHERE_NO_DEPTH, false, false);
   g3::Stats st = g3d_.getStats();
   // The reserve is what the fragments, bullets and effects drawn after the
   // entities may need: 380 records on a large arena, but never more than a

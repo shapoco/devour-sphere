@@ -41,7 +41,7 @@ constexpr uint8_t BRAILLE_BIT[4][2] = {
 
 }  // namespace
 
-uint32_t rgb565beTo888(uint16_t p) {
+uint32_t rgb565SwappedTo888(uint16_t p) {
   p = (uint16_t)((p << 8) | (p >> 8));
   const uint32_t r = (p >> 11) & 31, g = (p >> 5) & 63, b = p & 31;
   return ((r * 255 / 31) << 16) | ((g * 255 / 63) << 8) | (b * 255 / 31);
@@ -60,7 +60,7 @@ void Converter::init(const Options &opts) {
 void Converter::buildTable() {
   static constexpr int BOX = 16;
   uint16_t px[BOX * BOX];
-  g2::Surface s = g2::makeSurface(g2::PixelFormat::RGB565BE, BOX, BOX, px);
+  g2::Surface s = g2::makeSurface(g2::PixelFormat::RGB565_SWAPPED, BOX, BOX, px);
   g2::Graphics2D g(s);
   g.setFont(&ShapoSansMono_s08c07);
   g.setTextColor(g2::Colors::WHITE);
@@ -142,7 +142,7 @@ uint32_t Converter::cellColor(const uint16_t *fb, uint32_t stride, int x0,
     const uint8_t *lum = &luma_[(size_t)y * fbW_];
     for (int x = x0; x < x1; x++) {
       if (lum[x] < opts_.threshold) continue;
-      const uint32_t rgb = rgb565beTo888(row[x]);
+      const uint32_t rgb = rgb565SwappedTo888(row[x]);
       const uint32_t r = rgb >> 16, g = (rgb >> 8) & 255, b = rgb & 255;
       const int bin = (int)((r >> 6) << 4 | (g >> 6) << 2 | (b >> 6));
       count[bin]++;
@@ -203,7 +203,7 @@ void Converter::convert(const uint16_t *fb, int w, int h, uint32_t stride) {
     const uint16_t *row =
         (const uint16_t *)((const uint8_t *)fb + (size_t)y * stride);
     uint8_t *lum = &luma_[(size_t)y * w];
-    for (int x = 0; x < w; x++) lum[x] = lumaOf(rgb565beTo888(row[x]));
+    for (int x = 0; x < w; x++) lum[x] = lumaOf(rgb565SwappedTo888(row[x]));
   }
   int sw = 3, sh = 6;
   subGrid(opts_.mode, &sw, &sh);

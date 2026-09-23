@@ -163,7 +163,7 @@ for (;;) {
   }
   renderer.beginFrame(game, dt); // camera and scene for this frame
   for (int y = 0; y < H; y += BAND_H) {
-    auto s = g2::makeSurface(g2::PixelFormat::RGB565BE, W, BAND_H, band);
+    auto s = g2::makeSurface(g2::PixelFormat::RGB565_SWAPPED, W, BAND_H, band);
     renderer.renderBand(s, y, BAND_H);
     pushBand(band, y, BAND_H);   // the display driver (SPI + DMA, ...)
   }
@@ -190,7 +190,7 @@ of help on the title screen are replaced with `Renderer::setControlHints()`.
 or two buffers a few dozen rows tall are enough: draw a band, push it, repeat
 (the PicoSystem port alternates two 240x40 bands; the terminal port draws the
 whole frame in one call). The target is a ShapoGFX `Surface` in `GRAY1`,
-`RGB444`, `ARGB4444` or `RGB565BE`. The screen size is just what you pass to
+`RGB444`, `ARGB4444` or `RGB565_SWAPPED`. The screen size is just what you pass to
 `init()` -- the HUD scales itself to it. If the platform paints part of the
 frame itself, `setHudInsets()` keeps the HUD out of the way.
 

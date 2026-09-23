@@ -44,7 +44,7 @@ alignas(8) uint8_t g_arena[ds::ARENA_SIZE];
 ds::Display g_display;
 ds::Profiler g_prof;
 
-// One band buffer, RGB565BE (see display.hpp for why not two)
+// One band buffer, RGB565_SWAPPED (see display.hpp for why not two)
 alignas(4) uint16_t g_band[ds::SCREEN_W * ds::BAND_H];
 
 // Frame pacing: the simulation steps at a fixed rate, the frame rate is
@@ -153,7 +153,7 @@ void updateProfileClock() {
 
 // --- Frames ---------------------------------------------------------------
 g2::Surface bandSurface() {
-  return {g2::PixelFormat::RGB565BE, (int16_t)ds::SCREEN_W, (int16_t)ds::BAND_H,
+  return {g2::PixelFormat::RGB565_SWAPPED, (int16_t)ds::SCREEN_W, (int16_t)ds::BAND_H,
           (uint32_t)(ds::SCREEN_W * 2), g_band};
 }
 

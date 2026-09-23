@@ -74,7 +74,7 @@ add_subdirectory(${DS_ROOT}/core devoursphere_core)
 set(DS_SIM_OPT "-O2" CACHE STRING "Optimization level of the simulation library")
 target_compile_options(devoursphere_sim PRIVATE ${DS_SIM_OPT})
 
-# Only RGB565BE is ever drawn. The panel is written in its 16-bit mode over
+# Only RGB565_SWAPPED is ever drawn. The panel is written in its 16-bit mode over
 # the hardware SPI, and the DMA byte-swaps each 16-bit word on the way out,
 # so the band buffers are the same big-endian format the Xiamocon build uses
 # (see src/display.cpp). PUBLIC because the format macros are read by the
@@ -83,7 +83,7 @@ target_compile_definitions(shapogfx PUBLIC
     SHAPOGFX_FORMAT_GRAY1=0
     SHAPOGFX_FORMAT_RGB444=0
     SHAPOGFX_FORMAT_ARGB4444=0
-    SHAPOGFX_FORMAT_RGB565BE=1
+    SHAPOGFX_FORMAT_RGB565_SWAPPED=1
 )
 # Nothing in this game is textured (verified in the Xiamocon build, see
 # impl/xiamocon/devoursphere/CMakeLists.txt). PRIVATE: read by src/gfx3d only.

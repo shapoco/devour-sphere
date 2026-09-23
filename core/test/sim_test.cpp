@@ -1521,7 +1521,7 @@ static void testRenderSizes() {
   for (const Size &sz : sizes) {
     const size_t pixels = (size_t)sz.w * sz.h;
     std::vector<uint16_t> fb(pixels + 16, GUARD);
-    const g2::Surface surf = {g2::PixelFormat::RGB565BE, (int16_t)sz.w,
+    const g2::Surface surf = {g2::PixelFormat::RGB565_SWAPPED, (int16_t)sz.w,
                               (int16_t)sz.h, (uint32_t)(sz.w * 2), fb.data()};
     renderer.init(sz.w, sz.h, arena, sizeof(arena));
     const devoursphere::render::UiMetrics &m = renderer.uiMetrics();
@@ -1571,7 +1571,7 @@ static void testRenderBands() {
   static std::vector<uint16_t> whole(W * H), banded(W * H), band(W * H);
 
   renderer.init(W, H, arena, sizeof(arena));
-  const g2::Surface full = {g2::PixelFormat::RGB565BE, W, H, W * 2,
+  const g2::Surface full = {g2::PixelFormat::RGB565_SWAPPED, W, H, W * 2,
                             whole.data()};
 
   game.reset(4242);
@@ -1599,7 +1599,7 @@ static void testRenderBands() {
       renderer.renderBand(full, 0, H, 0);
       for (int y = 0; y < H; y += bandH) {
         const int h = (y + bandH <= H) ? bandH : (H - y);
-        const g2::Surface b = {g2::PixelFormat::RGB565BE, W, (int16_t)h, W * 2,
+        const g2::Surface b = {g2::PixelFormat::RGB565_SWAPPED, W, (int16_t)h, W * 2,
                                band.data()};
         renderer.renderBand(b, y, h, 0);
         std::memcpy(banded.data() + (size_t)y * W, band.data(),

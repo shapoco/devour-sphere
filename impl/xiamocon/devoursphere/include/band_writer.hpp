@@ -57,7 +57,7 @@ class BandWriter {
   bool pending_ = false;  // a transfer is in flight and we hold the SPI lock
 
   g2::Surface surface(int i) {
-    return {g2::PixelFormat::RGB565BE, (int16_t)SCREEN_W, (int16_t)BAND_H,
+    return {g2::PixelFormat::RGB565_SWAPPED, (int16_t)SCREEN_W, (int16_t)BAND_H,
             (uint32_t)(SCREEN_W * 2), buf_[i]};
   }
   void start(int idx, int y, Profiler &prof);

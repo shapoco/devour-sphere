@@ -247,7 +247,7 @@ void debugKey(int key) {
 }
 
 void renderFrame(float dt) {
-  g2::Surface s = g2::makeSurface(g2::PixelFormat::RGB565BE, FB_W, FB_H, g_fb);
+  g2::Surface s = g2::makeSurface(g2::PixelFormat::RGB565_SWAPPED, FB_W, FB_H, g_fb);
   g_renderer.beginFrame(g_game, dt);
   g_renderer.renderBand(s, 0, FB_H, 0);
   g_renderer.endFrame();

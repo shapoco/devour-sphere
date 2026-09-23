@@ -139,9 +139,9 @@ void Display::init() {
   gpio_put(PIN_BACKLIGHT, 1);
 }
 
-void Display::fill(uint16_t rgb565be) {
+void Display::fill(uint16_t rgb565Swapped) {
   static uint16_t row[SCREEN_W];
-  for (int i = 0; i < SCREEN_W; i++) row[i] = rgb565be;
+  for (int i = 0; i < SCREEN_W; i++) row[i] = rgb565Swapped;
   for (int y = 0; y < SCREEN_H; y++) {
     writeStart(y, SCREEN_W, 1, row);
     complete();

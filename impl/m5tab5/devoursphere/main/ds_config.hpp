@@ -75,20 +75,21 @@ static_assert(SCREEN_H % BAND_H == 0, "the bands must tile the frame exactly");
 // What binds is the triangle buffer the arena is divided into, not the arena.
 // Measured at 640x360 over levels 1-7 x 3 seeds x 600 ticks with the AI
 // driving (12,600 frames, the same run impl/xiamocon/SPEC.md uses), hashing
-// every frame:
+// every frame. With ShapoGFX d538138 (16-byte spans, smaller records; sizes
+// from a 32-bit wasm build of the same run):
 //
 //     arena    triangle budget   peak used   frames
-//     64 KB          49,824 B     14,864 B   identical
-//     48 KB          33,440 B     14,864 B   identical
-//     40 KB          25,248 B     14,864 B   identical   <- the inflection
-//     32 KB          17,056 B     13,952 B   the entities start losing detail
-//     24 KB           8,864 B      8,864 B   239 primitives dropped
+//     48 KB          42,168 B      9,984 B   identical
+//     32 KB          25,784 B      9,984 B   identical
+//     24 KB          17,592 B      9,984 B   identical   <- the inflection
+//     20 KB          13,496 B      9,828 B   the entities start losing detail
+//     16 KB           9,400 B      9,396 B   primitives dropped
 //
-// So 40 KB is where buildScene() still gets everything it asks for. 48 KB
-// keeps a fifth over that and 3.2x over the peak frame -- and hands 16 KB
-// back to the internal heap, which is what the band buffers come out of and
-// the one thing this board is actually short of.
-constexpr size_t ARENA_SIZE = 48 * 1024;
+// (Before that ShapoGFX release the inflection was at 40 KB and this was
+// 48 KB.) 32 KB keeps a third over the inflection and 2.6x over the peak
+// frame, and leaves the internal heap -- what the band buffers come out of,
+// and the one thing this board is actually short of -- 16 KB more.
+constexpr size_t ARENA_SIZE = 32 * 1024;
 
 // Spans held per scanline. The measured peak is 33 at 640x360 (36 at
 // 1280x720): what sets it is how many primitives cross one scanline, not how

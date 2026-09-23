@@ -103,7 +103,7 @@ Linux の VT では `KDSKBMODE` の `K_MEDIUMRAW` で真の押下・解放が取
 
 ## 描画
 
-1. `Renderer` が 320x240 の RGB565BE に 1 帯で描く (`renderBand(dst, 0, 240)`)。WASM 版と同じ経路。
+1. `Renderer` が 320x240 の RGB565_SWAPPED に 1 帯で描く (`renderBand(dst, 0, 240)`)。WASM 版と同じ経路。
 2. 端末の幅 C・高さ R (毎フレーム `TIOCGWINSZ`) から格子を決める。セルは横 1 : 縦 2 とみなし、
    `gw = C`、`gh = gw * 240 / 320 / 2 = gw * 3 / 8`。`gh > R` なら `gh = R`、`gw = gh * 8 / 3`。
    格子は画面の中央に置き、余りは黒のまま。120x45 の端末で 120x45 (セル 1 つが 2.67x5.33 px)、

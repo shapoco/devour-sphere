@@ -2,7 +2,7 @@
 //
 // Loads the STANDALONE_WASM module built from impl/wasm/main.cpp, runs the
 // simulation at its fixed tick rate, renders through the WASM frame buffer
-// (RGB565BE) into a <canvas>, and turns keyboard / gamepad / touch input into
+// (RGB565_SWAPPED) into a <canvas>, and turns keyboard / gamepad / touch input into
 // the button bits of the simulation.
 //
 // startDevourSphere({ wasm: 'devoursphere.wasm', se: 'se.bin' })
@@ -16,7 +16,7 @@
 const BTN_LEFT = 1, BTN_RIGHT = 2, BTN_UP = 4, BTN_DOWN = 8, BTN_A = 16, BTN_PAUSE = 32,
   BTN_B = 64;
 
-// RGB565BE -> RGBA8888 lookup. The frame buffer is read as native (little
+// RGB565_SWAPPED -> RGBA8888 lookup. The frame buffer is read as native (little
 // endian) 16-bit words, so the table is indexed by the byte-swapped value and
 // the blit is one lookup and one 32-bit store per pixel. That matters at the
 // larger frame buffer sizes, where a per-channel loop would not keep up.

@@ -11,7 +11,7 @@
 // portrait raster, but the ST7789 turns it itself. M5GFX's setRotation()
 // writes the MADCTL bits and swaps the panel's logical width and height, so
 // from here on the display IS 240x135 and a band is a run of landscape rows
-// at its own y. Nothing walks over the pixels: ShapoGFX's RGB565BE is
+// at its own y. Nothing walks over the pixels: ShapoGFX's RGB565_SWAPPED is
 // already the order the panel wants on the wire, which is M5GFX's
 // swap565_t, so writePixelsDMA(..., swap = false) hands the band straight
 // to the bus (Panel_LCD::writePixels takes the no_convert path and calls
@@ -74,7 +74,7 @@ class PanelOut {
   bool pending_ = false;
 
   g2::Surface surface(int i) {
-    return {g2::PixelFormat::RGB565BE, (int16_t)SCREEN_W, (int16_t)BAND_H,
+    return {g2::PixelFormat::RGB565_SWAPPED, (int16_t)SCREEN_W, (int16_t)BAND_H,
             (uint32_t)(SCREEN_W * 2), buf_[i]};
   }
   void submit(int idx, int bandY);

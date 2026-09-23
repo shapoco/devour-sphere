@@ -29,17 +29,17 @@ static constexpr int MIN_DIM = 64;
 static constexpr int MAX_DIM = 1280;
 static constexpr int MAX_PIXELS = 1280 * 720;
 
-static uint16_t fb[MAX_PIXELS];  // RGB565BE
+static uint16_t fb[MAX_PIXELS];  // RGB565_SWAPPED
 static int screenW = DEFAULT_W;
 static int screenH = DEFAULT_H;
-static g2::Surface fbSurface = {g2::PixelFormat::RGB565BE, DEFAULT_W, DEFAULT_H,
+static g2::Surface fbSurface = {g2::PixelFormat::RGB565_SWAPPED, DEFAULT_W, DEFAULT_H,
                                 DEFAULT_W * 2, fb};
 static uint8_t arena[256 * 1024];
 static sim::Game game;
 static render::Renderer renderer;
 
 static void applyScreen() {
-  fbSurface = {g2::PixelFormat::RGB565BE, (int16_t)screenW, (int16_t)screenH,
+  fbSurface = {g2::PixelFormat::RGB565_SWAPPED, (int16_t)screenW, (int16_t)screenH,
                (uint32_t)(screenW * 2), fb};
   renderer.init(screenW, screenH, arena, sizeof(arena));
 }

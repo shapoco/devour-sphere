@@ -66,14 +66,14 @@ add_compile_definitions(
 add_subdirectory(${DS_ROOT}/submodule/shapo-gfx shapogfx)
 add_subdirectory(${DS_ROOT}/core devoursphere_core)
 
-# Only RGB565BE is ever drawn; dropping the others takes their code out of
+# Only RGB565_SWAPPED is ever drawn; dropping the others takes their code out of
 # both the 2D blitters and the 3D span writers. PUBLIC because the format
 # macros are read by the headers too, so every translation unit has to agree.
 target_compile_definitions(shapogfx PUBLIC
     SHAPOGFX_FORMAT_GRAY1=0
     SHAPOGFX_FORMAT_RGB444=0
     SHAPOGFX_FORMAT_ARGB4444=0
-    SHAPOGFX_FORMAT_RGB565BE=1
+    SHAPOGFX_FORMAT_RGB565_SWAPPED=1
 )
 
 # Nothing in this game is textured: every material comes from the three

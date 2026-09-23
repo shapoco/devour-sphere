@@ -25,7 +25,7 @@
 // X in [720 - v0 - 2 * BAND_H, 720 - v0), spanning the full 1280 rows.
 //
 // The PPA also swaps the bytes on the way (byte_swap), which is what lets
-// ShapoGFX keep drawing RGB565BE -- the format every other target wants --
+// ShapoGFX keep drawing RGB565_SWAPPED -- the format every other target wants --
 // with no pass over the pixels to fix it.
 
 #include <cstdint>
@@ -88,7 +88,7 @@ class PanelOut {
   bool pending_ = false;
 
   g2::Surface surface(int i) {
-    return {g2::PixelFormat::RGB565BE, (int16_t)SCREEN_W, (int16_t)BAND_H,
+    return {g2::PixelFormat::RGB565_SWAPPED, (int16_t)SCREEN_W, (int16_t)BAND_H,
             (uint32_t)(SCREEN_W * 2), buf_[i]};
   }
   bool submit(int idx, int bandY);

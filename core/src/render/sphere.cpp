@@ -601,14 +601,14 @@ void Renderer::buildSphere() {
 }
 
 // The 16-bit word that a pixel of color c occupies in memory, for the two
-// formats the fast path writes directly (the "native" pixel of RGB565BE is
-// byte-swapped in memory: see CursorRgb565BE::write)
+// formats the fast path writes directly (the "native" pixel of RGB565_SWAPPED is
+// byte-swapped in memory: see CursorRgb565Swapped::write)
 static bool directWord(g2::PixelFormat f) {
-  return f == g2::PixelFormat::RGB565BE || f == g2::PixelFormat::ARGB4444;
+  return f == g2::PixelFormat::RGB565_SWAPPED || f == g2::PixelFormat::ARGB4444;
 }
 static uint16_t memoryWord(g2::PixelFormat f, g2::Color c) {
   const uint16_t native = (uint16_t)g2::colorToNative(f, c);
-  return f == g2::PixelFormat::RGB565BE ? g2::bswap16(native) : native;
+  return f == g2::PixelFormat::RGB565_SWAPPED ? g2::bswap16(native) : native;
 }
 
 // One wireframe segment into one band. Integer DDA over the major axis

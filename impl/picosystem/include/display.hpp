@@ -8,7 +8,7 @@
 // The PicoSystem SDK drives the same panel in 12-bit mode through a PIO
 // program that bit-bangs the two SPI pins; that path needs its whole-frame
 // buffer. Here the pins go to SPI0 instead, and each band is a plain window
-// write: CASET / RASET / RAMWR, then the pixels. The bands are RGB565BE
+// write: CASET / RASET / RAMWR, then the pixels. The bands are RGB565_SWAPPED
 // (big-endian in memory, which is what the panel wants on the wire); the
 // DMA reads them as 16-bit words and byte-swaps each one, so the SPI can run
 // with 16-bit frames -- one DREQ handshake per pixel rather than per byte.
@@ -24,14 +24,14 @@ class Display {
   // divider is derived from clk_peri at this point.
   void init();
 
-  // Start pushing `h` rows of `w` pixels (RGB565BE) to rows y..y+h-1. The
+  // Start pushing `h` rows of `w` pixels (RGB565_SWAPPED) to rows y..y+h-1. The
   // window commands go out synchronously (a few microseconds), the pixels by
   // DMA; call complete() before touching the buffer again or starting the
   // next band. Calling this with a transfer still in flight waits for it.
   void writeStart(int y, int w, int h, const uint16_t *pixels);
 
-  // Fill the whole panel with one RGB565BE value (synchronous)
-  void fill(uint16_t rgb565be);
+  // Fill the whole panel with one RGB565_SWAPPED value (synchronous)
+  void fill(uint16_t rgb565Swapped);
 
   // Whether a transfer is still in flight
   bool busy() const;

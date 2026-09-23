@@ -1,4 +1,4 @@
-// The frame buffer (RGB565BE, any size) to colored text, and the text to
+// The frame buffer (RGB565_SWAPPED, any size) to colored text, and the text to
 // the terminal with as few bytes as the previous frame allows.
 //
 // Three ways to turn a cell of pixels into a character (SPEC.md, "描画"):
@@ -97,7 +97,7 @@ class Converter {
   void appendChar(uint32_t ch);
 };
 
-// RGB565BE pixel to 0xRRGGBB
-uint32_t rgb565beTo888(uint16_t p);
+// RGB565_SWAPPED pixel to 0xRRGGBB
+uint32_t rgb565SwappedTo888(uint16_t p);
 
 }  // namespace ds::aa

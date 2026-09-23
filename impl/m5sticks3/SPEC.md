@@ -89,13 +89,13 @@ cd impl/m5sticks3/devoursphere
 ## 画面: 3 つの移植の中で一番単純な経路
 
 ```
-ゲームが描くもの  240x135 のランドスケープ、RGB565BE
+ゲームが描くもの  240x135 のランドスケープ、RGB565_SWAPPED
 パネル            135x240 の縦長 ST7789、SPI3 40MHz、オフセット x=52 / y=40
 ```
 
 `M5GFX::setRotation(1 or 3)` が MADCTL を書き、パネルの論理的な幅と高さを入れ替える。
 **以後パネルは 240x135 そのもの**で、帯はランドスケープの行の並びのまま出せる。
-さらに ShapoGFX の **RGB565BE はそのまま ST7789 が求めるバイト順**であり、
+さらに ShapoGFX の **RGB565_SWAPPED はそのまま ST7789 が求めるバイト順**であり、
 M5GFX の `swap565_t` と同じ並びなので、`writePixelsDMA(..., swap = false)` が
 `Panel_LCD::writePixels()` の `no_convert` 経路 → `Bus_SPI::writeBytes(..., use_dma)` に入る。
 **画素をなめ直す処理はどこにも無い** (M5Tab5 版が PPA を要したのは、

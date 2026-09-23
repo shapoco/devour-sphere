@@ -192,7 +192,7 @@ void presentFrame() {
 xmc::AppConfig xmcAppGetConfig(void) {
   xmc::AppConfig cfg = xmc::getDefaultAppConfig();
   // RGB565 on this display is big-endian in memory, which is bit for bit what
-  // ShapoGFX's PixelFormat::RGB565BE produces. No conversion anywhere.
+  // ShapoGFX's PixelFormat::RGB565_SWAPPED produces. No conversion anywhere.
   cfg.displayPixelFormat = xmc::PixelFormat::RGB565;
   cfg.speakerEnabled = false;  // no audio yet
   return cfg;

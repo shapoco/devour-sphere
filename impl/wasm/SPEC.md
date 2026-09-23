@@ -6,7 +6,7 @@
 
 ## 必須要件
 
-- 画面は既定で 480x320px。RGB565BE のフレームバッファを ShapoGFX で描画し、キャンバスに表示する。
+- 画面は既定で 480x320px。RGB565_SWAPPED のフレームバッファを ShapoGFX で描画し、キャンバスに表示する。
   URL に `?screen=WxH` を付けると別の解像度で起動する。
   各辺 64～1280px、総画素数 1280x720 まで。HUD のレイアウトは core/ 側が解像度から
   動的に決めるので (core/SPEC.md の HUD 参照)、縦長でも正方形でも破綻しない。
@@ -80,7 +80,7 @@ cmake --build build
 | `ds_set_screen(w, h)` | フレームバッファの大きさを決める。`ds_init()` より前に呼ぶ。受け付けたら 1、範囲外なら 0 を返し、その場合は直前の大きさのままになる |
 | `ds_get_width()`, `ds_get_height()` | 現在のフレームバッファの大きさ (既定 480, 320) |
 | `ds_get_max_pixels()` | フレームバッファが保持できる最大画素数 (1280x720) |
-| `ds_get_fb()` | RGB565BE フレームバッファ (width x height x 2 バイト) の先頭アドレス |
+| `ds_get_fb()` | RGB565_SWAPPED フレームバッファ (width x height x 2 バイト) の先頭アドレス |
 | `ds_get_tick_rate()` | 1 秒あたりのシミュレーション tick 数 (60) |
 | `ds_tick(buttons)` | 1 tick 進める。`buttons` は sim::Button のビット (LEFT=1, RIGHT=2, UP=4, DOWN=8, A=16, PAUSE=32) |
 | `ds_render(dt)` | 現在の状態をフレームバッファに描画する。`dt` は前回描画からの秒数 (カメラの補間のみに使う) |
@@ -109,7 +109,7 @@ cmake --build build
   それ以上遅れている場合は残りを捨てる (タブが隠れていた後など)。
 - tick が 1 回以上進んだフレームだけ `ds_render()` と転送を行う。
   60Hz のディスプレイでは毎フレーム 1 tick 進むので描画も 60fps で、シミュレーションと描画は 1:1。
-- 転送は 65536 要素の変換表 (RGB565BE 1 画素 → RGBA8888 の 32 ビット語) を使い、
+- 転送は 65536 要素の変換表 (RGB565_SWAPPED 1 画素 → RGBA8888 の 32 ビット語) を使い、
   フレームバッファを `Uint16Array`、`ImageData` を `Uint32Array` として 1 画素 1 回の
   参照と書き込みで埋めて `putImageData()` する。表は WASM のメモリ上のバイト順 (BE) を
   そのまま添字にできるように作ってあるので、画素ごとのバイト入れ替えは要らない。

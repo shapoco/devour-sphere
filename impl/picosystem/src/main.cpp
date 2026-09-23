@@ -39,7 +39,7 @@ uint8_t g_arena[ds::ARENA_SIZE];
 ds::Display g_display;
 ds::Profiler g_prof;
 
-// Two band buffers, RGB565BE. Alignment for the 16-bit DMA reads; static
+// Two band buffers, RGB565_SWAPPED. Alignment for the 16-bit DMA reads; static
 // because every byte of SRAM is DMA capable on this chip.
 alignas(4) uint16_t g_bands[2][ds::SCREEN_W * ds::BAND_H];
 int g_bandCur = 0;  // free running across frames (see present())
@@ -257,7 +257,7 @@ void updateProfileClock() {
 
 // --- Frames ---------------------------------------------------------------
 g2::Surface bandSurface(int i) {
-  return {g2::PixelFormat::RGB565BE, (int16_t)ds::SCREEN_W, (int16_t)ds::BAND_H,
+  return {g2::PixelFormat::RGB565_SWAPPED, (int16_t)ds::SCREEN_W, (int16_t)ds::BAND_H,
           (uint32_t)(ds::SCREEN_W * 2), g_bands[i]};
 }
 

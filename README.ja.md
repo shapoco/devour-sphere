@@ -153,7 +153,7 @@ for (;;) {
   }
   renderer.beginFrame(game, dt); // カメラとシーンの構築
   for (int y = 0; y < H; y += BAND_H) {
-    auto s = g2::makeSurface(g2::PixelFormat::RGB565BE, W, BAND_H, band);
+    auto s = g2::makeSurface(g2::PixelFormat::RGB565_SWAPPED, W, BAND_H, band);
     renderer.renderBand(s, y, BAND_H);
     pushBand(band, y, BAND_H);   // ディスプレイドライバ (SPI + DMA など)
   }
@@ -177,7 +177,7 @@ tick のたびに `pollEffects()` を呼んでください (tick の出すイベ
 **フレームバッファは要りません。** `renderBand()` は任意の行範囲だけを描けるので、
 数十行ぶんのバッファを 1〜2 枚用意して「描いては転送」を繰り返せば足ります
 (PicoSystem 版は 240x40 の帯を 2 枚で交互に、CLI 版は全画面を 1 回で描いています)。
-描き込み先は ShapoGFX の `Surface` で、`GRAY1` / `RGB444` / `ARGB4444` / `RGB565BE` に対応。
+描き込み先は ShapoGFX の `Surface` で、`GRAY1` / `RGB444` / `ARGB4444` / `RGB565_SWAPPED` に対応。
 画面サイズは `init()` に渡すだけでよく、HUD は自動で縮尺されます。
 画面の一部をプラットフォーム側で塗る場合 (仮想パッドなど) は `setHudInsets()` で HUD がそこを避けます。
 

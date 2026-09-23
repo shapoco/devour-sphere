@@ -134,6 +134,10 @@ core は `DEVOURSPHERE_*` のマクロ (core/SPEC.md「縮小構成のための�
 ShapoGFX 側 (`components/shapogfx/CMakeLists.txt`): `SHAPOGFX3D_TEXTURE=0`、**`GOURAUD=0` (フラットシェーディングのみ)**、
 `BLEND=0` (すべて不透明)、`FIXED_POINT=1`、`VCACHE_SIZE=16`、`LAYER_MAX=4`。
 GOURAUD=0 でスパンは 68 → 44B (TEXTURE=0 と合わせて 28B)、滑らかに塗る記録は 96 → 48B になる。
+ShapoGFX d538138 (2026-09-24) 以降はスパンが設定によらず 16B、レコードは深度なし 48B (`primitiveBytes()`)。
+64 ビット積は `SHAPOGFX_ARCH_SPLIT_MUL64` (lx106 では sdkconfig.h の `CONFIG_IDF_TARGET_ESP8266` から
+自動で 1) で 16x16 の積 4 つに展開され、ShapoGFX から `__muldi3` の呼び出しが消えた。
+IRAM に置くスパン描画は 3,935 → 約 2.3KB (`.iram0.text` 全体で 21,744)。
 本体は元からフラットなので見た目は変わらず、オーラの扇形と体力警告のグラデーションが単色になる。
 
 ### host での難易度曲線
@@ -174,7 +178,7 @@ Low に固定する (`input::init()`)。以後の SPI はすべて D/C だけで
   完了を待つ (SDK の `spi_trans()` は 1 回ごとに設定を書き直すので使わない)。帯 4KB は 64 回。
 - SPI クロックは 80MHz / `SPI_CLK_DIV` (3 = 26.7MHz。TFT_eSPI が「ST7735 は 27MHz 超で化けることがある」と
   している値)。全画面 32KB で 9.8ms の CPU 時間。2 (40MHz) は実機で試す価値がある。
-- 帯は 1 枚 (`g_band`、128x16 RGB565BE)。描いて送って次の帯、の直列。
+- 帯は 1 枚 (`g_band`、128x16 RGB565_SWAPPED)。描いて送って次の帯、の直列。
 - `Display::init()` の最後に黒で塗ってからバックライト (MCP4725、4095) を点ける。
 
 ## 入力
