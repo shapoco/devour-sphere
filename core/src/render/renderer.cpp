@@ -1266,7 +1266,8 @@ void Renderer::drawStars() {
 // Presence auras: enemies close to the player but outside the screen are
 // shown as a soft glow at the screen edge in their direction (a fan whose
 // color fades from the enemy's color at the center to black at the rim,
-// added onto the frame). Nearer enemies get bigger and brighter auras.
+// added onto the frame). Bigger enemies get bigger auras, nearer ones
+// brighter auras.
 //
 // "Close" is measured against the view, not in fixed units: the camera
 // backs off as the body grows (updateCamera()), and a range that suited
@@ -1280,7 +1281,7 @@ void Renderer::drawStars() {
 //
 // With DEVOURSPHERE_SUPPRESS_ALPHA the glow is a solid triangle in the
 // enemy's color instead, its tip on the screen edge pointing at the enemy,
-// bigger the nearer the enemy. A fan is thirteen vertices, twelve
+// bigger the bigger the enemy and dimmer the farther. A fan is thirteen vertices, twelve
 // Gouraud-shaded triangles and a few thousand additively blended pixels --
 // about a millisecond each on a Cortex-M0+, and up to twelve of them in a
 // crowd; the triangle is one flat, opaque primitive.
@@ -1317,9 +1318,15 @@ void Renderer::drawPresenceAuras() {
   static_assert(sim::MAX_ENTITIES <= 256, "Candidate::index");
   Candidate cands[MAX_AURAS];
   int count = 0;
+  // An enemy below an eighth of the player's size gets no aura -- unless it
+  // holds a bounty, which is always shown, at the smallest size when it is
+  // that small; from an eighth to twice the size the aura grows with the
+  // size ratio, and beyond twice it stays at that size
+  const uint32_t playerSize = g.player().size;
   for (int i = 0; i < sim::MAX_ENTITIES; i++) {
     const sim::Entity &c = g.entities[i];
     if (!c.alive || c.isPlayer) continue;
+    if (!c.bounty && (uint64_t)c.size * 8 < playerSize) continue;
     if (sim::dotQ30(c.frame.n, camQ_.player) < cosRange) continue;
     vec3f pos = toLocal(sim::scaleToLength(c.frame.n, c.r));
     float d = g3::length(pos);  // distance from the player
@@ -1353,7 +1360,15 @@ void Renderer::drawPresenceAuras() {
     float ty = dy != 0 ? hy / std::fabs(dy) : 1e9f;
     float tEdge = tx < ty ? tx : ty;
     float near = 1.0f - d / range;  // 0 far .. 1 close
-    float radiusPx = (20.0f + 50.0f * near) * ui_.scale8 / 8.0f;
+    // 0 at an eighth of the player's size .. 1 at twice (log scale)
+    float sizeT =
+        (std::log2((float)c.size / (float)playerSize) + 3.0f) / 4.0f;
+    if (sizeT < 0) sizeT = 0;
+    if (sizeT > 1) sizeT = 1;
+    // The distance is the brightness, down to nothing at the edge of the
+    // range so that an enemy leaving it fades out
+    float bright = near;
+    float radiusPx = (20.0f + 50.0f * sizeT) * ui_.scale8 / 8.0f;
     float cx = hx + dx * tEdge;
     float cy = hy + dy * tEdge;
     // Screen -> view space at DEPTH
@@ -1364,22 +1379,29 @@ void Renderer::drawPresenceAuras() {
     };
 #if DEVOURSPHERE_SUPPRESS_ALPHA
     // A solid triangle: tip on the edge, base inwards, width across the
-    // direction. 8..18 px long on the reference screen, 6..13 on 240x240
-    // (it scales half as fast as the UI so it stays readable when small).
-    const float triLen = (20.0f + 20.0f * near) * (ui_.scale8 + 8) / 16.0f;
+    // direction. 8..18 px long on the reference screen by the size ratio,
+    // 6..13 on 240x240 (it scales half as fast as the UI so it stays
+    // readable when small).
+    const float triLen = (20.0f + 20.0f * sizeT) * (ui_.scale8 + 8) / 16.0f;
     const float half = triLen * 0.55f;
     const float bx = cx - dx * triLen, by = cy - dy * triLen;  // base center
     const vec3f tri[3] = {toView(cx, cy),
                           toView(bx - dy * half, by + dx * half),
                           toView(bx + dy * half, by - dx * half)};
     static const uint16_t triIdx[3] = {0, 1, 2};
-    putSolid(tri, 3, triIdx, 3, materialForEntity(c));
+    // The enemy's color dimmed by the distance
+    {
+      const g2::Color col = colorForEntity(c);
+      const g3::Material m = flatMaterial(g2::makeColor(
+          (int)(g2::colorR(col) * bright), (int)(g2::colorG(col) * bright),
+          (int)(g2::colorB(col) * bright)));
+      putSolid(tri, 3, triIdx, 3, m);
+    }
     continue;
 #endif
     vec3f center = toView(cx, cy);
     float radius = radiusPx / focalPx_ * DEPTH;
     g2::Color col = colorForEntity(c);
-    float bright = 0.3f + 0.7f * near;
     g2::Color centerCol = g2::makeColor((int)(g2::colorR(col) * bright),
                                         (int)(g2::colorG(col) * bright),
                                         (int)(g2::colorB(col) * bright));
