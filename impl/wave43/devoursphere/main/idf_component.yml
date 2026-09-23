@@ -1,0 +1,8 @@
+dependencies:
+  idf: ">=6.1"
+  # The same two drivers Kern's wave_43 BSP builds against on IDF 6.1
+  # (~/Kern/components/wave_43). Nothing of that BSP is taken as a component:
+  # its manifest pulls in LVGL and the LVGL adapter, which the game does not
+  # use. The panel's init sequence and timings are copied into board.cpp.
+  espressif/esp_lcd_st7701: "~2.0.2"
+  espressif/esp_lcd_touch_gt911: "^1.2.1"

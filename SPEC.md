@@ -45,6 +45,15 @@ ESP-IDF のプロジェクト。640x360 のランドスケープのフレーム�
 
 詳細は impl/m5tab5/SPEC.md を参照のこと。
 
+### wave_43 版
+
+impl/wave43/ 配下に Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 (Kern でいう "wave_43"。ESP32-P4 に
+480x800 の MIPI-DSI パネルと GT911 のタッチ) 向けの実装が置かれる。M5Tab5 版の移植で、
+M5 のライブラリの代わりに ESP-IDF v6.1 のドライバを直接使う。640x384 のフレームを
+PPA が 5/4 倍・90 度回転・バイト入れ替えしてパネルへ書く。音は無い。実機では未確認。
+
+詳細は impl/wave43/SPEC.md を参照のこと。
+
 ### M5StickS3 版
 
 impl/m5sticks3/ 配下に M5StickS3 (ESP32-S3 のスティック型開発機) 向けの実装が置かれる。
@@ -92,6 +101,7 @@ impl/wasm/           WASM 版 (impl/wasm/README.md、SPEC.md)
 impl/xiamocon/       Xiamocon 版 (impl/xiamocon/README.md、SPEC.md)
 impl/picosystem/     PicoSystem 版 (impl/picosystem/README.md、SPEC.md)
 impl/m5tab5/         M5Tab5 版 (impl/m5tab5/README.md、SPEC.md)
+impl/wave43/         wave_43 版 (impl/wave43/SPEC.md)
 impl/m5sticks3/      M5StickS3 版 (impl/m5sticks3/README.md、SPEC.md)
 impl/espboy/         ESPboy 版 (impl/espboy/README.md、SPEC.md)
 impl/cli/            CLI 版 (impl/cli/README.md、SPEC.md)

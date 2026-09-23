@@ -1,0 +1,43 @@
+# Devour Sphere on the Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 ("wave_43").
+#
+# The board-level values are the ones Kern ships for this board on IDF 6.1
+# (~/Kern/sdkconfig.defaults + sdkconfig.defaults.wave_43, and what its
+# build_wave_43 resolved them to); see ../SPEC.md.
+CONFIG_IDF_TARGET="esp32p4"
+
+# Reaches the whole tree, which matters here: the frame time is spent in
+# ShapoGFX's span loops and in the IDF's PPA / cache paths, not only in our
+# own translation units.
+CONFIG_COMPILER_OPTIMIZATION_PERF=y
+
+# The board's chip is a v1.x, and rev <3.0 / >=3.0 are mutually exclusive in
+# the IDF's model (its default is v3.1 or later, which the bootloader would
+# then refuse to start on). 360 MHz is the ceiling below v3.
+CONFIG_ESP32P4_SELECTS_REV_LESS_V3=y
+CONFIG_ESP32P4_REV_MIN_1=y
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_360=y
+
+# The panel framebuffer lives here and the DSI reads it continuously
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_HEX=y
+CONFIG_SPIRAM_SPEED_200M=y
+
+CONFIG_CACHE_L2_CACHE_256KB=y
+CONFIG_CACHE_L2_CACHE_LINE_128B=y
+
+CONFIG_FREERTOS_HZ=1000
+
+# app_main's task is the one that builds the scene and rasterizes, and
+# buildSphere() recurses seven levels deep on top of the rasterizer's locals.
+# Keep ds_platform.hpp's STACK_BYTES_CORE0 in step with this.
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384
+
+CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# The simulation and the rasterizer each get a core and neither yields, so
+# the watchdog would fire on whichever one the idle task never reaches.
+CONFIG_ESP_TASK_WDT_INIT=n
