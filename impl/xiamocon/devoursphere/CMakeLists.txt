@@ -66,6 +66,17 @@ add_compile_definitions(
 add_subdirectory(${DS_ROOT}/submodule/shapo-gfx shapogfx)
 add_subdirectory(${DS_ROOT}/core devoursphere_core)
 
+# The SDK gives its code-generation flags (sections per function, no
+# exceptions, no RTTI) only to targets that link pico_standard_link, i.e. the
+# executable, not to these libraries. Without them the linker cannot drop the
+# unused gfx2d functions, and a cleanup landing pad in ShapoGFX's shapes.cpp
+# pulls in the C++ unwinder personality and malloc.
+foreach(lib shapogfx devoursphere_sim devoursphere_render)
+    target_compile_options(${lib} PRIVATE
+        -ffunction-sections -fdata-sections
+        -fno-exceptions -fno-unwind-tables -fno-rtti)
+endforeach()
+
 # Only RGB565_SWAPPED is ever drawn; dropping the others takes their code out of
 # both the 2D blitters and the 3D span writers. PUBLIC because the format
 # macros are read by the headers too, so every translation unit has to agree.
@@ -90,6 +101,14 @@ target_compile_definitions(shapogfx PUBLIC
 # still compile and just draw untextured. The WASM front end does not set
 # this, so the two would disagree.
 target_compile_definitions(shapogfx PRIVATE SHAPOGFX3D_TEXTURE=0)
+
+# gfx2d: no transforms and no color key. The transform only magnifies text,
+# which a 240x240 screen never does (fontMult 1, core/SPEC.md), and nothing is
+# drawn with a color key; the blend stays for the additive markers and dust.
+# Bit-identical to the full build. PRIVATE: read by src/gfx2d only.
+target_compile_definitions(shapogfx PRIVATE
+    SHAPOGFX2D_TRANSFORM=0
+    SHAPOGFX2D_COLOR_KEY=0)
 
 # --- The firmware --------------------------------------------------------
 add_executable(${APP_NAME})

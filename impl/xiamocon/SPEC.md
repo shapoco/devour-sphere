@@ -127,6 +127,12 @@ RP2350A のリンカ領域は `RAM` 512KB (`.data` + `.bss` + ヒープ) と、
 増えているのは b03055e の `PackedVertex` デコード経路と、
 ba15719 でレコードのレイアウトごとに特化したスパンビルダのぶん。
 このゲームは `PackedVertex` を使わないが、これを落とすマクロは無い。
+ShapoGFX e0f9662 (gfx2d の刷新) の更新で、RP2350 のライブラリ (`shapogfx` / `devoursphere_sim` /
+`devoursphere_render`) が SDK のコード生成フラグ (`-ffunction-sections` など) 無しでビルドされていた
+ことが分かり、CMakeLists.txt で付けた (SDK は実行ファイルにしか付けない。impl/picosystem/SPEC.md
+「メモリ配分」)。使っていない関数が落ちるようになり、`.text` は gfx2d が大きくなったにもかかわらず
+279,864 → 258,424 と 21KB 減った。
+
 動的確保はしない。`sim::Game` だけで 133KB あるのでスタックには絶対に置かない。
 
 `pico_set_binary_type(copy_to_ram)` は**まだ使えない**。
@@ -266,6 +272,12 @@ b03055e で 3D レンダラの各機能を個別に落とせるようになっ�
 `SHAPOGFX3D_STACK_DEPTH` (既定 16、1,088B) と `SHAPOGFX3D_VCACHE_SIZE`
 (既定 64、2,304B) はアリーナの固定部を決める。`pushState()` は使っていないので
 前者は削れるが、合わせても 3KB 強でアリーナの 3% ほどにしかならないので既定のまま。
+
+2D 側 (ShapoGFX e0f9662 から) は `SHAPOGFX2D_TRANSFORM=0` と `SHAPOGFX2D_COLOR_KEY=0`
+(CMakeLists.txt と platformio.ini の両方)。変換は文字の拡大にしか使っておらず、240x240 では
+文字の倍率が常に 1 なので要らない。カラーキーは使っていない。固定条件 13,560 フレームで
+既定ビルドと完全一致。`SHAPOGFX2D_BLEND` は加算のマーカーと塵に要るので残す。
+2D のアリーナは渡さない (core/SPEC.md のメモリの項)。
 
 **注意: テクスチャを無効にしても、テクスチャ付きのシーンはコンパイルも描画も通る**
 (無効な機能のメンバは実行時に無視されるだけ)。将来 core/ 側にテクスチャを足しても
@@ -763,6 +775,12 @@ STK1 2592  STK0 2340      各コアのスタック最大使用量 (バイト、�
   ESP32S3 で 2,624 バイト) のまま。`putPrimitive()` を通る最深経路はオーラ
   (`drawPresenceAuras()` の 832 バイトの上に 896) で 1,920 バイトに増えたが、それより浅い。
   したがって `STK0` は変わらない見込みで、実機でも 3,120 (2026-09-24、ESP32S3) と増えていない。
+
+  ShapoGFX e0f9662 (gfx2d の刷新) では HUD の経路が深くなった。ESP32S3 の `-fstack-usage` で、
+  `renderBand` から下の最深はアイコンの多角形 (`renderBand` → `drawHud` → `drawUpgradeStatus` →
+  `drawUpgradeIcon` → `fillPolygon` → `G2Impl::fillPolygon` → `scanPolygon` → スパン) で約 850 → 1,570 バイト
+  (`scanPolygon` だけで 528)。文字の経路 (`drawText` → `drawString` → `drawChar` → `drawMask`) はそれより浅い。
+  `beginFrame` から下の網の再帰 (2,624) には届かないので、`STK0` は変わらない見込み。実機で確認する。
 - `CPU` が 14.75ms (全画面転送に要する時間) を超えているかどうかが、
   フレームレートを決めているのが CPU 側か表示側かの判断材料になる。
 - `d0` 以外 (取りこぼしあり) が出たらアリーナが足りていない。

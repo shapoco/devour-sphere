@@ -237,6 +237,11 @@ ESP32-P4 の内蔵 SRAM は 768KB、うち 256KB が L2 キャッシュ。リン
 
 スパンプールは 128 (`SPAN_CAPACITY`)。640x360 の実測ピークは 33、1280x720 でも 36。
 
+gfx2d は `SHAPOGFX2D_COLOR_KEY=0` だけ (カラーキーは使わない)。640x360 ではタイトルとパッドのラベルを 2 倍に
+するので変換 (`SHAPOGFX2D_TRANSFORM`) は残す。2D のアリーナは渡さない (core/SPEC.md のメモリの項)。
+ShapoGFX e0f9662 で gfx2d のソースが graphics2d.cpp / shapes.cpp / images.cpp に分かれたので、
+components/shapogfx/CMakeLists.txt に列挙している (`.flash.text` は +14.6KB)。
+
 ## 2 つのコアの分担
 
 **core1 が sim、core0 が描画**。両ハンドヘルドと同じ。core0 は batch を投げてから

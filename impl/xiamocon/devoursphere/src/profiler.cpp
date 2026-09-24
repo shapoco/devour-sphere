@@ -153,13 +153,13 @@ void Profiler::drawOverlay(const g2::Surface &band, int bandY) {
   g2::Graphics2D g(band);
   g.setClipRect(0, 0, band.width, band.height);
   // Monospace, so the columns do not dance as the digits change
-  g.setFont(&ShapoSansMono_s08c07, 1);
+  g.setFont(&ShapoSansMono_s08c07);
   // Frame coordinates to band coordinates. Anything outside this band is
   // clipped away, so a line crossing the boundary is drawn in both bands and
   // comes out seamless.
   const int oy = -bandY;
   if (mode_ == Mode::FPS) {
-    const int w = g.measureText("FPS 00.0") + 2 * PAD;
+    const int w = (int)g.textMetrics("FPS 00.0").width + 2 * PAD;
     g.fillRect(PANEL_X, PANEL_Y + oy, w, LINE_ADV + 2 * PAD,
                g2::makeColor(0, 0, 0, 190));
     g.setTextColor(g2::makeColor(150, 255, 170));
@@ -168,7 +168,7 @@ void Profiler::drawOverlay(const g2::Surface &band, int bandY) {
   }
   int extras = 0;
   while (extras < EXTRA_LINES && extra[extras][0]) extras++;
-  const int w = g.measureText("00000000000000000000") + 2 * PAD;
+  const int w = (int)g.textMetrics("00000000000000000000").width + 2 * PAD;
   const int h = (LINES + extras) * LINE_ADV + 2 * PAD;
   g.fillRect(PANEL_X, PANEL_Y + oy, w, h, g2::makeColor(0, 0, 0, 190));
   g.setTextColor(g2::makeColor(150, 255, 170));

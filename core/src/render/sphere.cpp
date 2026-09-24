@@ -732,12 +732,13 @@ DEVOURSPHERE_HOT_ATTR void Renderer::drawLines2D(const g2::Surface &dst, int y,
     if (s.layer & L2D_ADD) {
       // Added onto the frame, per pixel (the dust: a gradient to black,
       // which under addition is a fade to transparent)
+      g.setBlend(g2::BlendMode::ADD);
       walkSegment(s.x0, s.y0, s.x1, s.y1, s.b0, s.b1, y, h, w_,
                   [&](int px, int py, int b) {
                     g.fillRect(px, py - y + dstY, 1, 1,
-                               g2::lerpColor(black, color, b),
-                               g2::BlendMode::ADD);
+                               g2::lerpColor(black, color, b));
                   });
+      g.setBlend(g2::BlendMode::ALPHA);
       continue;
     }
     if (s.b0 == 255 && s.b1 == 255) {

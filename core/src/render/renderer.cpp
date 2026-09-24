@@ -492,12 +492,13 @@ bool Renderer::addPoint2D(const sim::Vec3 &p, g2::Color c) {
 static void fillTriangle2D(g2::Graphics2D &g, int oy, int ax, int ay, int bx,
                            int by, int cx, int cy, g2::Color c,
                            bool additive) {
+  g.setBlend(additive ? g2::BlendMode::ADD : g2::BlendMode::ALPHA);
+  struct Restore {
+    g2::Graphics2D &g;
+    ~Restore() { g.setBlend(g2::BlendMode::ALPHA); }
+  } restore{g};
   auto span = [&](int lo, int y, int n) {
-    if (additive) {
-      g.fillRect(lo, y, n, 1, c, g2::BlendMode::ADD);
-    } else {
-      g.fillRect(lo, y, n, 1, c);
-    }
+    g.fillRect(lo, y, n, 1, c);
   };
   // Sort by y: a top, c bottom
   if (ay > by) {

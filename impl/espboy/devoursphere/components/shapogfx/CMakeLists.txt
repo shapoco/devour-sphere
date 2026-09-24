@@ -6,6 +6,8 @@ set(DS_ROOT ${CMAKE_CURRENT_LIST_DIR}/../../../../..)
 idf_component_register(
     SRCS
         "${DS_ROOT}/submodule/shapo-gfx/src/gfx2d/graphics2d.cpp"
+        "${DS_ROOT}/submodule/shapo-gfx/src/gfx2d/images.cpp"
+        "${DS_ROOT}/submodule/shapo-gfx/src/gfx2d/shapes.cpp"
         "${DS_ROOT}/submodule/shapo-gfx/src/gfx3d/gfx3d.cpp"
         "${DS_ROOT}/submodule/shapo-gfx/src/gfx3d/scene.cpp"
         "${DS_ROOT}/submodule/shapo-gfx/src/gfx3d/shapes.cpp"
@@ -40,6 +42,14 @@ target_compile_definitions(${COMPONENT_LIB} PRIVATE
     SHAPOGFX3D_FIXED_POINT=1
     SHAPOGFX3D_VCACHE_SIZE=16
     SHAPOGFX3D_LAYER_MAX=4
+)
+# gfx2d: no transforms and no color key. The transform only magnifies text,
+# which this screen never does (fontMult 1, core/SPEC.md), and nothing is
+# drawn with a color key; the blend stays for the additive markers and dust.
+# Bit-identical to the full build. PRIVATE: read by src/gfx2d only.
+target_compile_definitions(${COMPONENT_LIB} PRIVATE
+    SHAPOGFX2D_TRANSFORM=0
+    SHAPOGFX2D_COLOR_KEY=0
 )
 # The span loops (render() and what it calls per span) run from IRAM: the
 # SDK's linker fragments put .iram1.* there (esp8266_fragments.lf). The

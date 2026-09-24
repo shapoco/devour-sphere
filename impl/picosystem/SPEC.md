@@ -109,6 +109,19 @@ ShapoGFX d538138 (2026-09-24) で RAM に置く 3D のスパン描画が小さ�
 13.6KB → **19.5KB**。この余裕があれば `DS_SIM_OPT=-O3` (+10.6KB) にも戻せるが、
 tick は律速ではない (`W` ≒ 0) ので戻していない。
 
+その後ベンチマーク (core 3.4) などで空きは 16.8KB になっていた。ShapoGFX e0f9662 (2026-09-24、gfx2d の
+API の刷新) のときに、**ライブラリ (`shapogfx` / `devoursphere_sim` / `devoursphere_render`) が SDK の
+コード生成フラグ無しでビルドされていた**ことが分かった。SDK は `-ffunction-sections -fdata-sections
+-fno-exceptions -fno-unwind-tables -fno-rtti` を `pico_standard_link` をリンクするターゲット
+(実行ファイル) にしか付けないので、使っていない関数をリンカが捨てられず、例外処理の表も残っていた。
+新しい gfx2d は機能が増えたうえ、`shapes.cpp` のクリーンアップ用のランディングパッドが C++ の
+アンワインダと `malloc` まで引き込み、`.text` が +33KB、`.data` が +1.5KB になった。
+CMakeLists.txt で 3 つのライブラリにこれらのフラグを付けると、更新前と比べて
+`.text` 222,228 → 199,164、RAM に置くコード (`.data`) 56,324 → 51,876 と、どちらも更新前より小さくなり、
+空きは 16.8 → **21.2KB** になった。gfx2d は `SHAPOGFX2D_TRANSFORM=0` / `SHAPOGFX2D_COLOR_KEY=0`
+(240x240 では文字を拡大しないので変換は要らない。出力は同じ) で、アリーナは渡さない (core/SPEC.md の
+メモリの項)。
+
 - `Game` は配列の上限を実測ピークに合わせて 136,512 から 95,360 になった (core/SPEC.md の
   メモリの項)。上限を絞る前は Xiamocon 版と同じ構成で 259,888 バイト必要で、
   256KB に載らなかった。
@@ -634,5 +647,5 @@ tick の各フェーズが演算数からの見積りより一様に数倍遅い
 線・点・マーカーの 2D 化。残っている CPU 側は `O` (本体の凧と float のマーカー収集・ゲージ投影)、
 ワイヤーフレームの走査 `S`、tick の配置物理 `L` で、いずれも混雑時の底上げにしか効かない。
 RAM の残りは約 2.6KB (RAM に置いたコード 58KB が bss の前にある。その後 sim の -O2 化と
-ShapoGFX d538138 で 19.5KB まで空いた。「メモリ配分」)。
+ShapoGFX d538138 で 19.5KB、ライブラリのビルドフラグを直した ShapoGFX e0f9662 の更新で 21.2KB まで空いた。「メモリ配分」)。
 `Renderer::benchPrimitives()` (プリミティブ単価の実測) は 12 回目の計測の後に削除した。

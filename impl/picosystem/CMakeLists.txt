@@ -66,6 +66,17 @@ add_compile_definitions(
 # --- The shared game core -----------------------------------------------
 add_subdirectory(${DS_ROOT}/submodule/shapo-gfx shapogfx)
 add_subdirectory(${DS_ROOT}/core devoursphere_core)
+
+# The SDK gives its code-generation flags (sections per function, no
+# exceptions, no RTTI) only to targets that link pico_standard_link, i.e. the
+# executable, not to these libraries. Without them the linker cannot drop the
+# unused gfx2d functions, and a cleanup landing pad in ShapoGFX's shapes.cpp
+# pulls in the C++ unwinder personality and malloc.
+foreach(lib shapogfx devoursphere_sim devoursphere_render)
+    target_compile_options(${lib} PRIVATE
+        -ffunction-sections -fdata-sections
+        -fno-exceptions -fno-unwind-tables -fno-rtti)
+endforeach()
 # The simulation runs from RAM (DS_RAM_CODE below), so its code size is RAM.
 # The SDK's Release default is -O3; -O2 makes the sim 10.6 KB smaller
 # (50.9 KB against 61.6 KB of RAM code in all), which is what lets the sound
@@ -88,6 +99,13 @@ target_compile_definitions(shapogfx PUBLIC
 # Nothing in this game is textured (verified in the Xiamocon build, see
 # impl/xiamocon/devoursphere/CMakeLists.txt). PRIVATE: read by src/gfx3d only.
 target_compile_definitions(shapogfx PRIVATE SHAPOGFX3D_TEXTURE=0)
+# gfx2d: no transforms and no color key. The transform only magnifies text,
+# which a 240x240 screen never does (fontMult 1, core/SPEC.md), and nothing is
+# drawn with a color key; the blend stays for the additive markers and dust.
+# Bit-identical to the full build. PRIVATE: read by src/gfx2d only.
+target_compile_definitions(shapogfx PRIVATE
+    SHAPOGFX2D_TRANSFORM=0
+    SHAPOGFX2D_COLOR_KEY=0)
 # No FPU: the vertex stage, the primitive setup and the span builders in
 # fixed point (see ShapoGFX's SPEC.md). Read by gfx3d.cpp only.
 target_compile_definitions(shapogfx PRIVATE SHAPOGFX3D_FIXED_POINT=1)

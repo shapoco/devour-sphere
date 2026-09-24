@@ -2,6 +2,7 @@
 
 #include <M5Unified.h>
 
+#include "devoursphere/render/renderer.hpp"
 #include "devoursphere/sim/game.hpp"
 #include "shapoco/gfx2d/fonts.hpp"
 
@@ -146,10 +147,12 @@ void TouchPad::drawButton(g2::Graphics2D &g, int oy, const Circle &c, bool down,
   if (down) g.fillCircle(c.cx, c.cy - oy, c.r - 2, PAD_FILL_DOWN);
   ring(g, c.cx, c.cy - oy, c.r, line);
   if (label && *label) {
-    g.setFont(&ShapoSansP_s12c09a01w02, 2);
-    const int tw = g.measureText(label);
+    g.setFont(&ShapoSansP_s12c09a01w02);
+    const int tw = devoursphere::render::textWidth(g, label, 2);
     g.setTextColor(line);
-    g.drawString(c.cx - tw / 2, c.cy - oy - g.textHeight() / 2, label);
+    devoursphere::render::drawText(g, c.cx - tw / 2,
+                         c.cy - oy - devoursphere::render::textLineHeight(g, 2) / 2,
+                         label, 2);
   }
 }
 

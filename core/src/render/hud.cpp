@@ -32,30 +32,63 @@ static const g2::Color HUD_SHADOW = g2::makeColor(0, 0, 0, 180);
 // The bounty holders' body color (PAL_ENEMY_BOUNTY), for the prompt to kill them
 static const g2::Color BOUNTY_TEXT = g2::makeColor(255, 195, 60);
 
+int textWidth(const g2::Graphics2D &g, const char *text, int scale) {
+  return (int)g.textMetrics(text).width * scale;
+}
+
+int textLineAdvance(const g2::Graphics2D &g, int scale) {
+  return (int)g.textMetrics("").lineAdvance * scale;
+}
+
+int textLineHeight(const g2::Graphics2D &g, int scale) {
+  return (int)g.textMetrics("").height * scale;
+}
+
+void drawText(g2::Graphics2D &g, int x, int y, const char *text, int scale) {
+  if (scale == 1) {
+    g.drawString(x, y, text);
+    return;
+  }
+  g.setTransform({(float)scale, 0, 0, (float)scale, (float)x, (float)y});
+  if (g.transformKind() == g2::TransformKind::IDENTITY) {
+    // Built with SHAPOGFX2D_TRANSFORM=0: at least in the right place
+    g.drawString(x, y, text);
+    return;
+  }
+  g.drawString(0, 0, text);
+  g.resetTransform();
+}
+
+void Renderer::setHudFont(g2::Graphics2D &g, const GFXfont *font,
+                          int scale) const {
+  g.setFont(font);
+  textScale_ = scale;
+}
+
 // The three fonts are 8, 12 and 21 px tall and are magnified by an integer
 // factor. On a screen below half the reference every role drops a step, so
 // that a line of text never eats the whole width.
 void Renderer::setHudFont(g2::Graphics2D &g, HudFont role) const {
   const int m = ui_.fontMult;
   switch (role) {
-    case HudFont::SMALL: g.setFont(&ShapoSansP_s08c07, m); break;
+    case HudFont::SMALL: setHudFont(g, &ShapoSansP_s08c07, m); break;
     case HudFont::MEDIUM:
       if (ui_.tiny)
-        g.setFont(&ShapoSansP_s08c07, m);
+        setHudFont(g, &ShapoSansP_s08c07, m);
       else
-        g.setFont(&ShapoSansP_s12c09a01w02, m);
+        setHudFont(g, &ShapoSansP_s12c09a01w02, m);
       break;
     case HudFont::LARGE:
       if (ui_.tiny)
-        g.setFont(&ShapoSansP_s08c07, m);
+        setHudFont(g, &ShapoSansP_s08c07, m);
       else
-        g.setFont(&ShapoSansP_s21c16a01w03, m);
+        setHudFont(g, &ShapoSansP_s21c16a01w03, m);
       break;
     case HudFont::TITLE:
       if (ui_.tiny)
-        g.setFont(&ShapoSansP_s12c09a01w02, m);
+        setHudFont(g, &ShapoSansP_s12c09a01w02, m);
       else
-        g.setFont(&ShapoSansP_s21c16a01w03, ui_.compact ? m : 2 * m);
+        setHudFont(g, &ShapoSansP_s21c16a01w03, ui_.compact ? m : 2 * m);
       break;
   }
 }
@@ -65,18 +98,18 @@ int Renderer::textFits(g2::Graphics2D &g, const char *text) const {
 }
 
 int Renderer::textFitsIn(g2::Graphics2D &g, const char *text, int width) const {
-  return g.measureText(text) <= width - 2 * ui_.margin;
+  return textW(g, text) <= width - 2 * ui_.margin;
 }
 
 void Renderer::drawCenteredText(g2::Graphics2D &g, int y, const char *text,
                                 g2::Color color) {
-  int tw = g.measureText(text);
+  int tw = textW(g, text);
   int x = (w_ - tw) / 2;
   int sh = ui_.fontMult;
   g.setTextColor(HUD_SHADOW);
-  g.drawString(x + sh, y + sh, text);
+  putText(g, x + sh, y + sh, text);
   g.setTextColor(color);
-  g.drawString(x, y, text);
+  putText(g, x, y, text);
 }
 
 const char *Renderer::drawCenteredFit(g2::Graphics2D &g, int y,
@@ -104,13 +137,13 @@ const char *Renderer::drawBottomFit(g2::Graphics2D &g, int y, const char *text,
     pick = alt;
   }
   if (!pick) return nullptr;
-  int tw = g.measureText(pick);
+  int tw = textW(g, pick);
   int x = barX0() + (barW() - tw) / 2;
   int sh = ui_.fontMult;
   g.setTextColor(HUD_SHADOW);
-  g.drawString(x + sh, y + sh, pick);
+  putText(g, x + sh, y + sh, pick);
   g.setTextColor(color);
-  g.drawString(x, y, pick);
+  putText(g, x, y, pick);
   return pick;
 }
 
@@ -256,7 +289,7 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
         drawCenteredFit(g, oy + uiY(252), "SOUND OFF", nullptr,
                         g2::makeColor(255, 120, 120));
       }
-      int lineH = g.lineAdvance() + ui(6, 2);
+      int lineH = lineAdv(g) + ui(6, 2);
       // The two hint lines, above the version line at the bottom
       drawBottomFit(g, oy + hudY1() - margin - 3 * lineH, hints_.move,
                     hints_.moveAlt, HUD_DIM);
@@ -272,18 +305,18 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
       // The names sit side by side while the columns are wide enough for the
       // longest of them; on a narrow screen they stack in the middle instead
       setHudFont(g, HudFont::MEDIUM);
-      int nameH = g.textHeight();
+      int nameH = lineBox(g);
       int widest = 0;
       for (int i = 0; i < sim::WEAPON_COUNT; i++) {
-        int tw = g.measureText(WEAPON_NAMES[i]);
+        int tw = textW(g, WEAPON_NAMES[i]);
         if (tw > widest) widest = tw;
       }
       if (widest + ui(20, 6) > colW) {  // try the small font first
         setHudFont(g, HudFont::SMALL);
-        nameH = g.textHeight();
+        nameH = lineBox(g);
         widest = 0;
         for (int i = 0; i < sim::WEAPON_COUNT; i++) {
-          int tw = g.measureText(WEAPON_NAMES[i]);
+          int tw = textW(g, WEAPON_NAMES[i]);
           if (tw > widest) widest = tw;
         }
       }
@@ -299,12 +332,12 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
         int textY = stacked ? oy + top + rowH * i + padY : oy + uiY(136);
         bool on = i == sel;
         g2::Color c = on ? g2::makeColor(255, 230, 120) : HUD_DIM;
-        int tw = g.measureText(WEAPON_NAMES[i]);
+        int tw = textW(g, WEAPON_NAMES[i]);
         if (on) {
           g.drawRect(cx - tw / 2 - padX, textY - padY, tw + 2 * padX, boxH, c);
         }
         g.setTextColor(c);
-        g.drawString(cx - tw / 2, textY, WEAPON_NAMES[i]);
+        putText(g, cx - tw / 2, textY, WEAPON_NAMES[i]);
       }
       // Descriptions: one per column (all of them or none, so that the
       // columns stay even), or only the selected one when stacked
@@ -315,19 +348,19 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
       bool descFit = true;
       for (int i = 0; i < sim::WEAPON_COUNT; i++) {
         if (stacked && i != sel) continue;
-        if (g.measureText(WEAPON_DESCS[i]) > descRoom) descFit = false;
+        if (textW(g, WEAPON_DESCS[i]) > descRoom) descFit = false;
       }
       for (int i = 0; descFit && i < sim::WEAPON_COUNT; i++) {
         if (stacked && i != sel) continue;
-        int tw = g.measureText(WEAPON_DESCS[i]);
+        int tw = textW(g, WEAPON_DESCS[i]);
         int cx = stacked ? w_ / 2 : colW * i + colW / 2;
         g.setTextColor(i == sel ? HUD_TEXT : HUD_DIM);
-        g.drawString(cx - tw / 2, descY, WEAPON_DESCS[i]);
+        putText(g, cx - tw / 2, descY, WEAPON_DESCS[i]);
       }
       // Either axis chooses, so the hint names the one that matches the
       // layout. Stacked it lands on the bottom row, next to the pad.
       if (stacked) {
-        drawBottomFit(g, oy + hudY1() - margin - g.textHeight(),
+        drawBottomFit(g, oy + hudY1() - margin - lineBox(g),
                       "UP / DOWN: choose    A: confirm", "A: confirm", HUD_DIM);
       } else {
         drawCenteredFit(g, oy + uiY(220), "LEFT / RIGHT: choose    A: confirm",
@@ -372,12 +405,12 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
       setHudFont(g, HudFont::MEDIUM);
       std::snprintf(buf, sizeof(buf), "%u", (unsigned)scoreShown());
       {
-        int tw = g.measureText(buf);
+        int tw = textW(g, buf);
         int sh = ui_.fontMult;
         g.setTextColor(HUD_SHADOW);
-        g.drawString((w_ - tw) / 2 + sh, gy + sh, buf);
+        putText(g, (w_ - tw) / 2 + sh, gy + sh, buf);
         g.setTextColor(HUD_TEXT);
-        g.drawString((w_ - tw) / 2, gy, buf);
+        putText(g, (w_ - tw) / 2, gy, buf);
       }
       if (hud.debugMode) {
         // Cheats were used: say so over the score, large and translucent,
@@ -419,9 +452,9 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
         int ry = gy + gh + ui(12, 4);
         int sh = ui_.fontMult;
         g.setTextColor(HUD_SHADOW);
-        g.drawString(gx + sh, ry + sh, buf);
+        putText(g, gx + sh, ry + sh, buf);
         g.setTextColor(rankColor);
-        g.drawString(gx, ry, buf);
+        putText(g, gx, ry, buf);
       }
 
       drawUpgradeStatus(g, oy);
@@ -440,23 +473,23 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
         } else if (hud.timeLeftTicks < sim::TIME_WARN_TICKS) {
           tc = g2::makeColor(255, 220, 80);
         }
-        int tw = g.measureText(buf);
+        int tw = textW(g, buf);
         g.setTextColor(tc);
-        g.drawString(w_ - margin - tw, ry, buf);
-        ry += g.lineAdvance() + ui(2, 1);
+        putText(g, w_ - margin - tw, ry, buf);
+        ry += lineAdv(g) + ui(2, 1);
       }
       std::snprintf(buf, sizeof(buf), "SPHERE %d", hud.sphereLevel);
-      int tw = g.measureText(buf);
+      int tw = textW(g, buf);
       if (tw > w_ / 3) {
         std::snprintf(buf, sizeof(buf), "S%d", hud.sphereLevel);
-        tw = g.measureText(buf);
+        tw = textW(g, buf);
       }
       g.setTextColor(HUD_TEXT);
-      g.drawString(w_ - margin - tw, ry, buf);
+      putText(g, w_ - margin - tw, ry, buf);
       if (!ui_.tiny) {
-        tw = g.measureText(WEAPON_NAMES[hud.playerWeapon]);
+        tw = textW(g, WEAPON_NAMES[hud.playerWeapon]);
         g.setTextColor(HUD_DIM);
-        g.drawString(w_ - margin - tw, ry + g.lineAdvance() + ui(2, 1),
+        putText(g, w_ - margin - tw, ry + lineAdv(g) + ui(2, 1),
                      WEAPON_NAMES[hud.playerWeapon]);
       }
 
@@ -490,7 +523,7 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
                         (unsigned)hud.clearBonus);
           drawCenteredFit(g, oy + uiY(190), buf, alt, HUD_TEXT);
         } else {
-          int lh = g.lineAdvance() + ui(4, 2);
+          int lh = lineAdv(g) + ui(4, 2);
           int y = oy + uiY(180);
           std::snprintf(buf, sizeof(buf), "SPHERE SCORE %u",
                         (unsigned)hud.sphereScore);
@@ -554,7 +587,7 @@ void Renderer::drawHud(g2::Graphics2D &g, int oy) {
           drawCenteredFit(g, oy + uiY(135), "SOUND OFF", nullptr,
                           g2::makeColor(255, 120, 120));
         }
-        int lineH = g.lineAdvance() + ui(6, 2);
+        int lineH = lineAdv(g) + ui(6, 2);
         drawBottomFit(g, oy + hudY1() - margin - 2 * lineH, hints_.pause,
                       hints_.pauseAlt, HUD_DIM);
       }
@@ -584,9 +617,9 @@ bool Renderer::hudBandIdle(g2::Graphics2D &g, int oy) const {
   const g2::Rect &clip = g.clipRect();
   const int y0 = clip.y - oy, y1 = clip.bottom() - oy;  // frame rows [y0, y1)
   setHudFont(g, HudFont::MEDIUM);
-  const int advM = g.lineAdvance();
+  const int advM = lineAdv(g);
   setHudFont(g, HudFont::SMALL);
-  const int advS = g.lineAdvance();
+  const int advS = lineAdv(g);
   const int gy = hudY0() + ui_.margin;
   int topEnd = gy + ui_.gaugeH + ui(12, 4) + 2 * advM;  // the rank line
   const int rightEnd = gy + 3 * (advS + ui(2, 1)) + advS;  // the right column
@@ -622,8 +655,8 @@ void Renderer::upgradeStatusExtents(int &leftEnd, int &rightStart) const {
 void Renderer::drawVersion(g2::Graphics2D &g, int oy) {
   const HudState &hud = hud_;
   setHudFont(g, HudFont::SMALL);
-  const int vw = g.measureText(sim::VERSION_STRING);
-  const int lineH = g.lineAdvance() + ui(6, 2);
+  const int vw = textW(g, sim::VERSION_STRING);
+  const int lineH = lineAdv(g) + ui(6, 2);
   const int x = barX0() + (barW() - vw) / 2;
   // On a screen size where the upgrade status leaves no room for it (the
   // layout does not depend on the levels: 240x240), the title alone
@@ -632,7 +665,7 @@ void Renderer::drawVersion(g2::Graphics2D &g, int oy) {
   const bool fits = x >= leftEnd + ui_.margin && x + vw <= rightStart - ui_.margin;
   if (hud.state != sim::GameState::TITLE && !fits) return;
   g.setTextColor(HUD_DIM);
-  g.drawString(x, oy + hudY1() - ui_.margin - lineH, sim::VERSION_STRING);
+  putText(g, x, oy + hudY1() - ui_.margin - lineH, sim::VERSION_STRING);
 }
 
 // The banner (the monospace font, 6 x 10 px a character, magnified like the
@@ -641,14 +674,14 @@ static constexpr int TEXT_ADV_Y = 10;
 
 template <typename F>
 int Renderer::packHead(const TextTable &t, bool items, g2::Graphics2D &g,
-                       F &&line) const {
-  const int width = w_ - 2 * ui_.margin, sep = g.measureText("  ");
+                       int scale, F &&line) const {
+  const int width = w_ - 2 * ui_.margin, sep = textWidth(g, "  ", scale);
   int lines = 0, x = 0;
   // The footer (the page and the keys) goes last, where there is room
   for (int i = items ? 0 : t.headCount; i <= t.headCount; i++) {
     const char *item = i < t.headCount ? t.head[i] : t.footer;
     if (!item || !item[0]) continue;
-    const int w = g.measureText(item);
+    const int w = textWidth(g, item, scale);
     if (lines == 0 || (x > 0 && x + sep + w > width)) {
       lines++;
       x = 0;
@@ -668,19 +701,19 @@ Renderer::TableLayout Renderer::layoutTable(const TextTable &t,
                                             const void *font, int scale) const {
   g2::Graphics2D g;
   const GFXfont *f = (const GFXfont *)font;
-  g.setFont(f, scale);
+  g.setFont(f);
   TableLayout l;
   l.font = font;
   l.scale = scale;
   l.lineH = f->yAdvance * scale;
-  l.gap = g.measureText(" ");
+  l.gap = textWidth(g, " ", scale);
   l.panelGap = 3 * l.gap;
   const int cols = t.columns < 4 ? t.columns : 4;
   l.tableW = 0;
   for (int c = 0; c <= cols; c++) {
-    int w = c > 0 ? g.measureText(t.titles[c - 1]) : 0;
+    int w = c > 0 ? textWidth(g, t.titles[c - 1], scale) : 0;
     for (int r = 0; r < t.rows; r++) {
-      const int cw = g.measureText(t.cells[r * (1 + t.columns) + c]);
+      const int cw = textWidth(g, t.cells[r * (1 + t.columns) + c], scale);
       if (cw > w) w = cw;
     }
     if (c == 0) {
@@ -697,8 +730,8 @@ Renderer::TableLayout Renderer::layoutTable(const TextTable &t,
   // The first page has the head (with the footer) above the titles, the
   // others only the footer
   auto none = [](int, int, const char *) {};
-  l.headLines = packHead(t, true, g, none);
-  l.footLines = packHead(t, false, g, none);
+  l.headLines = packHead(t, true, g, scale, none);
+  l.footLines = packHead(t, false, g, scale, none);
   const int lines = height / l.lineH;
   l.rowsFirst = lines - l.headLines - 1;
   l.rowsRest = lines - l.footLines - 1;
@@ -743,7 +776,7 @@ int Renderer::showTable(const TextTable *table, int page) {
 void Renderer::drawTextScreen(g2::Graphics2D &g, int oy) const {
   const TextTable &t = *table_;
   const TableLayout &l = tl_;
-  g.setFont((const GFXfont *)l.font, l.scale);
+  setHudFont(g, (const GFXfont *)l.font, l.scale);
   const g2::Color headColor = g2::makeColor(150, 255, 170);
   const g2::Color labelColor = g2::makeColor(120, 200, 140);
   const g2::Color valueColor = g2::makeColor(235, 240, 245);
@@ -751,8 +784,8 @@ void Renderer::drawTextScreen(g2::Graphics2D &g, int oy) const {
   const int x0 = ui_.margin;
   g.setTextColor(headColor);
   const bool firstPage = tablePage_ == 0;
-  packHead(t, firstPage, g, [&](int x, int line, const char *item) {
-    g.drawString(x0 + x, ui_.margin + line * l.lineH + oy, item);
+  packHead(t, firstPage, g, l.scale, [&](int x, int line, const char *item) {
+    putText(g, x0 + x, ui_.margin + line * l.lineH + oy, item);
   });
   const int top =
       ui_.margin + (firstPage ? l.headLines : l.footLines) * l.lineH;
@@ -774,7 +807,7 @@ void Renderer::drawTextScreen(g2::Graphics2D &g, int oy) const {
     g.setTextColor(headColor);
     for (int c = 0; c < cols; c++) {
       const char *s = t.titles[c];
-      g.drawString(px + colRight(c) - g.measureText(s), top + oy, s);
+      putText(g, px + colRight(c) - textW(g, s), top + oy, s);
     }
     for (int r = 0; r < rowsHere && first + r < t.rows; r++) {
       const int ry = top + (1 + r) * l.lineH;
@@ -785,11 +818,11 @@ void Renderer::drawTextScreen(g2::Graphics2D &g, int oy) const {
                    stripe);
       }
       g.setTextColor(labelColor);
-      g.drawString(px, ry + oy, row[0]);
+      putText(g, px, ry + oy, row[0]);
       g.setTextColor(valueColor);
       for (int c = 0; c < cols; c++) {
         const char *s = row[1 + c];
-        g.drawString(px + colRight(c) - g.measureText(s), ry + oy, s);
+        putText(g, px + colRight(c) - textW(g, s), ry + oy, s);
       }
     }
   }
@@ -797,13 +830,13 @@ void Renderer::drawTextScreen(g2::Graphics2D &g, int oy) const {
 
 void Renderer::drawBanner(g2::Graphics2D &g, int oy) const {
   const int m = ui_.fontMult;
-  g.setFont(&ShapoSansMono_s08c07, m);
-  const int w = g.measureText(banner_), hgt = TEXT_ADV_Y * m;
+  setHudFont(g, &ShapoSansMono_s08c07, m);
+  const int w = textW(g, banner_), hgt = TEXT_ADV_Y * m;
   const int x = (w_ - w) / 2, y = h_ - ui_.margin - hgt - hgt / 2;
   g.fillRect(x - 2 * m, y - m + oy, w + 4 * m, hgt + m,
              g2::makeColor(0, 0, 0, 190));
   g.setTextColor(g2::makeColor(150, 255, 170));
-  g.drawString(x, y + oy, banner_);
+  putText(g, x, y + oy, banner_);
 }
 
 }  // namespace devoursphere::render

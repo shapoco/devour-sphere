@@ -98,6 +98,17 @@ int upgradeIconPolygon(int kind, int cx, int cy, g2::vec2i *pts,
 void drawUpgradeIcon(g2::Graphics2D &g, int kind, int cx, int cy, g2::Color c,
                      int scale8 = 8);
 
+// Text in the current font of g, magnified by an integer. gfx2d enlarges text
+// only through its transform, which the boards with small screens build out
+// (SHAPOGFX2D_TRANSFORM=0); at scale 1 these leave the transform alone, and
+// only scale 1 may be used there. Sizes are in target pixels.
+int textWidth(const g2::Graphics2D &g, const char *text, int scale = 1);
+int textLineAdvance(const g2::Graphics2D &g, int scale = 1);  // baselines
+int textLineHeight(const g2::Graphics2D &g, int scale = 1);   // line box
+// The line box's top-left corner at (x, y)
+void drawText(g2::Graphics2D &g, int x, int y, const char *text,
+              int scale = 1);
+
 // The screen size the HUD layout is written against; every distance below is
 // that layout's pixel value scaled by UiMetrics::scale8
 constexpr int UI_REF_W = 480, UI_REF_H = 320;
@@ -454,7 +465,7 @@ class Renderer {
   // frame's width; calls line(x, y, item) for each (y counts lines),
   // returns the lines
   template <typename F>
-  int packHead(const TextTable &t, bool items, g2::Graphics2D &g,
+  int packHead(const TextTable &t, bool items, g2::Graphics2D &g, int scale,
                F &&line) const;
   TableLayout layoutTable(const TextTable &t, const void *font,
                           int scale) const;
@@ -819,7 +830,24 @@ class Renderer {
   // 128 px screen.
   bool hudBandIdle(g2::Graphics2D &g, int oy) const;
   void drawUpgradeStatus(g2::Graphics2D &g, int offsetY);
+  // Sets the font and the magnification the members below draw text with
   void setHudFont(g2::Graphics2D &g, HudFont role) const;
+  void setHudFont(g2::Graphics2D &g, const GFXfont *font, int scale) const;
+  // The text functions above at that magnification. Only the drawing
+  // (band) side may call these: textScale_ is its state.
+  mutable int textScale_ = 1;
+  int textW(const g2::Graphics2D &g, const char *text) const {
+    return textWidth(g, text, textScale_);
+  }
+  int lineAdv(const g2::Graphics2D &g) const {
+    return textLineAdvance(g, textScale_);
+  }
+  int lineBox(const g2::Graphics2D &g) const {
+    return textLineHeight(g, textScale_);
+  }
+  void putText(g2::Graphics2D &g, int x, int y, const char *text) const {
+    drawText(g, x, y, text, textScale_);
+  }
   void drawCenteredText(g2::Graphics2D &g, int y, const char *text,
                         g2::Color color);
   // Centered text that is replaced by `alt` when it does not fit, and

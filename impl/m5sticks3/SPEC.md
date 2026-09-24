@@ -252,6 +252,11 @@ KEY1 は決定なので、同時押しの 2 つめが下りる頃にはタイト
 のときだけ内蔵にし、そうでなければ PSRAM に落とす。どちらになったかはシリアルに出る。
 `DS_GAME_IN_SRAM=0` でビルドすれば常に PSRAM になるので、tick の差を測り直せる。
 
+gfx2d は `SHAPOGFX2D_TRANSFORM=0` / `SHAPOGFX2D_COLOR_KEY=0` (240x135 では文字の倍率が常に 1 で変換は
+要らず、カラーキーは使わない。出力は既定ビルドと同じ)。2D のアリーナは渡さない (core/SPEC.md のメモリの項)。
+ShapoGFX e0f9662 で gfx2d のソースが graphics2d.cpp / shapes.cpp / images.cpp に分かれたので、
+components/shapogfx/CMakeLists.txt に列挙している (`.flash.text` は +6KB)。
+
 ## 実機で確かめたこと (2026-09-21)
 
 ソフトウェアからは決まらないものを実機で決めた。
