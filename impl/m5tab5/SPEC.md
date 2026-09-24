@@ -351,6 +351,22 @@ PPA は専用の 2D-DMA を持ち、回転と拡大を通しながらブロッ�
 PSRAM の帯域は DSI の走査 (ILI9881C: DPI 80MHz、940x1324 → 64.3Hz で約 118MB/s) と
 PPA の書き込み (103MB/s を 40fps 分 = 約 74MB/s) が同居して回っていることになる。
 
+### ShapoGFX 28d841f とアリーナ 32KB の後 (2026-09-24)
+
+```
+I (1390) devoursphere: internal free: 262135
+I (1392) devoursphere: internal largest block: 172032
+I (1409) devoursphere: band buffer bytes: 57600
+I (1425) devoursphere: panel write us: 16066
+I (1475) devoursphere: internal free after setup: 137887
+```
+
+- 起動直後の内蔵ヒープは 246,231 → **262,135** (+15.9KB、アリーナの 16KB 分)。確保後は 134,783 → 137,887 と
+  +3.1KB に留まるが、これは帯が 40 → 45 行になって 12.8KB 増えたため (前回は 40 行で測った)。
+- **最大の連続ブロックが 172,032**。60 行の帯 2 枚 (153,600) が 1 ブロックに収まる大きさで、
+  かつて真っ暗になった `BAND_H` 60 が今は入る可能性がある (未確認)。
+- パネル書き込み 17.9 → 16.1ms は PPA 側の値で、ShapoGFX とは関係しない (ばらつきと見ている)。
+
 ### 残っている確認事項
 
 - **PPA が長時間の連続負荷で固まらないか。** ESP-IDF に未解決の報告がある
