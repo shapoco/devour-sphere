@@ -46,8 +46,7 @@ class Benchmark {
   static constexpr int SCENES = 3;
   static constexpr int WARMUP_SECONDS = 1;  // not measured: the camera settles
   static constexpr int SCENE_SECONDS = 10;
-  static constexpr int MAX_LINES = 64;
-  static constexpr int MAX_PAGE_ROWS = 64;
+  static constexpr int MAX_ROWS = 40;  // of the results table
 
   // The platform's name for the results, and where to send them as text
   // (a serial console; nullptr for none). Call once at start up.
@@ -77,9 +76,11 @@ class Benchmark {
   // after that nothing reaches the game until every button is released.
   uint8_t input(uint8_t buttons);
 
-  // The results of the last run (empty before one has finished)
-  int lineCount() const { return lineCount_; }
-  const char *line(int i) const { return lines_[i]; }
+  // The results of the last run as lines of monospace text (the table, one
+  // column per scene), as the log gets them; empty before a run has
+  // finished. line() formats into a buffer the next call overwrites.
+  int lineCount() const { return rowCount_ ? 2 + rowCount_ : 0; }
+  const char *line(int i);
 
  private:
   enum class Phase : uint8_t { IDLE, RUNNING, RESULTS };
@@ -108,10 +109,9 @@ class Benchmark {
   void record(const sim::Game &game, const Renderer &renderer,
               const BenchSample &s, uint32_t periodUs);
   void finish(sim::Game &game, Renderer &renderer, uint32_t seed);
-  void buildLines();
+  void buildTable();
+  void addRow(const char *label, const uint32_t *v, char kind, bool always);
   void showPage(Renderer &renderer);
-  static int pageRows(const Renderer &renderer);
-  char *newLine();
 
   const char *name_ = "?";
   void (*log_)(const char *) = nullptr;
@@ -125,12 +125,20 @@ class Benchmark {
   int width_ = 0, height_ = 0;
   char banner_[Renderer::TEXT_COLS + 1] = {};
 
-  // Results and their pages
-  char lines_[MAX_LINES][Renderer::TEXT_COLS + 1] = {};
-  int lineCount_ = 0;
-  const char *page_[MAX_PAGE_ROWS] = {};
+  // Results: head items, then a table of a label and one value per scene
+  static constexpr int HEAD_ITEMS = 6;
+  static constexpr int CELL = 8;  // characters of a value, with the '\0'
+  char head_[HEAD_ITEMS][Renderer::TEXT_COLS + 1] = {};
+  const char *headPtr_[HEAD_ITEMS] = {};
+  char values_[MAX_ROWS][SCENES][CELL] = {};
+  const char *cells_[MAX_ROWS * (1 + SCENES)] = {};
+  const char *titles_[SCENES] = {};
+  int rowCount_ = 0;
+  Renderer::TextTable table_;
   char footer_[Renderer::TEXT_COLS + 1] = {};
+  char lineBuf_[HEAD_ITEMS * (Renderer::TEXT_COLS + 2)] = {};
   int pageIndex_ = 0;
+  int pages_ = 1;
   // Input on the results (set by input(), applied by beforeFrame(), which
   // is where the renderer belongs to the caller)
   uint8_t prevButtons_ = 0xFF;

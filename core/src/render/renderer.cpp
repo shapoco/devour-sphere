@@ -1859,7 +1859,7 @@ void Renderer::renderBand(const g2::Surface &dst, int y, int h, int dstY) {
   g2::Graphics2D g(dst);
   g.setClipRect(0, dstY, w_, h);
   g.clear(g2::makeColor(0, 0, 4));
-  if (textCount_ > 0) {
+  if (table_) {
     drawTextScreen(g, dstY - y);
     return;
   }

@@ -635,27 +635,163 @@ void Renderer::drawVersion(g2::Graphics2D &g, int oy) {
   g.drawString(x, oy + hudY1() - ui_.margin - lineH, sim::VERSION_STRING);
 }
 
-// The text screen and the banner: the monospace font (6 x 10 px a
-// character), magnified like the HUD
-static constexpr int TEXT_ADV_X = 6, TEXT_ADV_Y = 10;
+// The banner (the monospace font, 6 x 10 px a character, magnified like the
+// HUD) and the text table of the benchmark's results
+static constexpr int TEXT_ADV_Y = 10;
 
-int Renderer::textRows() const {
-  const int rows = (h_ - 2 * ui_.margin) / (TEXT_ADV_Y * ui_.fontMult);
-  return rows < 1 ? 1 : rows;
+template <typename F>
+int Renderer::packHead(const TextTable &t, bool items, g2::Graphics2D &g,
+                       F &&line) const {
+  const int width = w_ - 2 * ui_.margin, sep = g.measureText("  ");
+  int lines = 0, x = 0;
+  // The footer (the page and the keys) goes last, where there is room
+  for (int i = items ? 0 : t.headCount; i <= t.headCount; i++) {
+    const char *item = i < t.headCount ? t.head[i] : t.footer;
+    if (!item || !item[0]) continue;
+    const int w = g.measureText(item);
+    if (lines == 0 || (x > 0 && x + sep + w > width)) {
+      lines++;
+      x = 0;
+    } else if (x > 0) {
+      x += sep;
+    }
+    line(x, lines - 1, item);
+    x += w;
+  }
+  return lines;
+}
+
+// A table laid out in one font: the columns as wide as their widest cell,
+// then as many copies side by side as the frame is wide, and the rows that
+// fit under the head lines and above the footer
+Renderer::TableLayout Renderer::layoutTable(const TextTable &t,
+                                            const void *font, int scale) const {
+  g2::Graphics2D g;
+  const GFXfont *f = (const GFXfont *)font;
+  g.setFont(f, scale);
+  TableLayout l;
+  l.font = font;
+  l.scale = scale;
+  l.lineH = f->yAdvance * scale;
+  l.gap = g.measureText(" ");
+  l.panelGap = 3 * l.gap;
+  const int cols = t.columns < 4 ? t.columns : 4;
+  l.tableW = 0;
+  for (int c = 0; c <= cols; c++) {
+    int w = c > 0 ? g.measureText(t.titles[c - 1]) : 0;
+    for (int r = 0; r < t.rows; r++) {
+      const int cw = g.measureText(t.cells[r * (1 + t.columns) + c]);
+      if (cw > w) w = cw;
+    }
+    if (c == 0) {
+      l.labelW = w;
+    } else {
+      l.colW[c - 1] = w;
+    }
+    l.tableW += w + (c > 0 ? l.gap : 0);
+  }
+  const int width = w_ - 2 * ui_.margin;
+  const int height = h_ - 2 * ui_.margin;
+  l.panels = (width + l.panelGap) / (l.tableW + l.panelGap);
+  if (l.panels < 1) l.panels = 1;
+  // The first page has the head (with the footer) above the titles, the
+  // others only the footer
+  auto none = [](int, int, const char *) {};
+  l.headLines = packHead(t, true, g, none);
+  l.footLines = packHead(t, false, g, none);
+  const int lines = height / l.lineH;
+  l.rowsFirst = lines - l.headLines - 1;
+  l.rowsRest = lines - l.footLines - 1;
+  if (l.rowsFirst < 1) l.rowsFirst = 1;
+  if (l.rowsRest < 1) l.rowsRest = 1;
+  // No more panels than the rows fill
+  while (l.panels > 1 && (l.panels - 1) * l.rowsFirst >= t.rows) {
+    l.panels--;
+  }
+  const int first = l.panels * l.rowsFirst, rest = l.panels * l.rowsRest;
+  l.pages = t.rows <= first ? 1 : 1 + (t.rows - first + rest - 1) / rest;
+  // One page: the panels as even as they can be, not a full one and a stub
+  if (l.pages == 1) l.rowsFirst = (t.rows + l.panels - 1) / l.panels;
+  l.fits = l.tableW <= width;
+  return l;
+}
+
+int Renderer::showTable(const TextTable *table, int page) {
+  table_ = table;
+  tablePage_ = page;
+  if (!table) return 0;
+  static const GFXfont *const FONTS[] = {
+      &ShapoSansMono_s08c07, &ShapoSansP_s07c05a01, &ShapoSansP_s05};
+  // Fewest pages among the layouts that fit the width, the biggest font
+  // (the first tried) among those; if none fits, the narrowest
+  bool first = true;
+  for (int scale = ui_.fontMult; scale >= 1; scale--) {
+    for (const GFXfont *f : FONTS) {
+      TableLayout l = layoutTable(*table, f, scale);
+      const bool better =
+          first || (l.fits && !tl_.fits) ||
+          (l.fits && tl_.fits && l.pages < tl_.pages) ||
+          (!l.fits && !tl_.fits && l.tableW < tl_.tableW);
+      if (better) tl_ = l;
+      first = false;
+    }
+  }
+  if (tablePage_ >= tl_.pages) tablePage_ = tl_.pages - 1;
+  return tl_.pages;
 }
 
 void Renderer::drawTextScreen(g2::Graphics2D &g, int oy) const {
-  const int m = ui_.fontMult;
-  g.setFont(&ShapoSansMono_s08c07, m);
-  g.setTextColor(g2::makeColor(150, 255, 170));
-  // Centered as a block, so a big screen does not leave it in a corner
-  int x = (w_ - TEXT_COLS * TEXT_ADV_X * m) / 2;
-  if (x < ui_.margin) x = ui_.margin;
-  const int n = textCount_ < textRows() ? textCount_ : textRows();
-  int y = (h_ - n * TEXT_ADV_Y * m) / 2;
-  if (y < ui_.margin) y = ui_.margin;
-  for (int i = 0; i < n; i++) {
-    if (text_[i]) g.drawString(x, y + i * TEXT_ADV_Y * m + oy, text_[i]);
+  const TextTable &t = *table_;
+  const TableLayout &l = tl_;
+  g.setFont((const GFXfont *)l.font, l.scale);
+  const g2::Color headColor = g2::makeColor(150, 255, 170);
+  const g2::Color labelColor = g2::makeColor(120, 200, 140);
+  const g2::Color valueColor = g2::makeColor(235, 240, 245);
+  const g2::Color stripe = g2::makeColor(18, 26, 30);
+  const int x0 = ui_.margin;
+  g.setTextColor(headColor);
+  const bool firstPage = tablePage_ == 0;
+  packHead(t, firstPage, g, [&](int x, int line, const char *item) {
+    g.drawString(x0 + x, ui_.margin + line * l.lineH + oy, item);
+  });
+  const int top =
+      ui_.margin + (firstPage ? l.headLines : l.footLines) * l.lineH;
+  const int rowsHere = firstPage ? l.rowsFirst : l.rowsRest;
+  const int pageStart =
+      firstPage ? 0
+                : l.panels * (l.rowsFirst + (tablePage_ - 1) * l.rowsRest);
+  const int cols = t.columns < 4 ? t.columns : 4;
+  // The value columns are right aligned, each after the label and a gap
+  auto colRight = [&](int c) {
+    int x = l.labelW;
+    for (int k = 0; k <= c; k++) x += l.gap + l.colW[k];
+    return x;
+  };
+  for (int p = 0; p < l.panels; p++) {
+    const int px = x0 + p * (l.tableW + l.panelGap);
+    const int first = pageStart + p * rowsHere;
+    if (first >= t.rows) break;
+    g.setTextColor(headColor);
+    for (int c = 0; c < cols; c++) {
+      const char *s = t.titles[c];
+      g.drawString(px + colRight(c) - g.measureText(s), top + oy, s);
+    }
+    for (int r = 0; r < rowsHere && first + r < t.rows; r++) {
+      const int ry = top + (1 + r) * l.lineH;
+      const char *const *row = t.cells + (first + r) * (1 + t.columns);
+      // Every other row shaded, for the eye to follow a row across
+      if (r % 2 == 0) {
+        g.fillRect(px - l.gap / 2, ry - 1 + oy, l.tableW + l.gap, l.lineH,
+                   stripe);
+      }
+      g.setTextColor(labelColor);
+      g.drawString(px, ry + oy, row[0]);
+      g.setTextColor(valueColor);
+      for (int c = 0; c < cols; c++) {
+        const char *s = row[1 + c];
+        g.drawString(px + colRight(c) - g.measureText(s), ry + oy, s);
+      }
+    }
   }
 }
 

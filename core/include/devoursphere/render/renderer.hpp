@@ -372,17 +372,31 @@ class Renderer {
   // same frames. The benchmark calls it at the start of every scene.
   void restart();
 
-  // A text screen in place of the frame (the benchmark's results): lines of
-  // at most TEXT_COLS characters in the monospace font, drawn from the top
-  // left; count 0 goes back to the game. The lines are not copied.
+  // A table in place of the frame (the benchmark's results): head items
+  // across the top of the first page (as many to a line as fit, two spaces
+  // apart, the footer last; the other pages have the footer alone), then
+  // rows of a label and `columns` values under column titles. The renderer picks the font
+  // (the monospace one, then the two small proportional ones, each at the
+  // HUD's magnification and below) and how many copies of the table fit
+  // side by side, for as few pages as possible, and the biggest font among
+  // the layouts that need that few. Nothing is copied.
+  struct TextTable {
+    const char *const *head = nullptr;  // items above the table
+    int headCount = 0;
+    const char *const *titles = nullptr;  // one per value column
+    int columns = 0;                      // value columns (at most 4)
+    const char *const *cells = nullptr;   // rows x (1 + columns), label first
+    int rows = 0;
+    // Read when drawn, so it may change after showTable(), but no wider
+    // than it was then (the layout made room for that width)
+    const char *footer = nullptr;
+  };
+  // Show page `page` of the table (nullptr goes back to the game). Returns
+  // how many pages the table takes on this frame.
+  int showTable(const TextTable *table, int page);
+  bool showingText() const { return table_ != nullptr; }
+  // Width of a line of the banner, in characters of the monospace font
   static constexpr int TEXT_COLS = 21;
-  void showText(const char *const *lines, int count) {
-    text_ = lines;
-    textCount_ = count;
-  }
-  bool showingText() const { return textCount_ > 0; }
-  // How many lines of the text screen fit on this frame
-  int textRows() const;
   // One line over the game (the benchmark's progress), or nullptr
   void setBanner(const char *text) { banner_ = text; }
   const PhaseTimer &frameProfile() const { return frameProfile_; }
@@ -422,8 +436,28 @@ class Renderer {
   float lodScale_ = 1.0f;  // h_ / LOD_REF_H, never above 1
   g3::Graphics3D g3d_;
   const sim::Game *game_ = nullptr;
-  const char *const *text_ = nullptr;
-  int textCount_ = 0;
+  const TextTable *table_ = nullptr;
+  int tablePage_ = 0;
+  // The layout showTable() chose
+  struct TableLayout {
+    const void *font = nullptr;  // a GFXfont
+    int scale = 1, lineH = 0, gap = 0, panelGap = 0;
+    int labelW = 0, colW[4] = {}, tableW = 0;
+    int panels = 1, pages = 1;
+    // Rows of a panel on the first page (under the head) and on the others
+    // (under the footer alone)
+    int rowsFirst = 1, rowsRest = 1;
+    bool fits = true;  // no wider than the frame
+    int headLines = 0, footLines = 0;
+  } tl_;
+  // Lay the head items (only the footer when !items) out in lines of the
+  // frame's width; calls line(x, y, item) for each (y counts lines),
+  // returns the lines
+  template <typename F>
+  int packHead(const TextTable &t, bool items, g2::Graphics2D &g,
+               F &&line) const;
+  TableLayout layoutTable(const TextTable &t, const void *font,
+                          int scale) const;
   const char *banner_ = nullptr;
   void drawTextScreen(g2::Graphics2D &g, int oy) const;
   void drawBanner(g2::Graphics2D &g, int oy) const;
