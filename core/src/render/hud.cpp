@@ -28,20 +28,25 @@ static const char *WEAPON_DESCS[sim::WEAPON_COUNT] = {
 
 static const g2::Color HUD_TEXT = g2::makeColor(200, 230, 255);
 static const g2::Color HUD_DIM = g2::makeColor(110, 140, 180);
-static const g2::Color HUD_SHADOW = g2::makeColor(0, 0, 0, 180);
+// The drop shadow under HUD text. Opaque where blending is suppressed: a
+// translucent glyph reads the frame back pixel by pixel, which on a slow
+// board costs more than the softer edge is worth.
+static const g2::Color HUD_SHADOW =
+    DEVOURSPHERE_SUPPRESS_ALPHA ? g2::makeColor(0, 0, 0)
+                                : g2::makeColor(0, 0, 0, 180);
 // The bounty holders' body color (PAL_ENEMY_BOUNTY), for the prompt to kill them
 static const g2::Color BOUNTY_TEXT = g2::makeColor(255, 195, 60);
 
 int textWidth(const g2::Graphics2D &g, const char *text, int scale) {
-  return (int)g.textMetrics(text).width * scale;
+  return g.textMetrics(text).width * scale;
 }
 
 int textLineAdvance(const g2::Graphics2D &g, int scale) {
-  return (int)g.textMetrics("").lineAdvance * scale;
+  return g.textMetrics("").lineAdvance * scale;
 }
 
 int textLineHeight(const g2::Graphics2D &g, int scale) {
-  return (int)g.textMetrics("").height * scale;
+  return g.textMetrics("").height * scale;
 }
 
 void drawText(g2::Graphics2D &g, int x, int y, const char *text, int scale) {

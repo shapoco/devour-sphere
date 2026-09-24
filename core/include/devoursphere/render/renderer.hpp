@@ -43,8 +43,9 @@ struct Gauge2D {
 // Build-time switch: with DEVOURSPHERE_SUPPRESS_ALPHA=1 nothing is blended
 // on the frame outside the 3D pipeline: the off-screen enemy auras become
 // solid triangles, the health warning shrinks, and the horizon markers and
-// the dash dust are drawn opaque instead of additively (the PicoSystem:
-// every blended pixel reads the frame back, a millisecond a fan there)
+// the dash dust are drawn opaque instead of additively, and the HUD text's
+// drop shadow is solid black (the PicoSystem: every blended pixel reads the
+// frame back, a millisecond a fan there)
 #ifndef DEVOURSPHERE_SUPPRESS_ALPHA
 #define DEVOURSPHERE_SUPPRESS_ALPHA 0
 #endif

@@ -159,7 +159,7 @@ void Profiler::drawOverlay(const g2::Surface &band, int bandY) {
   // comes out seamless.
   const int oy = -bandY;
   if (mode_ == Mode::FPS) {
-    const int w = (int)g.textMetrics("FPS 00.0").width + 2 * PAD;
+    const int w = g.textMetrics("FPS 00.0").width + 2 * PAD;
     g.fillRect(PANEL_X, PANEL_Y + oy, w, LINE_ADV + 2 * PAD,
                g2::makeColor(0, 0, 0, 190));
     g.setTextColor(g2::makeColor(150, 255, 170));
@@ -168,7 +168,7 @@ void Profiler::drawOverlay(const g2::Surface &band, int bandY) {
   }
   int extras = 0;
   while (extras < EXTRA_LINES && extra[extras][0]) extras++;
-  const int w = (int)g.textMetrics("00000000000000000000").width + 2 * PAD;
+  const int w = g.textMetrics("00000000000000000000").width + 2 * PAD;
   const int h = (LINES + extras) * LINE_ADV + 2 * PAD;
   g.fillRect(PANEL_X, PANEL_Y + oy, w, h, g2::makeColor(0, 0, 0, 190));
   g.setTextColor(g2::makeColor(150, 255, 170));

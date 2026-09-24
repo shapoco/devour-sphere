@@ -64,8 +64,8 @@ void Converter::buildTable() {
   g2::Graphics2D g(s);
   g.setFont(&ShapoSansMono_s08c07);
   g.setTextColor(g2::Colors::WHITE);
-  const int adv = (int)g.charMetrics('M').width;
-  const int lh = (int)g.charMetrics('M').height;
+  const int adv = g.charMetrics('M').width;
+  const int lh = g.charMetrics('M').height;
   uint32_t seed[95];
   for (int c = 32; c < 127; c++) {
     g.clear(g2::Colors::BLACK);

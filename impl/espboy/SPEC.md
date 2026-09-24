@@ -328,6 +328,8 @@ f2D       14.8    13.9    16.8
 - FPS は 17.8 / 15.5 / 17.2 → 17.2 / 15.3 / 16.6。`f2D` が +2.1〜2.5ms。FPU が無いので `textMetrics()` の
   float がソフト float になる点は RP2040 と同じ (「縮小構成」の IRAM の `__moddi3` は帯にかかったアイコンだけ)。
   `STK0` 2,576 → 2,648 (8KB のうち)。
+- core 3.6 (ShapoGFX 4f15411) で `textMetrics()` が整数を返すようになり、このボードは `DEVOURSPHERE_SUPPRESS_ALPHA`
+  なので HUD の文字の影も不透明になった (core/SPEC.md「半透明合成の抑制」)。実機では未計測。
 
 ## 実機の記録
 
