@@ -231,6 +231,12 @@ impl/picosystem/SPEC.md の内訳。違いは `DMA` 行が転送の CPU 時間�
 (`A M L X` = tick の AI / 移動 / 配置 / 残り全部、`S O H X` = beginFrame、`D U V T` = 帯の 3D / 2D / パネル自体 / 転送)
 なこと、`STK1` が常に 0 なこと。21 桁 × 6px = 126px、11 行 × 9px + 26px = 125px で画面に収まる。
 
+## ベンチマーク
+
+タイトル画面で **ESC (B) を 3 秒** 押し続けると始まる (core/SPEC.md「ベンチマーク」)。30Hz で 990 フレーム、
+1 分前後。結果は画面 (1 ページ 11 行、ACT で次、ESC で閉じる) と、シリアル (`printf`、`./monitor.sh`) に
+同じ行が出る。DMA が無いので `DMA` は帯の押し出し (デバッグ表示の `T`)。
+
 ## 実機の記録
 
 1 回目 (2026-09-22、WildCardBoy の ESPboy カードに `devoursphere.factory.bin` を書いた。ユーザーの報告):

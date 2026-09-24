@@ -42,6 +42,7 @@ and fonts.
 | Pause / resume | Esc / P | X | X |
 | Toggle mute | ↓ on the title or pause screen | same | same |
 | Toggle the timing overlay | (none) | ↑ on the title or pause screen, or FUNC | ↑ on the title or pause screen |
+| Benchmark (results: A next page, B close) | hold a B key for 3 s on the title | hold B for 3 s on the title | same |
 
 The browser version also takes a gamepad and touch input (an on-screen pad).
 The M5Tab5 version is played with that same landscape pad layout: a direction

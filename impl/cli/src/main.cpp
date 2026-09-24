@@ -60,6 +60,11 @@ uint16_t g_fb[FB_W * FB_H];
 uint8_t g_arena[256 * 1024];
 sim::Game g_game;
 render::Renderer g_renderer;
+// B held for three seconds on the title (core/SPEC.md "ベンチマーク"). The
+// results are a text screen like everywhere else, and are printed again as
+// plain text when the program exits (the character art is hard to read).
+render::Benchmark g_bench;
+render::BenchSample g_benchSample;  // the frame being measured
 ds::term::Term g_term;
 
 int64_t nowUs() {
@@ -67,6 +72,8 @@ int64_t nowUs() {
   clock_gettime(CLOCK_MONOTONIC, &ts);
   return (int64_t)ts.tv_sec * 1000000 + ts.tv_nsec / 1000;
 }
+
+uint32_t benchClockUs() { return (uint32_t)nowUs(); }
 
 void onSignal(int sig) {
   g_term.close();
@@ -246,11 +253,20 @@ void debugKey(int key) {
   }
 }
 
+uint32_t benchClockUs();
+
 void renderFrame(float dt) {
   g2::Surface s = g2::makeSurface(g2::PixelFormat::RGB565_SWAPPED, FB_W, FB_H, g_fb);
-  g_renderer.beginFrame(g_game, dt);
+  g_bench.beforeFrame(g_game, g_renderer, g_benchSample);
+  devoursphere::profileClockUs = g_bench.active() ? benchClockUs : nullptr;
+  g_benchSample = {};
+  const uint32_t t0 = benchClockUs();
+  g_renderer.beginFrame(g_game, g_bench.running() ? g_bench.dt(1) : dt);
+  const uint32_t t1 = benchClockUs();
   g_renderer.renderBand(s, 0, FB_H, 0);
   g_renderer.endFrame();
+  g_benchSample.beginUs = t1 - t0;
+  g_benchSample.rasterUs = benchClockUs() - t1;
 }
 
 // --once: the frame as lines of text on stdout, no terminal handling
@@ -279,6 +295,7 @@ int main(int argc, char **argv) {
       a.seed ? a.seed : (uint32_t)std::time(nullptr) ^ (uint32_t)getpid();
   g_game.reset(seed);
   g_renderer.init(FB_W, FB_H, g_arena, sizeof(g_arena));
+  g_bench.setPlatform("CLI", nullptr);
   render::ControlHints hints;
   hints.pause = "ESC / P: RESUME   Q: QUIT   DOWN: SOUND ON / OFF";
   g_renderer.setControlHints(hints);
@@ -326,10 +343,30 @@ int main(int argc, char **argv) {
         debugKey((int)(k - '0'));
     }
 
+    // The benchmark: one tick a frame, every frame drawn, no sleeping
+    if (g_bench.running()) {
+      const int64_t t0 = nowUs();
+      g_game.tick(g_bench.input(buttonsNow(now / 1000)));
+      g_renderer.pollEffects(g_game);
+      g_benchSample.tickUs = (uint32_t)(nowUs() - t0);
+      int cols, rows;
+      g_term.size(&cols, &rows);
+      conv.setScreen(cols, rows, FB_W, FB_H);
+      renderFrame(0);
+      const int64_t t1 = nowUs();
+      conv.convert(g_fb, FB_W, FB_H, FB_W * 2);
+      g_term.write(conv.emit());
+      // Turning the frame into text and writing it: the "display" here
+      g_benchSample.dmaUs = (uint32_t)(nowUs() - t1);
+      accum = 0;
+      lastFrame = nowUs();
+      continue;
+    }
+
     int n = 0;
     while (accum >= TICK_US && n < MAX_CATCHUP) {
       const bool wasMuted = g_game.muted();
-      g_game.tick(buttonsNow(now / 1000));
+      g_game.tick(g_bench.input(buttonsNow(now / 1000)));
       g_renderer.pollEffects(g_game);
       const uint32_t snd = g_game.sounds();
       const bool unmuted = wasMuted && !g_game.muted();
@@ -405,5 +442,8 @@ int main(int argc, char **argv) {
   saveHighScore();
   g_term.close();
   if (a.stats) std::fprintf(stderr, "%s\n", statsLine);
+  for (int i = 0; i < g_bench.lineCount(); i++) {
+    std::printf("%s\n", g_bench.line(i));
+  }
   return 0;
 }

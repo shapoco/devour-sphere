@@ -88,6 +88,12 @@ void trace(const char *what, uint32_t value) {
   Serial.flush();
 }
 
+void traceLine(const char *line) {
+  trace("benchmark", 0);  // opens the port the first time
+  Serial.printf("%s\n", line);
+  Serial.flush();
+}
+
 namespace {
 TaskHandle_t g_core1 = nullptr;
 uint32_t usedOf(TaskHandle_t t, uint32_t total) {
@@ -187,6 +193,7 @@ uint16_t *allocBandBuffer(size_t bytes) {
 }
 
 void trace(const char *, uint32_t) {}  // no serial port on this target
+void traceLine(const char *) {}
 
 namespace {
 constexpr uint32_t PAINT = 0xC1C1C1C1u;

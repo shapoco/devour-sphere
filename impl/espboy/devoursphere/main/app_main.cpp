@@ -146,9 +146,15 @@ void updatePhaseLines(int ticks) {
   g_prof.extra[4][0] = '\0';
 }
 
+// B held for three seconds on the title (core/SPEC.md "ベンチマーク"): the
+// results on the screen and on the serial console
+render::Benchmark g_bench;
+void benchLog(const char *line) { printf("%s\n", line); }
+
 uint32_t clockUs() { return (uint32_t)ds::nowUs(); }
 void updateProfileClock() {
-  devoursphere::profileClockUs = g_prof.full() ? clockUs : nullptr;
+  devoursphere::profileClockUs =
+      g_prof.full() || g_bench.active() ? clockUs : nullptr;
 }
 
 // --- Frames ---------------------------------------------------------------
@@ -172,7 +178,7 @@ void drawFrame(int ticks) {
   g_renderer.resetFrameProfile();
   // Simulation time, not wall time: the camera smoothing, the debris and
   // the score roll-up stay in step with the ticks that actually ran
-  g_renderer.beginFrame(g_game, ticks * (1.0f / sim::TICK_RATE));
+  g_renderer.beginFrame(g_game, g_bench.dt(ticks));
   g_prof.beginUs = clockUs() - t0;
 }
 
@@ -215,7 +221,8 @@ void frame() {
   // from the held state. The right shoulder on the title or the pause
   // screen cycles the overlay.
   const uint8_t raw = ds::input::read();
-  const uint8_t buttons = mapButtons(raw);
+  // What the game gets: nothing while the benchmark runs or shows its results
+  const uint8_t buttons = g_bench.input(mapButtons(raw));
   const render::HudState &hud = g_renderer.hud();
   if ((raw & ds::input::RGT) && !(g_prevButtons & ds::input::RGT) &&
       (hud.state == sim::GameState::TITLE || hud.paused)) {
@@ -224,7 +231,7 @@ void frame() {
   g_prevButtons = raw;
 
   const uint32_t tick0 = clockUs();
-  const int ticks = ticksDue();
+  const int ticks = g_bench.ticks(ticksDue());
   for (int i = 0; i < ticks; i++) {
     g_game.tick(buttons);
     // The events of a tick are cleared by the next one, so each tick has
@@ -244,6 +251,7 @@ void frame() {
   g_game.keepHighScore();
   g_store.poll(g_game);
   updatePhaseLines(ticks);
+  g_bench.beforeFrame(g_game, g_renderer, ds::benchSample(g_prof));
   g_game.resetTickProfile();
   updateProfileClock();
   drawFrame(ticks);
@@ -278,6 +286,7 @@ extern "C" void app_main() {
   g_renderer.init(ds::SCREEN_W, ds::SCREEN_H, g_arena, sizeof(g_arena),
                   ds::SPAN_CAPACITY);
   g_renderer.setDetailTriangles(ds::DETAIL_TRIANGLES);
+  g_bench.setPlatform("ESPBOY", benchLog);
 
   ds::stackWatchInit();
   g_prof.xferUs = measureTransfer();

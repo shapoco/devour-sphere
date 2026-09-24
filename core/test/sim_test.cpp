@@ -8,6 +8,8 @@
 #include <cstring>
 #include <vector>
 
+#include "devoursphere/profile.hpp"
+#include "devoursphere/render/benchmark.hpp"
 #include "devoursphere/render/renderer.hpp"
 #include "devoursphere/sim/game.hpp"
 #include "devoursphere/sim/high_score_record.hpp"
@@ -1614,10 +1616,96 @@ static void testRenderBands() {
   }
 }
 
+// The benchmark: B held for three seconds on the title asks for it, a run
+// draws the same frames every time, and the results close back to the game
+static uint32_t g_fakeUs = 0;
+
+static void testBenchmark() {
+  namespace g2 = shapoco::gfx2d;
+  using devoursphere::render::Benchmark;
+  using devoursphere::render::BenchSample;
+  static uint8_t arena[64 * 1024];
+  static devoursphere::render::Renderer renderer;
+  static Benchmark bench;
+  static Game game;
+  constexpr int W = 128, H = 128;
+  static uint16_t fb[W * H];
+  const g2::Surface surf = {g2::PixelFormat::RGB565_SWAPPED, W, H, W * 2, fb};
+
+  // The hold: one tick short asks for nothing, releasing starts it over,
+  // and only the title counts
+  const int hold = Game::BENCH_HOLD_SECONDS * TICK_RATE;
+  game.reset(5);
+  for (int i = 0; i < hold - 1; i++) game.tick(Button::B);
+  game.tick(0);
+  for (int i = 0; i < hold - 1; i++) game.tick(Button::B);
+  CHECK(!game.takeBenchmarkRequest());
+  game.tick(Button::B);
+  CHECK(game.takeBenchmarkRequest());
+  CHECK(!game.takeBenchmarkRequest());  // taken once
+  game.debugStartSphere(1, 0);
+  for (int i = 0; i < hold + 1; i++) game.tick(Button::B);
+  CHECK(!game.takeBenchmarkRequest());
+  // While it runs the score is not the player's and nothing sounds
+  game.setBenchmark(true);
+  CHECK(!game.scoreIsPlayers());
+  for (int i = 0; i < 60; i++) {
+    game.tick(Button::A);
+    CHECK(game.sounds() == 0);
+  }
+  game.setBenchmark(false);
+
+  // Two runs from the title: the same frames, then the results
+  devoursphere::profileClockUs = [] { return g_fakeUs; };
+  renderer.init(W, H, arena, sizeof(arena), 64);
+  game.reset(77);
+  uint64_t hashes[2] = {};
+  for (int pass = 0; pass < 2; pass++) {
+    uint64_t h = 14695981039346656037ull;
+    bool started = false, closed = false;
+    for (int frame = 0; frame < 100000 && !closed; frame++) {
+      // Released for a moment (the hold-off after the last results), then B
+      // until it starts; on the results A then B
+      uint8_t raw = frame < 5 ? 0 : Button::B;
+      if (renderer.showingText()) raw = frame % 2 ? Button::B : 0;
+      const int ticks = bench.ticks(1);
+      const uint8_t buttons = bench.input(raw);
+      if (bench.running()) CHECK(buttons == 0);
+      for (int i = 0; i < ticks; i++) {
+        game.tick(buttons);
+        renderer.pollEffects(game);
+        if (bench.running()) CHECK(!(game.events() & Event::PLAYER_DIED));
+      }
+      bench.beforeFrame(game, renderer, BenchSample{});
+      started |= bench.running();
+      renderer.beginFrame(game, bench.dt(ticks));
+      renderer.renderBand(surf, 0, H, 0);
+      renderer.endFrame();
+      g_fakeUs += 20000;
+      if (bench.running()) {
+        for (uint16_t px : fb) h = (h ^ px) * 1099511628211ull;
+      }
+      closed = started && !bench.active();
+    }
+    CHECK(started && closed);
+    CHECK(bench.lineCount() > 10);
+    CHECK(std::strncmp(bench.line(0), "BENCHMARK", 9) == 0);
+    CHECK(game.state() == GameState::TITLE && !game.benchmark());
+    hashes[pass] = h;
+  }
+  CHECK(hashes[0] == hashes[1]);
+  // After the results nothing reaches the game until every button is up
+  CHECK(bench.input(Button::A) == 0);
+  CHECK(bench.input(0) == 0);
+  CHECK(bench.input(Button::A) == Button::A);
+  devoursphere::profileClockUs = nullptr;
+}
+
 int main() {
   testFixed();
   testRenderSizes();
   testRenderBands();
+  testBenchmark();
   testCombatAndLayout();
   testDifficultyAndEvade();
   testFragmentAttraction();

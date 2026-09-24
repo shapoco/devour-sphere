@@ -111,6 +111,7 @@ class Game {
   void debugStartSphere(int level, int weapon);
   // Debug: let the AI drive the player while playing (for balancing runs)
   void debugAutoPlayer(bool on) { autoPlayer_ = on; }
+  bool autoPlayer() const { return autoPlayer_; }
   // Debug mode (the WASM front end enters it from the URL): cheats for
   // reaching any part of the game quickly. Any of them, or setDebugMode(),
   // makes the HUD show DEBUG MODE over the score for the rest of the run
@@ -120,13 +121,29 @@ class Game {
   void debugTakeUpgrade(UpgradeKind k);
   void debugScaleSize(bool bigger);  // player size x2 / x0.5
   void debugHeal(int pct);           // player health +- pct of the maximum
+  // Debug: leave the sphere as if it had just been cleared (LAUNCH, then
+  // the arrival on the next one), whatever is left on it
+  void debugLaunch();
+
+  // Benchmark (render::Benchmark). B held for BENCH_HOLD_TICKS on the title
+  // asks for one; the platform takes the request between batches. While
+  // the benchmark runs the score is never the player's and nothing sounds,
+  // without touching the mute setting.
+  static constexpr int BENCH_HOLD_SECONDS = 3;
+  bool takeBenchmarkRequest() {
+    bool r = benchRequested_;
+    benchRequested_ = false;
+    return r;
+  }
+  void setBenchmark(bool on) { benchmark_ = on; }
+  bool benchmark() const { return benchmark_; }
 
   // --- Read-only access for the renderer ------------------------------------
   GameState state() const { return state_; }
   uint32_t tickCount() const { return tickCount_; }
   uint32_t events() const { return events_; }
   // SoundKind bits of the last tick; nothing while muted
-  uint32_t sounds() const { return muted_ ? 0 : sounds_; }
+  uint32_t sounds() const { return muted_ || benchmark_ ? 0 : sounds_; }
   // Paused (Button::PAUSE during PLAYING / LAUNCH / ARRIVE): the ticks do
   // nothing but read the pause menu (PAUSE resumes, DOWN toggles the mute),
   // so the game goes on exactly as if it had not been paused
@@ -193,7 +210,8 @@ class Game {
   // weapon select screen the attract demo (the AI-driven player) scores
   // too, and that must never become the high score
   bool scoreIsPlayers() const {
-    return state_ != GameState::TITLE && state_ != GameState::WEAPON_SELECT;
+    return !benchmark_ && state_ != GameState::TITLE &&
+           state_ != GameState::WEAPON_SELECT;
   }
   // Take the score as the high score when it is the player's and beats it;
   // true when it did (the platform then stores it)
@@ -346,6 +364,11 @@ class Game {
   // first sphere of a game has nothing to leave and does not
   bool switchPending_ = false;
   bool debugMode_ = false;
+  // Benchmark: ticks B has been held on the title, the request it raised,
+  // and whether a run is in progress (none of them part of the state hash)
+  int benchHold_ = 0;
+  bool benchRequested_ = false;
+  bool benchmark_ = false;
   void beginArrival();
   void switchSphere();
   // The descent of the arrival: the target radius at a tick of ARRIVE and

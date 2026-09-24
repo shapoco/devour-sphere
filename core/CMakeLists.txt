@@ -15,6 +15,7 @@ set(DEVOURSPHERE_RENDER_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/render/effects.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/render/upgrades.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/render/hud.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/render/benchmark.cpp
 )
 # core/test builds these again at another tick rate: sim::TICK_RATE is a
 # constexpr in a header, so two rates cannot share object files

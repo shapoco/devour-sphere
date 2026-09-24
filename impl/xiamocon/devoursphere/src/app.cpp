@@ -39,6 +39,13 @@ ds::HighScoreStore g_store;  // the high score in flash
 uint8_t g_arena[ds::ARENA_SIZE];
 ds::BandWriter g_bands;
 ds::Profiler g_prof;
+// B held for three seconds on the title (core/SPEC.md "ベンチマーク"): the
+// results go on the screen, and on the ESP32S3 to the serial console too
+render::Benchmark g_bench;
+
+// The phase timers' clock, installed while the benchmark is on (the overlay
+// here does not break the phases down, so it never needs it)
+uint32_t clockUs() { return (uint32_t)xmc::getTimeUs(); }
 
 // Frame pacing: the simulation steps at a fixed rate, the frame rate is
 // whatever the device manages.
@@ -177,7 +184,7 @@ void drawFrame(int ticks) {
   // Simulation time, not wall time: the renderer advances the camera
   // smoothing, the debris and the score roll-up by dt, and those have to stay
   // in step with the ticks that actually ran.
-  g_renderer.beginFrame(*g_game, ticks * (1.0f / sim::TICK_RATE));
+  g_renderer.beginFrame(*g_game, g_bench.dt(ticks));
   g_prof.beginUs = (uint32_t)xmc::getTimeUs() - begin0;
 }
 
@@ -225,6 +232,11 @@ void xmcAppSetup(void) {
   audio::init(audio::Config{XMC_PIN_AUDIO_OUT, audio::Pacing::DMA_TIMER, true});
   g_renderer.init(ds::SCREEN_W, ds::SCREEN_H, g_arena, sizeof(g_arena),
                   ds::SPAN_CAPACITY);
+#if defined(ESP32)
+  g_bench.setPlatform("XIAMOCON ESP32S3", ds::traceLine);
+#else
+  g_bench.setPlatform("XIAMOCON RP2350", nullptr);
+#endif
   if (!g_bands.init()) {
     ds::trace("no memory for the band buffers, free", ds::freeInternalRam());
     g_game = nullptr;  // xmcAppLoop() bails out
@@ -265,7 +277,8 @@ void xmcAppLoop(void) {
   // Read once per frame. system::service() has already run input::service()
   // this time round libLoop(); calling it again would consume the press and
   // release edges the simulation derives from the held state.
-  const uint8_t buttons = mapButtons(xmc::input::getState());
+  // What the game gets: nothing while the benchmark runs or shows its results
+  const uint8_t buttons = g_bench.input(mapButtons(xmc::input::getState()));
   // The timing overlay: FUNC (only the SDK's while the board boots, free
   // here), or UP on the title or the pause screen. The HUD's snapshot says
   // which screen: the Game itself may be core1's right now.
@@ -303,13 +316,15 @@ void xmcAppLoop(void) {
   // touch the Game here.
   if (ran > 0) {
     keepHighScore();
+    g_bench.beforeFrame(*g_game, g_renderer, ds::benchSample(g_prof));
+    devoursphere::profileClockUs = g_bench.active() ? clockUs : nullptr;
     drawFrame(ran);
   }
 
   // Ask for the next batch before rasterizing, so core1 ticks while we do.
   // This is what costs a frame of latency: these buttons reach the screen one
   // frame later.
-  const int want = ticksDue();
+  const int want = g_bench.ticks(ticksDue());
   if (want > 0) {
     g_simWanted = want;
     g_simButtons = buttons;
@@ -320,7 +335,7 @@ void xmcAppLoop(void) {
 #else
   // Everything on this core. Nothing overlaps the ticks, so this is slower.
   const uint32_t tick0 = (uint32_t)xmc::getTimeUs();
-  const int ticks = ticksDue();
+  const int ticks = g_bench.ticks(ticksDue());
   for (int i = 0; i < ticks; i++) {
     g_game->tick(buttons);
     g_renderer.pollEffects(*g_game);
@@ -332,6 +347,8 @@ void xmcAppLoop(void) {
   g_prof.core1WaitUs = 0;
   if (ticks == 0) return;  // ahead of the simulation: nothing new to show
   keepHighScore();
+  g_bench.beforeFrame(*g_game, g_renderer, ds::benchSample(g_prof));
+  devoursphere::profileClockUs = g_bench.active() ? clockUs : nullptr;
   drawFrame(ticks);
   presentFrame();
 #endif

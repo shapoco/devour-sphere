@@ -64,6 +64,16 @@ void Game::debugStartSphere(int level, int weapon) {
   startSphere(false);
 }
 
+void Game::debugLaunch() {
+  if (state_ != GameState::PLAYING) return;
+  events_ |= Event::SPHERE_CLEARED;
+  lastSphereScoreQ8_ = scoreQ8_ - sphereScoreStartQ8_;
+  lastClearTicks_ = sphereTicks_;
+  lastClearBonusQ8_ = 0;
+  setState(GameState::LAUNCH);
+  pushSound(SoundKind::LAUNCH);
+}
+
 void Game::setState(GameState s) {
   state_ = s;
   stateTimer_ = 0;
@@ -534,6 +544,13 @@ void Game::tick(uint8_t buttons) {
     if (left > 0 && left <= TIME_ALARM_TICKS && left % TICK_RATE == 0) {
       pushSound(SoundKind::TIME_ALARM);
     }
+  }
+
+  // B held on the title asks for the benchmark (see takeBenchmarkRequest)
+  if (state_ == GameState::TITLE && (buttons & Button::B)) {
+    if (++benchHold_ == BENCH_HOLD_SECONDS * TICK_RATE) benchRequested_ = true;
+  } else {
+    benchHold_ = 0;
   }
 
   // Menu handling

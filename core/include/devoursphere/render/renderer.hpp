@@ -365,6 +365,26 @@ class Renderer {
   // a cap the nearest entities keep their bodies and the rest are drawn as
   // outlines, and the frame time stops depending on how many are in view.
   void setDetailTriangles(int tris) { detailTris_ = tris; }
+
+  // Forget everything carried from frame to frame (camera easing, effects
+  // and their random numbers, the score roll-up, the mesh steering), as
+  // init() does, so that a run started from the same game state draws the
+  // same frames. The benchmark calls it at the start of every scene.
+  void restart();
+
+  // A text screen in place of the frame (the benchmark's results): lines of
+  // at most TEXT_COLS characters in the monospace font, drawn from the top
+  // left; count 0 goes back to the game. The lines are not copied.
+  static constexpr int TEXT_COLS = 21;
+  void showText(const char *const *lines, int count) {
+    text_ = lines;
+    textCount_ = count;
+  }
+  bool showingText() const { return textCount_ > 0; }
+  // How many lines of the text screen fit on this frame
+  int textRows() const;
+  // One line over the game (the benchmark's progress), or nullptr
+  void setBanner(const char *text) { banner_ = text; }
   const PhaseTimer &frameProfile() const { return frameProfile_; }
   void resetFrameProfile() { frameProfile_.reset(); }
   const UiMetrics &uiMetrics() const { return ui_; }
@@ -402,6 +422,11 @@ class Renderer {
   float lodScale_ = 1.0f;  // h_ / LOD_REF_H, never above 1
   g3::Graphics3D g3d_;
   const sim::Game *game_ = nullptr;
+  const char *const *text_ = nullptr;
+  int textCount_ = 0;
+  const char *banner_ = nullptr;
+  void drawTextScreen(g2::Graphics2D &g, int oy) const;
+  void drawBanner(g2::Graphics2D &g, int oy) const;
   float time_ = 0;
   uint32_t rng_ = 0x1234567u;
 

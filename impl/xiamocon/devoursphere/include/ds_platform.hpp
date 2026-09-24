@@ -38,6 +38,8 @@ uint32_t freeInternalRam();
 // Print a line to the serial console during bring up. Nothing on RP2350,
 // where no serial port is configured.
 void trace(const char *what, uint32_t value);
+// One line of text to the same console (the benchmark's results)
+void traceLine(const char *line);
 
 // What the render side does while it waits. RP2350 spins for both: nothing
 // else runs on that core.

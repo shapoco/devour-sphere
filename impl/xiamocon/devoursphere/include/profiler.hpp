@@ -16,6 +16,7 @@
 
 #include <cstdint>
 
+#include "devoursphere/render/benchmark.hpp"
 #include "devoursphere/render/renderer.hpp"
 #include "shapoco/gfx2d/gfx2d.hpp"
 
@@ -88,6 +89,11 @@ class Profiler {
   char extra[EXTRA_LINES][COLS + 1] = {};
 #endif
 };
+
+// What the benchmark (render::Benchmark) takes of the frame just measured:
+// the profiler's counters and the stack peaks of both cores. Also with
+// DS_PROFILE=0, where the counters are whatever the platform filled in.
+devoursphere::render::BenchSample benchSample(const Profiler &p);
 
 }  // namespace ds
 

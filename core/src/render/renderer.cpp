@@ -187,15 +187,24 @@ void Renderer::init(int width, int height, void *arena, size_t arenaSize,
     palette_[i].flags &= ~g3::MaterialFlags::DOUBLE_SIDED;
   }
 
+  restart();
+}
+
+void Renderer::restart() {
   camValid_ = false;
   sphereCountValid_ = false;
   originValid_ = false;
   debrisCount_ = 0;
   dustCount_ = 0;
   dustSpawnAcc_ = 0;
+  pickupCount_ = 0;
   lastEffectTick_ = 0xFFFFFFFFu;
   for (int i = 0; i < sim::MAX_ENTITIES; i++) flash_[i] = 0;
   time_ = 0;
+  rng_ = 0x1234567u;
+  scoreShown_ = 0;
+  sphereTarget_ = SPHERE_TARGET_PX_INIT;
+  frameProfile_.reset();
 }
 
 float Renderer::frand() {
@@ -1850,6 +1859,10 @@ void Renderer::renderBand(const g2::Surface &dst, int y, int h, int dstY) {
   g2::Graphics2D g(dst);
   g.setClipRect(0, dstY, w_, h);
   g.clear(g2::makeColor(0, 0, 4));
+  if (textCount_ > 0) {
+    drawTextScreen(g, dstY - y);
+    return;
+  }
   drawBackdropBand(dst, y, h, dstY);
   frameProfile_.stamp(FP_BAND_2D);
   g3d_.render(0, (int16_t)y, (int16_t)w_, (int16_t)h, dst, 0, (int16_t)dstY);
@@ -1870,6 +1883,7 @@ void Renderer::renderBand(const g2::Surface &dst, int y, int h, int dstY) {
     if (fill > 0) g.fillRect(gg.x, gg.y + oy, fill, gaugeH, c);
   }
   drawHud(g, oy);
+  if (banner_) drawBanner(g, oy);
   frameProfile_.stamp(FP_BAND_2D);
 }
 

@@ -18,6 +18,7 @@ idf_component_register(
         "${DS_ROOT}/core/src/render/effects.cpp"
         "${DS_ROOT}/core/src/render/upgrades.cpp"
         "${DS_ROOT}/core/src/render/hud.cpp"
+        "${DS_ROOT}/core/src/render/benchmark.cpp"
     INCLUDE_DIRS "${DS_ROOT}/core/include"
     REQUIRES shapogfx
 )

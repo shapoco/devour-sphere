@@ -269,6 +269,22 @@ async function startDevourSphere(opts) {
     }
 
     function frame(now) {
+      // The benchmark (B held for three seconds on the title): one tick a
+      // frame and no pacing, so as many frames as fit in about 12 ms, only
+      // the last of them blitted
+      if (ex.ds_bench_running()) {
+        const t0 = performance.now();
+        do {
+          ex.ds_tick(0);
+          ex.ds_render(0);
+          frames++;
+        } while (ex.ds_bench_running() && performance.now() - t0 < 12);
+        blit();
+        last = lastRender = performance.now();
+        acc = 0;
+        requestAnimationFrame(frame);
+        return;
+      }
       acc += Math.min(now - last, 250);  // cap after a pause (tab hidden)
       last = now;
       let ticked = false;

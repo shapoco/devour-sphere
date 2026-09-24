@@ -3,6 +3,7 @@
 
 // Umbrella header: the simulation and the ShapoGFX-based renderer.
 
+#include "devoursphere/render/benchmark.hpp"
 #include "devoursphere/render/renderer.hpp"
 #include "devoursphere/sim/game.hpp"
 

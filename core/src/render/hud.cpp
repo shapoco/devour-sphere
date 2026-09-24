@@ -635,4 +635,39 @@ void Renderer::drawVersion(g2::Graphics2D &g, int oy) {
   g.drawString(x, oy + hudY1() - ui_.margin - lineH, sim::VERSION_STRING);
 }
 
+// The text screen and the banner: the monospace font (6 x 10 px a
+// character), magnified like the HUD
+static constexpr int TEXT_ADV_X = 6, TEXT_ADV_Y = 10;
+
+int Renderer::textRows() const {
+  const int rows = (h_ - 2 * ui_.margin) / (TEXT_ADV_Y * ui_.fontMult);
+  return rows < 1 ? 1 : rows;
+}
+
+void Renderer::drawTextScreen(g2::Graphics2D &g, int oy) const {
+  const int m = ui_.fontMult;
+  g.setFont(&ShapoSansMono_s08c07, m);
+  g.setTextColor(g2::makeColor(150, 255, 170));
+  // Centered as a block, so a big screen does not leave it in a corner
+  int x = (w_ - TEXT_COLS * TEXT_ADV_X * m) / 2;
+  if (x < ui_.margin) x = ui_.margin;
+  const int n = textCount_ < textRows() ? textCount_ : textRows();
+  int y = (h_ - n * TEXT_ADV_Y * m) / 2;
+  if (y < ui_.margin) y = ui_.margin;
+  for (int i = 0; i < n; i++) {
+    if (text_[i]) g.drawString(x, y + i * TEXT_ADV_Y * m + oy, text_[i]);
+  }
+}
+
+void Renderer::drawBanner(g2::Graphics2D &g, int oy) const {
+  const int m = ui_.fontMult;
+  g.setFont(&ShapoSansMono_s08c07, m);
+  const int w = g.measureText(banner_), hgt = TEXT_ADV_Y * m;
+  const int x = (w_ - w) / 2, y = h_ - ui_.margin - hgt - hgt / 2;
+  g.fillRect(x - 2 * m, y - m + oy, w + 4 * m, hgt + m,
+             g2::makeColor(0, 0, 0, 190));
+  g.setTextColor(g2::makeColor(150, 255, 170));
+  g.drawString(x, y + oy, banner_);
+}
+
 }  // namespace devoursphere::render

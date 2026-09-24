@@ -184,3 +184,24 @@ void Profiler::drawOverlay(const g2::Surface &band, int bandY) {
 }  // namespace ds
 
 #endif  // DS_PROFILE
+
+// Outside DS_PROFILE: the benchmark runs in every build
+#include <ds_platform.hpp>
+
+namespace ds {
+
+devoursphere::render::BenchSample benchSample(const Profiler &p) {
+  devoursphere::render::BenchSample s;
+  s.tickUs = p.tickUs;
+  s.beginUs = p.beginUs;
+  s.rasterUs = p.rasterUs;
+  s.dmaUs = p.dmaWaitUs;
+  s.cmdUs = p.cmdUs;
+  s.waitUs = p.core1WaitUs;
+  s.xferUs = p.xferUs;
+  s.stack0 = stackUsedCore0();
+  s.stack1 = stackUsedCore1();
+  return s;
+}
+
+}  // namespace ds

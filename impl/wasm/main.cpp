@@ -5,6 +5,7 @@
 // number of ticks and writes one frame as a PPM file.
 
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 
 #include "devoursphere/devoursphere.hpp"
@@ -13,6 +14,7 @@
 #include <emscripten.h>
 #define DS_EXPORT EMSCRIPTEN_KEEPALIVE
 #else
+#include <chrono>
 #define DS_EXPORT
 #endif
 
@@ -37,6 +39,23 @@ static g2::Surface fbSurface = {g2::PixelFormat::RGB565_SWAPPED, DEFAULT_W, DEFA
 static uint8_t arena[256 * 1024];
 static sim::Game game;
 static render::Renderer renderer;
+
+// B held for three seconds on the title (core/SPEC.md "ベンチマーク"). The
+// results go on the canvas and to the browser console.
+static render::Benchmark bench;
+static render::BenchSample benchSample;  // this frame's, so far
+
+static uint32_t clockUs() {
+#ifdef __EMSCRIPTEN__
+  return (uint32_t)(emscripten_get_now() * 1000.0);
+#else
+  using namespace std::chrono;
+  return (uint32_t)duration_cast<microseconds>(
+             steady_clock::now().time_since_epoch())
+      .count();
+#endif
+}
+static void benchLog(const char *line) { std::printf("%s\n", line); }
 
 static void applyScreen() {
   fbSurface = {g2::PixelFormat::RGB565_SWAPPED, (int16_t)screenW, (int16_t)screenH,
@@ -66,7 +85,12 @@ DS_EXPORT int ds_set_screen(int w, int h) {
 DS_EXPORT void ds_init(uint32_t seed) {
   game.reset(seed);
   applyScreen();
+  bench.setPlatform("WASM", benchLog);
 }
+
+// The benchmark is running: play.js then runs one tick per frame, as many
+// frames as fit in its animation frame, and blits only the last
+DS_EXPORT int ds_bench_running() { return bench.running() ? 1 : 0; }
 
 // Debug: skip the menus (level >= 1)
 DS_EXPORT void ds_debug_start(int level, int weapon) {
@@ -97,21 +121,33 @@ DS_EXPORT void ds_debug_key(int key) {
 }
 
 // One simulation tick with the button bits of sim::Button (LEFT=1, RIGHT=2,
-// UP=4, DOWN=8, A=16, PAUSE=32)
+// UP=4, DOWN=8, A=16, PAUSE=32, B=64)
 DS_EXPORT void ds_tick(uint32_t buttons) {
-  game.tick((uint8_t)buttons);
+  const uint32_t t0 = bench.active() ? clockUs() : 0;
+  game.tick(bench.input((uint8_t)buttons));
   // This front end renders after every tick, so ds_render() would pick the
   // effects up anyway; doing it here keeps both front ends on the same rule
   // (every tick is polled, whether or not a frame follows it).
   renderer.pollEffects(game);
+  if (bench.active()) benchSample.tickUs += clockUs() - t0;
 }
 
 // Render the current state into the frame buffer; dt = seconds since the
 // previous render (camera smoothing)
 DS_EXPORT void ds_render(float dt) {
-  renderer.beginFrame(game, dt);
+  bench.beforeFrame(game, renderer, benchSample);
+  devoursphere::profileClockUs = bench.active() ? clockUs : nullptr;
+  benchSample = {};
+  const bool timed = bench.active();
+  const uint32_t t0 = timed ? clockUs() : 0;
+  renderer.beginFrame(game, bench.running() ? bench.dt(1) : dt);
+  const uint32_t t1 = timed ? clockUs() : 0;
   renderer.renderBand(fbSurface, 0, screenH, 0);
   renderer.endFrame();
+  if (timed) {
+    benchSample.beginUs = t1 - t0;
+    benchSample.rasterUs = clockUs() - t1;
+  }
 }
 
 DS_EXPORT int ds_get_state() { return (int)game.state(); }

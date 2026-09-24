@@ -29,6 +29,8 @@
 #include "se_player.hpp"
 #include "touch_pad.hpp"
 
+#include <cstdio>
+
 namespace sim = devoursphere::sim;
 namespace render = devoursphere::render;
 
@@ -41,6 +43,12 @@ alignas(8) uint8_t g_arena[ds::ARENA_SIZE];
 ds::PanelOut g_panel;
 ds::TouchPad g_pad;
 ds::Profiler g_prof;
+// B held for three seconds on the title (core/SPEC.md "ベンチマーク"): the
+// results on the screen and on the serial console
+render::Benchmark g_bench;
+void benchLog(const char *line) { printf("%s\n", line); }
+// The phase timers' clock, installed while the benchmark is on
+uint32_t clockUs() { return (uint32_t)esp_timer_get_time(); }
 
 uint64_t g_lastUs = 0;
 uint32_t g_accUs = 0;
@@ -121,7 +129,8 @@ uint8_t readInput() {
       (hud.state == sim::GameState::TITLE || hud.paused)) {
     g_prof.toggle();
   }
-  return buttons;
+  // Nothing while the benchmark runs or shows its results
+  return g_bench.input(buttons);
 }
 
 void setup() {
@@ -150,6 +159,7 @@ void setup() {
 
   g_renderer.init(ds::SCREEN_W, ds::SCREEN_H, g_arena, sizeof(g_arena),
                   ds::SPAN_CAPACITY);
+  g_bench.setPlatform("M5TAB5", benchLog);
   g_renderer.setHudInsets(render::HudInsets{ds::HUD_INSET_LEFT,
                                             ds::HUD_INSET_RIGHT,
                                             ds::HUD_INSET_TOP,
@@ -230,11 +240,13 @@ void loop() {
   // between beginFrame() and the last band: renderBand() draws the HUD.
   if (ran > 0) {
     keepHighScore();
+    g_bench.beforeFrame(*g_game, g_renderer, ds::benchSample(g_prof));
+    devoursphere::profileClockUs = g_bench.active() ? clockUs : nullptr;
     const int64_t b0 = esp_timer_get_time();
     // Simulation time, not wall time: the camera smoothing, the debris and
     // the score roll-up advance by this, and have to stay in step with the
     // ticks that actually ran.
-    g_renderer.beginFrame(*g_game, ran * (1.0f / sim::TICK_RATE));
+    g_renderer.beginFrame(*g_game, g_bench.dt(ran));
     g_prof.beginUs = (uint32_t)(esp_timer_get_time() - b0);
   }
 
@@ -245,7 +257,7 @@ void loop() {
   const uint8_t buttons = readInput();
 
   // Dispatch before rasterizing, so core1 ticks while we draw.
-  const int want = ticksDue();
+  const int want = g_bench.ticks(ticksDue());
   if (want > 0) {
     g_simWanted = want;
     g_simButtons = buttons;
@@ -263,7 +275,7 @@ void loop() {
   // Everything on this core. Nothing overlaps the ticks, so this is slower.
   const uint8_t buttons = readInput();
   const int64_t t0 = esp_timer_get_time();
-  const int ticks = ticksDue();
+  const int ticks = g_bench.ticks(ticksDue());
   for (int i = 0; i < ticks; i++) {
     g_game->tick(buttons);
     g_renderer.pollEffects(*g_game);
@@ -278,8 +290,10 @@ void loop() {
     return;
   }
   keepHighScore();
+  g_bench.beforeFrame(*g_game, g_renderer, ds::benchSample(g_prof));
+  devoursphere::profileClockUs = g_bench.active() ? clockUs : nullptr;
   const int64_t b0 = esp_timer_get_time();
-  g_renderer.beginFrame(*g_game, ticks * (1.0f / sim::TICK_RATE));
+  g_renderer.beginFrame(*g_game, g_bench.dt(ticks));
   g_prof.beginUs = (uint32_t)(esp_timer_get_time() - b0);
   g_panel.present(g_renderer, g_prof, drawPad, nullptr);
   g_prof.endFrame((uint64_t)esp_timer_get_time(), g_renderer.stats());

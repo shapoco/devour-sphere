@@ -38,6 +38,9 @@ ds::HighScoreStore g_store;  // the high score in flash
 uint8_t g_arena[ds::ARENA_SIZE];
 ds::Display g_display;
 ds::Profiler g_prof;
+// B held for three seconds on the title (core/SPEC.md "ベンチマーク"). No
+// serial console here: the results are only on the screen.
+render::Benchmark g_bench;
 
 // Two band buffers, RGB565_SWAPPED. Alignment for the 16-bit DMA reads; static
 // because every byte of SRAM is DMA capable on this chip.
@@ -252,7 +255,8 @@ void updatePhaseLines(int ticks) {
 // Game belongs to this core.
 uint32_t clockUs() { return (uint32_t)time_us_64(); }
 void updateProfileClock() {
-  devoursphere::profileClockUs = g_prof.full() ? clockUs : nullptr;
+  devoursphere::profileClockUs =
+      g_prof.full() || g_bench.active() ? clockUs : nullptr;
 }
 
 // --- Frames ---------------------------------------------------------------
@@ -281,7 +285,7 @@ void drawFrame(int ticks) {
   // Simulation time, not wall time: the renderer advances the camera
   // smoothing, the debris and the score roll-up by dt, and those have to
   // stay in step with the ticks that actually ran.
-  g_renderer.beginFrame(g_game, ticks * (1.0f / sim::TICK_RATE));
+  g_renderer.beginFrame(g_game, g_bench.dt(ticks));
   g_prof.beginUs = (uint32_t)time_us_64() - begin0;
 }
 
@@ -335,7 +339,8 @@ void frame() {
   // snapshot says which: the Game itself may be core1's right now) cycles
   // the overlay; the simulation ignores UP there.
   const uint32_t gpio = gpio_get_all();
-  const uint8_t buttons = mapButtons(gpio);
+  // What the game gets: nothing while the benchmark runs or shows its results
+  const uint8_t buttons = g_bench.input(mapButtons(gpio));
   const render::HudState &hud = g_renderer.hud();
   if (down(gpio, PICOSYSTEM_SW_UP_PIN) &&
       !down(g_prevGpio, PICOSYSTEM_SW_UP_PIN) &&
@@ -370,6 +375,7 @@ void frame() {
   if (ran > 0) {
     keepHighScore();
     updatePhaseLines(ran);  // the batch just collected, and the last frame
+    g_bench.beforeFrame(g_game, g_renderer, ds::benchSample(g_prof));
     g_game.resetTickProfile();
     updateProfileClock();
     drawFrame(ran);
@@ -378,7 +384,7 @@ void frame() {
   // Ask for the next batch before rasterizing, so core1 ticks while we do.
   // This is what costs a frame of latency: these buttons reach the screen
   // one frame later.
-  const int want = ticksDue();
+  const int want = g_bench.ticks(ticksDue());
   if (want > 0) {
     g_simWanted = want;
     g_simButtons = buttons;
@@ -389,7 +395,7 @@ void frame() {
 #else
   // Everything on this core. Nothing overlaps the ticks, so this is slower.
   const uint32_t tick0 = (uint32_t)time_us_64();
-  const int ticks = ticksDue();
+  const int ticks = g_bench.ticks(ticksDue());
   for (int i = 0; i < ticks; i++) {
     g_game.tick(buttons);
     g_renderer.pollEffects(g_game);
@@ -402,6 +408,7 @@ void frame() {
   if (ticks == 0) return;  // ahead of the simulation: nothing new to show
   keepHighScore();
   updatePhaseLines(ticks);
+  g_bench.beforeFrame(g_game, g_renderer, ds::benchSample(g_prof));
   g_game.resetTickProfile();
   updateProfileClock();
   drawFrame(ticks);
@@ -453,6 +460,7 @@ int main() {
   g_renderer.init(ds::SCREEN_W, ds::SCREEN_H, g_arena, sizeof(g_arena),
                   ds::SPAN_CAPACITY);
   g_renderer.setDetailTriangles(ds::DETAIL_TRIANGLES);
+  g_bench.setPlatform("PICOSYSTEM", nullptr);
 
   ds::stackWatchInitCore0();
   // Both cores are otherwise idle here, so this is the transfer on its own
