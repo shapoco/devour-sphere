@@ -237,6 +237,48 @@ impl/picosystem/SPEC.md の内訳。違いは `DMA` 行が転送の CPU 時間�
 1 分前後。結果は画面 (5 px のフォントで 2 ページ、ACT で次、ESC で閉じる) と、シリアル (`printf`、`./monitor.sh`) に
 同じ行が出る。DMA が無いので `DMA` は帯の押し出し (デバッグ表示の `T`)。
 
+結果 (2026-09-24、core 3.4。写真から転記 (`?` は読み切れなかった桁)。ShapoGFX dbfa0bc。 `CMD` / `W` はこのボードに無いので出ない):
+
+```
+BENCHMARK v3.4  ESPBOY  128x128 T30  XFR 7.7  STK0 2576
+         QUIET   CROWD  FLIGHT
+FPS      17.8    15.5    17.2
+FRM      56.1    64.2    57.8
+FRM^     63.3    72.3    75.8
+TCK      11.4    15.0    11.1
+TCK^     13.4    18.4    25.9
+BGN      22.8    27.8    23.0
+BGN^     27.4    32.9    40.7
+RAS      12.9    12.3    14.6
+RAS^     16.3    13.0    19.8
+DMA       7.8     7.8     7.9
+TRI        32      65      34
+TRIK        2       3       2
+SPN        13      17      14
+ARNK        4       5       4
+LIN        58      77     206
+DRP         0       0       0
+tAI       1.5     1.7     1.4
+tMOV      3.6     3.4     3.5
+tLAY      3.2     4.5     3.2
+tFIR      0.0     0.1     0.0
+tBUL      0.3     0.7     0.3
+tFRG      0.3     0.5     0.2
+tEAT      1.3     1.4     1.3
+tETC      1.0     2.6     1.1
+fCAM      3.1     3.2     3.5
+fSPH     11.4    10.9    11.9
+fENT      3.9     6.4     4.4
+fFRG      2.8     3.4     2.3
+fBUL      0.0     0.2     0.1
+fEFX      0.1     0.4     0.8
+fOVL      1.5     3.3     0.1
+f3D       0.3     0.4     0.3
+f2D      12.5    11.8    14.3
+```
+
+遊んでいるときの 15.7 fps (1 フレーム 2 tick) より高いのは、ベンチマークが 1 フレーム 1 tick だから。
+
 ## 実機の記録
 
 1 回目 (2026-09-22、WildCardBoy の ESPboy カードに `devoursphere.factory.bin` を書いた。ユーザーの報告):
