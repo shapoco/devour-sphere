@@ -67,7 +67,8 @@ Makefile は cmake を `$(shell command -v cmake)` で探す。GNU make 自身�
 | 終了 | Q / Ctrl-C |
 | 再描画 | Ctrl-L (端末が乱れたとき) |
 
-WASM 版と同じ割り当てに Q / Ctrl-C と Ctrl-L を足したもの。タイトルの操作案内は既定 (PC 向け) のまま、
+WASM 版と同じ割り当てに Q / Ctrl-C と Ctrl-L を足したもの。キーはデジタルなので方向は常に最大の強さ
+(core 3.7 の `sim::Input` で -127 / 0 / +127)。タイトルの操作案内は既定 (PC 向け) のまま、
 ポーズ画面の案内だけ Q: QUIT を含む文字列に差し替える (`Renderer::setControlHints()`)。
 
 ### kitty keyboard protocol

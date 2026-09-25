@@ -64,7 +64,7 @@ uint32_t g_accUs = 0;
 TaskHandle_t g_mainTask = nullptr;
 TaskHandle_t g_simTask = nullptr;
 int g_simWanted = 0;       // core0 -> core1
-uint8_t g_simButtons = 0;  // ... same
+sim::Input g_simInput;     // ... same
 int g_simRan = 0;          // core1 -> core0
 uint32_t g_simTickUs = 0;  // ... same
 bool g_batchOut = false;   // core0 only: a batch is with core1
@@ -77,7 +77,7 @@ void simTask(void *) {
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
     const int64_t t0 = esp_timer_get_time();
     for (int i = 0; i < g_simWanted; i++) {
-      g_game->tick(g_simButtons);
+      g_game->tick(g_simInput);
       // A tick's events are cleared by the next one, so each has to be
       // polled: otherwise a frame that catches up two ticks shows only the
       // last one's explosions.
@@ -115,13 +115,15 @@ void drawPad(const shapoco::gfx2d::Surface &band, int bandY, void *) {
 
 // The pad, plus the two things this front end does with it that the game
 // does not: the timing overlay on UP (as on the handhelds; the mute is DOWN
-// and the game handles that itself).
-uint8_t readInput() {
+// and the game handles that itself). UP is the disc read the way the game's
+// menus read it (sim::directionBits, with the same hysteresis).
+sim::Input readInput() {
   M5.update();
-  const uint8_t buttons = g_pad.poll();
-  static uint8_t prevButtons = 0;
-  const uint8_t pressed = (uint8_t)(buttons & ~prevButtons);
-  prevButtons = buttons;
+  const sim::Input input = g_pad.poll();
+  static uint8_t prevDirs = 0;
+  const uint8_t dirs = sim::directionBits(input, prevDirs);
+  const uint8_t pressed = (uint8_t)(dirs & ~prevDirs);
+  prevDirs = dirs;
   // Which screen it is has to come from the HUD's snapshot: the Game itself
   // may belong to the other core right now.
   const render::HudState &hud = g_renderer.hud();
@@ -130,7 +132,7 @@ uint8_t readInput() {
     g_prof.toggle();
   }
   // Nothing while the benchmark runs or shows its results
-  return g_bench.input(buttons);
+  return g_bench.input(input);
 }
 
 void setup() {
@@ -251,16 +253,16 @@ void loop() {
   }
 
   // Read the pad as late as possible -- after the wait and after the scene
-  // is built -- because these buttons go to the batch that runs while this
+  // is built -- because this input goes to the batch that runs while this
   // frame rasterizes, and reach the screen one frame later. That last frame
   // of latency is inherent to overlapping the two; anything before it is not.
-  const uint8_t buttons = readInput();
+  const sim::Input input = readInput();
 
   // Dispatch before rasterizing, so core1 ticks while we draw.
   const int want = g_bench.ticks(ticksDue());
   if (want > 0) {
     g_simWanted = want;
-    g_simButtons = buttons;
+    g_simInput = input;
     g_batchOut = true;
     xTaskNotifyGive(g_simTask);
   }
@@ -273,11 +275,11 @@ void loop() {
   }
 #else
   // Everything on this core. Nothing overlaps the ticks, so this is slower.
-  const uint8_t buttons = readInput();
+  const sim::Input input = readInput();
   const int64_t t0 = esp_timer_get_time();
   const int ticks = g_bench.ticks(ticksDue());
   for (int i = 0; i < ticks; i++) {
-    g_game->tick(buttons);
+    g_game->tick(input);
     g_renderer.pollEffects(*g_game);
     audio::setMuted(g_game->muted());
     audio::request(g_game->sounds());

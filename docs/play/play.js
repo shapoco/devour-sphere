@@ -3,7 +3,9 @@
 // Loads the STANDALONE_WASM module built from impl/wasm/main.cpp, runs the
 // simulation at its fixed tick rate, renders through the WASM frame buffer
 // (RGB565_SWAPPED) into a <canvas>, and turns keyboard / gamepad / touch input into
-// the button bits of the simulation.
+// the input of the simulation: two direction axes (-127..127, analog from the
+// touch pad and the gamepad stick, full strength from the keys) and the
+// button bits.
 //
 // startDevourSphere({ wasm: 'devoursphere.wasm', se: 'se.bin' })
 //   URL parameters: ?screen=WxH        frame buffer size (default 480x320)
@@ -275,7 +277,7 @@ async function startDevourSphere(opts) {
       if (ex.ds_bench_running()) {
         const t0 = performance.now();
         do {
-          ex.ds_tick(0);
+          ex.ds_tick(0, 0, 0);
           ex.ds_render(0);
           frames++;
         } while (ex.ds_bench_running() && performance.now() - t0 < 12);
@@ -291,7 +293,7 @@ async function startDevourSphere(opts) {
       let n = 0;
       while (acc >= tickMs && n < 4) {
         pollGamepad(input);
-        ex.ds_tick(input.buttons());
+        ex.ds_tick(input.buttons(), input.axisX(), input.axisY());
         const bits = ex.ds_get_sounds();
         if (bits) sound.play(bits);
         acc -= tickMs;
@@ -330,14 +332,49 @@ async function startDevourSphere(opts) {
 // ---------------------------------------------------------------------------
 // Input
 
+// Every source keeps its own buttons (A / B / PAUSE, and the direction bits
+// of the keys and the gamepad's d-pad) and axes; the direction the game gets
+// is, per axis, the strongest of them. The dead zones and the saturation
+// are this front end's (the core takes the strength as it is).
+const AXIS_MAX = 127;
+
 class InputState {
   constructor() {
-    this.keys = 0;      // keyboard
+    this.keys = 0;      // keyboard (bits)
     this.onDebugKey = null;  // set in debug mode: number key -> cheat
-    this.touch = 0;     // virtual pad
-    this.pad = 0;       // gamepad
+    this.touch = 0;     // virtual pad (bits)
+    this.touchX = 0; this.touchY = 0;
+    this.pad = 0;       // gamepad (bits)
+    this.padX = 0; this.padY = 0;
   }
-  buttons() { return this.keys | this.touch | this.pad; }
+  bits() { return this.keys | this.touch | this.pad; }
+  // The buttons without the directions: those go as the axes
+  buttons() { return this.bits() & (BTN_A | BTN_B | BTN_PAUSE); }
+  axisX() {
+    const b = this.bits();
+    return strongest(((b & BTN_RIGHT) ? AXIS_MAX : 0) - ((b & BTN_LEFT) ? AXIS_MAX : 0),
+                     this.touchX, this.padX);
+  }
+  axisY() {
+    const b = this.bits();
+    return strongest(((b & BTN_DOWN) ? AXIS_MAX : 0) - ((b & BTN_UP) ? AXIS_MAX : 0),
+                     this.touchY, this.padY);
+  }
+}
+
+function strongest(...vs) {
+  let best = 0;
+  for (const v of vs) if (Math.abs(v) > Math.abs(best)) best = v;
+  return best;
+}
+
+// One axis of an analog source (any unit) as -127..127: 0 up to `dead`, full
+// from `full` on, linear in between
+function analogAxis(v, dead, full) {
+  const a = Math.abs(v);
+  if (a <= dead) return 0;
+  const k = Math.min(1, (a - dead) / (full - dead));
+  return Math.sign(v) * Math.round(k * AXIS_MAX);
 }
 
 const KEY_MAP = {
@@ -373,16 +410,19 @@ function setupKeyboard(input) {
   window.addEventListener('blur', () => { input.keys = 0; });
 }
 
+// The left stick is analog: nothing within 0.15 of the center (sticks do
+// not return to exactly 0), full from 0.7 on each axis (a round gate gives
+// about 0.71 on both axes at a full diagonal, so the diagonal is a full turn
+// with a full dash). The d-pad is digital.
+const PAD_DEAD = 0.15, PAD_FULL = 0.7;
+
 function pollGamepad(input) {
   if (!navigator.getGamepads) return;
-  let bits = 0;
+  let bits = 0, x = 0, y = 0;
   for (const gp of navigator.getGamepads()) {
     if (!gp) continue;
-    const ax = gp.axes[0] || 0, ay = gp.axes[1] || 0;
-    if (ax < -0.4) bits |= BTN_LEFT;
-    if (ax > 0.4) bits |= BTN_RIGHT;
-    if (ay < -0.4) bits |= BTN_UP;
-    if (ay > 0.4) bits |= BTN_DOWN;
+    x = strongest(x, analogAxis(gp.axes[0] || 0, PAD_DEAD, PAD_FULL));
+    y = strongest(y, analogAxis(gp.axes[1] || 0, PAD_DEAD, PAD_FULL));
     const b = gp.buttons;
     const pressed = (i) => b[i] && b[i].pressed;
     if (pressed(14)) bits |= BTN_LEFT;
@@ -394,11 +434,18 @@ function pollGamepad(input) {
     if (pressed(9)) bits |= BTN_PAUSE;  // Start
   }
   input.pad = bits;
+  input.padX = x;
+  input.padY = y;
 }
 
-// Virtual game pad: a direction disc (diagonals allowed, so dash + turn
-// works), an A button (fire) and a B button (dodge). Shown on touch devices,
-// or with the toggle button.
+// Virtual game pad: an analog direction disc (each axis on its own, so dash
+// + turn works), an A button (fire) and a B button (dodge). Shown on touch
+// devices, or with the toggle button.
+//
+// The knob travels 32% of the disc's width from the center. Each axis is 0
+// up to 7% of the width and full from 21%: the knob at the end of its travel
+// on a diagonal (22.6% on both axes) is still a full turn with a full dash.
+const DISC_TRAVEL = 0.32, DISC_DEAD = 0.07, DISC_FULL = 0.21;
 function setupTouchPad(input) {
   const dpad = document.getElementById('dpad');
   const abtn = document.getElementById('abtn');
@@ -409,50 +456,39 @@ function setupTouchPad(input) {
   const coarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
   if (coarse || 'ontouchstart' in window) document.body.classList.add('touch');
 
-  let dir = 0, fire = 0, dodge = 0;
+  let fire = 0, dodge = 0;
   let dpadPointer = null;
-  function update() { input.touch = dir | fire | dodge; }
+  function update() { input.touch = fire | dodge; }
 
   function dirFromEvent(e) {
     const r = dpad.getBoundingClientRect();
     const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
     let dx = e.clientX - cx, dy = e.clientY - cy;
-    const dead = r.width * 0.12;
-    const max = r.width * 0.32;
+    const max = r.width * DISC_TRAVEL;
     const len = Math.hypot(dx, dy);
     if (len > max) { dx *= max / len; dy *= max / len; }
     if (knob) knob.style.transform = `translate(${dx}px, ${dy}px)`;
-    let d = 0;
-    if (len > dead) {
-      // Sector test: treat the direction as pressed when it dominates enough
-      if (dx < -dead * 0.7) d |= BTN_LEFT;
-      if (dx > dead * 0.7) d |= BTN_RIGHT;
-      if (dy < -dead * 0.7) d |= BTN_UP;
-      if (dy > dead * 0.7) d |= BTN_DOWN;
-    }
-    return d;
+    input.touchX = analogAxis(dx, r.width * DISC_DEAD, r.width * DISC_FULL);
+    input.touchY = analogAxis(dy, r.width * DISC_DEAD, r.width * DISC_FULL);
   }
   dpad.addEventListener('pointerdown', (e) => {
     dpadPointer = e.pointerId;
     dpad.setPointerCapture(e.pointerId);
     dpad.classList.add('down');
-    dir = dirFromEvent(e);
-    update();
+    dirFromEvent(e);
     e.preventDefault();
   });
   dpad.addEventListener('pointermove', (e) => {
     if (e.pointerId !== dpadPointer) return;
-    dir = dirFromEvent(e);
-    update();
+    dirFromEvent(e);
     e.preventDefault();
   });
   const dpadUp = (e) => {
     if (e.pointerId !== dpadPointer) return;
     dpadPointer = null;
-    dir = 0;
+    input.touchX = input.touchY = 0;
     dpad.classList.remove('down');
     if (knob) knob.style.transform = '';
-    update();
   };
   dpad.addEventListener('pointerup', dpadUp);
   dpad.addEventListener('pointercancel', dpadUp);

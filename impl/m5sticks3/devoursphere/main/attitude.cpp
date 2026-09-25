@@ -76,9 +76,15 @@ Vec3f cross(const Vec3f &a, const Vec3f &b) {
           a.x * b.y - a.y * b.x};
 }
 
-// A threshold with hysteresis: on beyond `on`, off below `off`.
-bool held(float v, float on, float off, bool was) {
-  return was ? v > off : v > on;
+// A sine as an axis of sim::Input: 0 up to `dead`, full (127) from `full`
+// on, linear in between.
+int8_t axis(float v, float dead, float full) {
+  const float a = std::fabs(v);
+  if (a <= dead) return 0;
+  float k = (a - dead) / (full - dead);
+  if (k > 1.0f) k = 1.0f;
+  const int m = (int)(k * sim::INPUT_MAX + 0.5f);
+  return (int8_t)(v < 0 ? -m : m);
 }
 
 }  // namespace
@@ -137,7 +143,7 @@ void Attitude::sample(float dtSec) {
   if (shaking_) muteSec_ = SHAKE_MUTE_SEC;
   else if (muteSec_ > 0) muteSec_ -= dtSec;
 
-  updateKeys(dtSec);
+  updateAxes(dtSec);
 }
 
 Attitude::Side Attitude::side() const {
@@ -156,7 +162,7 @@ int Attitude::confirm() {
   if (s == Side::UNKNOWN) return 0;
   ref_ = a_;
   haveRef_ = true;
-  keys_ = 0;
+  x_ = y_ = 0;
   // The landscape picture's own left-right axis, in portrait axes: the
   // portrait screen's -y for one of the two, +y for the other. It is what
   // the dash/brake test is measured against, and it is the only thing that
@@ -172,17 +178,12 @@ bool Attitude::takeShake() {
   return s;
 }
 
-void Attitude::updateKeys(float dtSec) {
-  if (!haveRef_) {
-    keys_ = 0;
-    return;
-  }
-  if (muteSec_ > 0) {
-    // Shaken: no direction keys, and no drift either -- the neutral
-    // attitude must not follow the device through the shake.
-    keys_ = 0;
-    return;
-  }
+void Attitude::updateAxes(float dtSec) {
+  x_ = y_ = 0;
+  if (!haveRef_) return;
+  // Shaken: centered, and no drift either -- the neutral attitude must not
+  // follow the device through the shake.
+  if (muteSec_ > 0) return;
 
   // c points along the axis the device was turned about since the neutral
   // attitude was taken, and |c| is the sine of how far. See attitude.hpp.
@@ -190,32 +191,23 @@ void Attitude::updateKeys(float dtSec) {
 
   // Turning about the view axis (z, into the screen) tips the picture: a
   // turn that carries the picture's top to the LEFT is anti-clockwise seen
-  // by the player, which is negative about z, which leaves +c.z. This one
-  // does not depend on which way the stick was tipped -- the view axis is
-  // the view axis either way.
-  const bool wasLeft = (keys_ & sim::Button::LEFT) != 0;
-  const bool wasRight = (keys_ & sim::Button::RIGHT) != 0;
-  const bool left = held(c.z, TURN_ON, TURN_OFF, wasLeft);
-  const bool right = held(-c.z, TURN_ON, TURN_OFF, wasRight);
+  // by the player, which is negative about z, which leaves +c.z -- so right
+  // (+x) is -c.z. This one does not depend on which way the stick was
+  // tipped -- the view axis is the view axis either way.
+  x_ = axis(-c.z, TURN_DEAD, TURN_FULL);
 
   // Turning about the picture's own left-right axis tips its far edge away
   // (dash) or near (brake). That axis is the portrait screen's y axis, up
   // to the sign confirm() worked out, and tipping the far edge away is a
   // positive turn about it -- which leaves a NEGATIVE component along it.
+  // Away is the dash, which is -y.
   const float fwd = -(float)rightSign_ * c.y;
-  const bool wasUp = (keys_ & sim::Button::UP) != 0;
-  const bool wasDown = (keys_ & sim::Button::DOWN) != 0;
-  const bool up = held(fwd, PITCH_ON, PITCH_OFF, wasUp);
-  const bool down = held(-fwd, PITCH_ON, PITCH_OFF, wasDown);
+  y_ = axis(-fwd, PITCH_DEAD, PITCH_FULL);
 
-  keys_ = (uint8_t)((left ? sim::Button::LEFT : 0) |
-                    (right ? sim::Button::RIGHT : 0) |
-                    (up ? sim::Button::UP : 0) | (down ? sim::Button::DOWN : 0));
-
-  // With nothing held, let the neutral attitude follow the player's
-  // posture, slowly. A deliberate tip holds a key and stops this, so it can
-  // only ever creep towards where the stick rests between turns.
-  if (keys_ == 0) {
+  // With both axes centered, let the neutral attitude follow the player's
+  // posture, slowly. A deliberate tip leaves the dead zone and stops this,
+  // so it can only ever creep towards where the stick rests between turns.
+  if (x_ == 0 && y_ == 0) {
     const float step = DRIFT_RAD_PER_SEC * dtSec;
     ref_ = normalize({ref_.x + (a_.x - ref_.x) * step,
                       ref_.y + (a_.y - ref_.y) * step,

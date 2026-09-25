@@ -73,7 +73,8 @@ void initButtons() {
 
 bool down(uint32_t gpio, uint pin) { return (gpio & (1u << pin)) == 0; }
 
-// The buttons the PicoSystem has, in the bits the simulation takes: A and Y
+// The buttons the PicoSystem has, in the bits of sim::Button (a digital pad:
+// the directions become full-strength axes of sim::Input): A and Y
 // fire, B is the emergency dodge, X pauses.
 uint8_t mapButtons(uint32_t gpio) {
   uint8_t out = 0;
@@ -123,7 +124,7 @@ enum class Sim : uint32_t {
 // below is written before the state is published and read after it is seen.
 uint32_t g_sim = (uint32_t)Sim::IDLE;
 int g_simWanted = 0;       // written before RUN is published
-uint8_t g_simButtons = 0;  // ... same
+sim::Input g_simInput;     // ... same
 int g_simRan = 0;          // written before DONE is published
 uint32_t g_simTickUs = 0;  // ... same
 
@@ -146,7 +147,7 @@ void core1Main() {
     }
     const uint32_t t0 = (uint32_t)time_us_64();
     for (int i = 0; i < g_simWanted; i++) {
-      g_game.tick(g_simButtons);
+      g_game.tick(g_simInput);
       // The events of a tick are cleared by the next one, so each tick has
       // to be polled or the frame would only show the last one's explosions
       g_renderer.pollEffects(g_game);
@@ -340,7 +341,7 @@ void frame() {
   // the overlay; the simulation ignores UP there.
   const uint32_t gpio = gpio_get_all();
   // What the game gets: nothing while the benchmark runs or shows its results
-  const uint8_t buttons = g_bench.input(mapButtons(gpio));
+  const sim::Input input = g_bench.input(mapButtons(gpio));
   const render::HudState &hud = g_renderer.hud();
   if (down(gpio, PICOSYSTEM_SW_UP_PIN) &&
       !down(g_prevGpio, PICOSYSTEM_SW_UP_PIN) &&
@@ -387,7 +388,7 @@ void frame() {
   const int want = g_bench.ticks(ticksDue());
   if (want > 0) {
     g_simWanted = want;
-    g_simButtons = buttons;
+    g_simInput = input;
     simStore(Sim::RUN);
   }
 
@@ -397,7 +398,7 @@ void frame() {
   const uint32_t tick0 = (uint32_t)time_us_64();
   const int ticks = g_bench.ticks(ticksDue());
   for (int i = 0; i < ticks; i++) {
-    g_game.tick(buttons);
+    g_game.tick(input);
     g_renderer.pollEffects(g_game);
     audio::setMuted(g_game.muted());
     audio::request(g_game.sounds());

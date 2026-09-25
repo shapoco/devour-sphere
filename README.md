@@ -45,13 +45,16 @@ and fonts.
 | Benchmark (results: A next page, B close) | hold a B key for 3 s on the title | hold B for 3 s on the title | same |
 
 The browser version also takes a gamepad and touch input (an on-screen pad).
+The gamepad's left stick, the on-screen direction disc and the M5StickS3's tilt
+are analog: how far you push sets how hard you turn, dash or brake.
 The M5Tab5 version is played with that same landscape pad layout: a direction
 disc in the bottom left, A in the bottom right, the dodge button above and left
 of it, and pause in the top right corner.
 
 The M5StickS3 version is played by tipping the stick itself. Whichever way you
 lay it on its side at start up becomes the neutral attitude; tipping it from
-there steers, tipping its far edge away dashes and tipping it near brakes.
+there steers, tipping its far edge away dashes and tipping it near brakes
+(full strength at 7 degrees sideways, 10 degrees forward or back).
 KEY1 fires, KEY2 is the emergency dodge, shaking the stick pauses, and KEY2 on
 the title or pause screen shows the timing overlay.
 

@@ -134,12 +134,14 @@ constexpr Circle PAD_B = {PAD_A.cx - PAD_A.r - 36 - PAD_EDGE,
 // else). HUD_INSET_TOP keeps the HUD's top row clear of it.
 constexpr Circle PAD_PAUSE = {SCREEN_W - PAD_EDGE - 16, PAD_EDGE + 16, 16};
 
-// The disc's thresholds, as fractions of its radius, taken from play.js
-// (which expresses them against the diameter: dead = 0.12 w, per axis
-// 0.7 dead, the knob travelling up to 0.32 w).
-constexpr int PAD_DEAD_R = PAD_DISC.r * 24 / 100;
-constexpr int PAD_AXIS_R = PAD_DEAD_R * 7 / 10;
+// The disc is analog. Its thresholds, as fractions of its radius, are
+// play.js's (which expresses them against the diameter: the knob travels up
+// to 0.32 w, each axis is 0 up to 0.07 w and full from 0.21 w). The knob at
+// the end of its travel on a diagonal (0.45 r on both axes) is still a full
+// turn with a full dash.
 constexpr int PAD_KNOB_R = PAD_DISC.r * 64 / 100;
+constexpr int PAD_AXIS_DEAD = PAD_DISC.r * 14 / 100;
+constexpr int PAD_AXIS_FULL = PAD_DISC.r * 42 / 100;
 
 // Opacity of the pad over the game (play.js uses 0.55 in landscape)
 constexpr int PAD_OPACITY = 140;  // of 255

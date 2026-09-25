@@ -81,7 +81,7 @@ uint32_t g_accUs = 0;
 TaskHandle_t g_mainTask = nullptr;
 TaskHandle_t g_simTask = nullptr;
 int g_simWanted = 0;       // core0 -> core1
-uint8_t g_simButtons = 0;  // ... same
+sim::Input g_simInput;     // ... same
 int g_simRan = 0;          // core1 -> core0
 uint32_t g_simTickUs = 0;  // ... same
 bool g_batchOut = false;   // core0 only: a batch is with core1
@@ -94,7 +94,7 @@ void simTask(void *) {
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
     const int64_t t0 = esp_timer_get_time();
     for (int i = 0; i < g_simWanted; i++) {
-      g_game->tick(g_simButtons);
+      g_game->tick(g_simInput);
       // A tick's events are cleared by the next one, so each has to be
       // polled: otherwise a frame that catches up two ticks shows only the
       // last one's explosions.
@@ -216,9 +216,10 @@ int waitForAttitude() {
 // The two buttons, the tilt and the shake, plus the two things this front
 // end does with them that the game does not: the timing overlay, and
 // keeping the tilt off the menus.
-uint8_t readInput(float dtSec) {
+sim::Input readInput(float dtSec) {
   M5.update();
   uint8_t buttons = 0;
+  int8_t x = 0, y = 0;
   if (M5.BtnA.isPressed()) buttons |= sim::Button::A;
   if (M5.BtnB.isPressed()) buttons |= sim::Button::B;
 
@@ -231,13 +232,12 @@ uint8_t readInput(float dtSec) {
 
   if (g_haveImu) {
     g_att.sample(dtSec);
-    uint8_t tilt = g_att.keys();
-    // On the menus the up/down axis is dropped. The game reads DOWN there
-    // as the mute and UP (on other platforms) as the overlay, and a stick
-    // that is merely being held at a slight angle would work them both.
-    // Left and right stay: that is how a weapon is chosen.
-    if (menu) tilt &= (uint8_t)~(sim::Button::UP | sim::Button::DOWN);
-    buttons |= tilt;
+    x = g_att.x();
+    // On the menus the forward/back axis is dropped. The game reads DOWN
+    // there as the mute and UP (on other platforms) as the overlay, and a
+    // stick that is merely being held at a slight angle would work them
+    // both. Left and right stay: that is how a weapon is chosen.
+    y = menu ? 0 : g_att.y();
     // A shake is the pause button this board does not have. The game takes
     // it as an edge, so it is offered for exactly one frame.
     if (g_att.takeShake()) buttons |= sim::Button::PAUSE;
@@ -269,7 +269,7 @@ uint8_t readInput(float dtSec) {
     buttons &= (uint8_t)~sim::Button::B;
   }
   // Nothing while the benchmark runs or shows its results
-  return g_bench.input(buttons);
+  return g_bench.input(sim::Input(x, y, buttons));
 }
 
 void setup() {
@@ -417,13 +417,13 @@ void loop() {
   // scene is built -- because they go to the batch that runs while this
   // frame rasterizes, and reach the screen one frame later. That last frame
   // of latency is inherent to overlapping the two; anything before it is not.
-  const uint8_t buttons = readInput(dtSec);
+  const sim::Input input = readInput(dtSec);
 
   // Dispatch before rasterizing, so core1 ticks while we draw.
   const int want = g_bench.ticks(ticksDue());
   if (want > 0) {
     g_simWanted = want;
-    g_simButtons = buttons;
+    g_simInput = input;
     g_batchOut = true;
     xTaskNotifyGive(g_simTask);
   }
@@ -436,11 +436,11 @@ void loop() {
   }
 #else
   // Everything on this core. Nothing overlaps the ticks, so this is slower.
-  const uint8_t buttons = readInput(dtSec);
+  const sim::Input input = readInput(dtSec);
   const int64_t t0 = esp_timer_get_time();
   const int ticks = g_bench.ticks(ticksDue());
   for (int i = 0; i < ticks; i++) {
-    g_game->tick(buttons);
+    g_game->tick(input);
     g_renderer.pollEffects(*g_game);
     audio::setMuted(g_game->muted());
     audio::request(g_game->sounds());

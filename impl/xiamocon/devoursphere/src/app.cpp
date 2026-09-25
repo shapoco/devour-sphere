@@ -81,7 +81,7 @@ enum class Sim : uint32_t {
 // across the handover.
 uint32_t g_sim = (uint32_t)Sim::IDLE;
 int g_simWanted = 0;       // written before RUN is published
-uint8_t g_simButtons = 0;  // ... same
+sim::Input g_simInput;     // ... same
 int g_simRan = 0;          // written before DONE is published
 uint32_t g_simTickUs = 0;  // ... same
 
@@ -105,7 +105,7 @@ bool core1Task() {
   }
   const uint32_t t0 = (uint32_t)xmc::getTimeUs();
   for (int i = 0; i < g_simWanted; i++) {
-    g_game->tick(g_simButtons);
+    g_game->tick(g_simInput);
     // The events of a tick are cleared by the next one, so each tick has to
     // be polled or the frame would only show the last one's explosions
     g_renderer.pollEffects(*g_game);
@@ -120,7 +120,8 @@ bool core1Task() {
 
 #endif  // DS_SIM_ON_CORE1
 
-// The buttons Xiamocon has, in the bits the simulation takes: A and Y fire,
+// The buttons Xiamocon has, in the bits of sim::Button (a digital pad: the
+// directions become full-strength axes of sim::Input): A and Y fire,
 // B is the emergency dodge, X pauses.
 uint8_t mapButtons(xmc::input::Button b) {
   using B = xmc::input::Button;
@@ -278,7 +279,7 @@ void xmcAppLoop(void) {
   // this time round libLoop(); calling it again would consume the press and
   // release edges the simulation derives from the held state.
   // What the game gets: nothing while the benchmark runs or shows its results
-  const uint8_t buttons = g_bench.input(mapButtons(xmc::input::getState()));
+  const sim::Input input = g_bench.input(mapButtons(xmc::input::getState()));
   // The timing overlay: FUNC (only the SDK's while the board boots, free
   // here), or UP on the title or the pause screen. The HUD's snapshot says
   // which screen: the Game itself may be core1's right now.
@@ -327,7 +328,7 @@ void xmcAppLoop(void) {
   const int want = g_bench.ticks(ticksDue());
   if (want > 0) {
     g_simWanted = want;
-    g_simButtons = buttons;
+    g_simInput = input;
     simStore(Sim::RUN);
   }
 
@@ -337,7 +338,7 @@ void xmcAppLoop(void) {
   const uint32_t tick0 = (uint32_t)xmc::getTimeUs();
   const int ticks = g_bench.ticks(ticksDue());
   for (int i = 0; i < ticks; i++) {
-    g_game->tick(buttons);
+    g_game->tick(input);
     g_renderer.pollEffects(*g_game);
     audio::setMuted(g_game->muted());
     audio::request(g_game->sounds());

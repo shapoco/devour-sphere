@@ -120,11 +120,23 @@ DS_EXPORT void ds_debug_key(int key) {
   }
 }
 
-// One simulation tick with the button bits of sim::Button (LEFT=1, RIGHT=2,
-// UP=4, DOWN=8, A=16, PAUSE=32, B=64)
-DS_EXPORT void ds_tick(uint32_t buttons) {
+// One simulation tick. buttons: the bits of sim::Button (A=16, PAUSE=32,
+// B=64; the direction bits LEFT=1, RIGHT=2, UP=4, DOWN=8 count as full
+// strength on their axis). x, y: the analog direction, -127..127 (x right,
+// y down = brake, up = dash); play.js applies the dead zones.
+DS_EXPORT void ds_tick(uint32_t buttons, int x, int y) {
   const uint32_t t0 = bench.active() ? clockUs() : 0;
-  game.tick(bench.input((uint8_t)buttons));
+  auto clampAxis = [](int v) {
+    return (int8_t)(v < -sim::INPUT_MAX ? -sim::INPUT_MAX
+                                        : (v > sim::INPUT_MAX ? sim::INPUT_MAX : v));
+  };
+  const sim::Input digital((uint8_t)buttons);
+  auto strongest = [](int8_t a, int8_t b) {
+    return (int8_t)((a < 0 ? -a : a) >= (b < 0 ? -b : b) ? a : b);
+  };
+  const sim::Input in(strongest(digital.x, clampAxis(x)),
+                      strongest(digital.y, clampAxis(y)), digital.buttons);
+  game.tick(bench.input(in));
   // This front end renders after every tick, so ds_render() would pick the
   // effects up anyway; doing it here keeps both front ends on the same rule
   // (every tick is polled, whether or not a frame follows it).
@@ -252,7 +264,7 @@ int main(int argc, char **argv) {
     while (*p && *p != ',') p++;
     if (*p == ',') p++;
     for (int i = 0; i < count; i++) {
-      ds_tick(buttons);
+      ds_tick(buttons, 0, 0);  // the direction bits are full strength
       uint32_t s = ds_get_sounds();
       for (int k = 0; k < sim::SOUND_KINDS; k++) soundCounts[k] += (s >> k) & 1;
     }

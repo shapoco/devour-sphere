@@ -53,7 +53,8 @@ uint64_t g_lastUs = 0;
 uint32_t g_accUs = 0;
 uint8_t g_prevButtons = 0;
 
-// The buttons the ESPboy has, in the bits the simulation takes: A (ACT)
+// The buttons the ESPboy has, in the bits of sim::Button (a digital pad:
+// the directions become full-strength axes of sim::Input): A (ACT)
 // fires, B (ESC) is the emergency dodge, the left shoulder pauses. The
 // right shoulder cycles the timing overlay on the title and pause screens
 // (frame()).
@@ -222,7 +223,7 @@ void frame() {
   // screen cycles the overlay.
   const uint8_t raw = ds::input::read();
   // What the game gets: nothing while the benchmark runs or shows its results
-  const uint8_t buttons = g_bench.input(mapButtons(raw));
+  const sim::Input input = g_bench.input(mapButtons(raw));
   const render::HudState &hud = g_renderer.hud();
   if ((raw & ds::input::RGT) && !(g_prevButtons & ds::input::RGT) &&
       (hud.state == sim::GameState::TITLE || hud.paused)) {
@@ -233,7 +234,7 @@ void frame() {
   const uint32_t tick0 = clockUs();
   const int ticks = g_bench.ticks(ticksDue());
   for (int i = 0; i < ticks; i++) {
-    g_game.tick(buttons);
+    g_game.tick(input);
     // The events of a tick are cleared by the next one, so each tick has
     // to be polled or the frame would only show the last one's explosions
     g_renderer.pollEffects(g_game);

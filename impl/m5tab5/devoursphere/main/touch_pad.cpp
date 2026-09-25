@@ -79,7 +79,17 @@ void TouchPad::track(Grab &g, const Circle &c, const int32_t *ids,
   }
 }
 
-uint8_t TouchPad::poll() {
+// One axis of the disc (frame pixels from its center) as -127..127: 0 up to
+// PAD_AXIS_DEAD, full from PAD_AXIS_FULL, linear in between
+static int8_t discAxis(int d) {
+  const int a = d < 0 ? -d : d;
+  if (a <= PAD_AXIS_DEAD) return 0;
+  int v = (a - PAD_AXIS_DEAD) * sim::INPUT_MAX / (PAD_AXIS_FULL - PAD_AXIS_DEAD);
+  if (v > sim::INPUT_MAX) v = sim::INPUT_MAX;
+  return (int8_t)(d < 0 ? -v : v);
+}
+
+sim::Input TouchPad::poll() {
   int32_t ids[MAX_POINTS];
   int xs[MAX_POINTS], ys[MAX_POINTS];
   int n = 0;
@@ -108,7 +118,7 @@ uint8_t TouchPad::poll() {
   track(pause_, PAD_PAUSE, ids, xs, ys, n);
 
   uint8_t bits = 0;
-  dir_ = 0;
+  int8_t x = 0, y = 0;
   knobX_ = knobY_ = 0;
   if (disc_.id >= 0) {
     int dx = disc_.x - PAD_DISC.cx, dy = disc_.y - PAD_DISC.cy;
@@ -120,16 +130,11 @@ uint8_t TouchPad::poll() {
     }
     knobX_ = dx;
     knobY_ = dy;
-    if (len > PAD_DEAD_R) {
-      // Each axis on its own, so the diagonals give dash-while-turning
-      const int d = disc_.x - PAD_DISC.cx, e = disc_.y - PAD_DISC.cy;
-      if (d < -PAD_AXIS_R) dir_ |= sim::Button::LEFT;
-      if (d > PAD_AXIS_R) dir_ |= sim::Button::RIGHT;
-      if (e < -PAD_AXIS_R) dir_ |= sim::Button::UP;
-      if (e > PAD_AXIS_R) dir_ |= sim::Button::DOWN;
-    }
+    // Each axis on its own, from where the knob is, so the diagonals give
+    // dash-while-turning
+    x = discAxis(dx);
+    y = discAxis(dy);
   }
-  bits |= dir_;
   if (a_.id >= 0) bits |= sim::Button::A;
   if (b_.id >= 0) bits |= sim::Button::B;
 
@@ -138,7 +143,7 @@ uint8_t TouchPad::poll() {
   const bool pauseDown = pause_.id >= 0;
   if (pauseDown && !pausePrev_) bits |= sim::Button::PAUSE;
   pausePrev_ = pauseDown;
-  return bits;
+  return sim::Input(x, y, bits);
 }
 
 void TouchPad::drawButton(g2::Graphics2D &g, int oy, const Circle &c, bool down,

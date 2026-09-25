@@ -7,10 +7,10 @@
 // the top right corner that the web page does not need (it has a keyboard).
 //
 // The disc is a disc and not a D-pad on purpose: the direction comes from
-// the offset of the touch from its center, with left/right and up/down
-// decided separately, so dashing while turning and braking into a quick turn
-// both work. The thresholds are play.js's, as fractions of the radius
-// (ds_config.hpp).
+// the offset of the touch from its center, as two analog axes decided
+// separately, so dashing while turning and braking into a quick turn both
+// work, as hard as the thumb pushes. The thresholds are play.js's, as
+// fractions of the radius (ds_config.hpp).
 //
 // Each control captures the finger that pressed it, the way the web page's
 // pointer capture does: once the disc has a finger it keeps steering with it
@@ -23,6 +23,7 @@
 
 #include <cstdint>
 
+#include "devoursphere/sim/entities.hpp"
 #include "ds_config.hpp"
 #include "shapoco/gfx2d/gfx2d.hpp"
 
@@ -32,9 +33,9 @@ namespace g2 = shapoco::gfx2d;
 
 class TouchPad {
  public:
-  // Read the touch points and return the sim::Button bits they mean. Call
-  // once per frame, after M5.update().
-  uint8_t poll();
+  // Read the touch points and return the input they mean: the disc as the
+  // analog axes, and the buttons. Call once per frame, after M5.update().
+  devoursphere::sim::Input poll();
 
   // Draw the pad into a band of the frame (PanelOut::OverlayFn). Uses the
   // state the last poll() left, so the controls light up as they are held.
@@ -49,7 +50,6 @@ class TouchPad {
     int x = 0, y = 0;  // where it is now, in frame pixels
   };
   Grab disc_, a_, b_, pause_;
-  uint8_t dir_ = 0;      // the disc's direction bits, for the knob
   int knobX_ = 0, knobY_ = 0;
   int count_ = 0;
   bool pausePrev_ = false;  // the pause button is an edge, not a level
