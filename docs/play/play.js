@@ -410,19 +410,39 @@ function setupKeyboard(input) {
   window.addEventListener('blur', () => { input.keys = 0; });
 }
 
-// The left stick is analog: nothing within 0.15 of the center (sticks do
-// not return to exactly 0), full from 0.7 on each axis (a round gate gives
-// about 0.71 on both axes at a full diagonal, so the diagonal is a full turn
-// with a full dash). The d-pad is digital.
-const PAD_DEAD = 0.15, PAD_FULL = 0.7;
+// The left stick is analog. Its strength is the length of the stick's
+// vector: nothing within PAD_DEAD of the center (sticks do not return to
+// exactly 0), full from PAD_FULL on. Its direction is carried from the
+// round gate onto a square (the larger component becomes 1), so that the
+// stick pushed all the way on a diagonal is full on both axes: a quick turn
+// is a full turn under a full brake, and the two multiply (half of each is
+// well under half the turn). Reading each axis on its own left the
+// diagonal at about 0.7 per axis, and less on some pads. Each component of
+// the square then has a small dead zone of its own (PAD_AXIS_DEAD, the rest
+// rescaled), so that a stick pushed a few degrees off an axis does not leak
+// a weak dash or brake into a turn. The d-pad is digital.
+const PAD_DEAD = 0.1, PAD_FULL = 0.9, PAD_AXIS_DEAD = 0.15;
+
+function stickAxes(ax, ay) {
+  const len = Math.hypot(ax, ay);
+  if (len <= PAD_DEAD) return [0, 0];
+  const k = Math.min(1, (len - PAD_DEAD) / (PAD_FULL - PAD_DEAD));
+  const m = Math.max(Math.abs(ax), Math.abs(ay));
+  const axis = (c) => {
+    const a = Math.max(0, (Math.abs(c) / m - PAD_AXIS_DEAD) / (1 - PAD_AXIS_DEAD));
+    return Math.sign(c) * Math.round(a * k * AXIS_MAX);
+  };
+  return [axis(ax), axis(ay)];
+}
 
 function pollGamepad(input) {
   if (!navigator.getGamepads) return;
   let bits = 0, x = 0, y = 0;
   for (const gp of navigator.getGamepads()) {
     if (!gp) continue;
-    x = strongest(x, analogAxis(gp.axes[0] || 0, PAD_DEAD, PAD_FULL));
-    y = strongest(y, analogAxis(gp.axes[1] || 0, PAD_DEAD, PAD_FULL));
+    const [sx, sy] = stickAxes(gp.axes[0] || 0, gp.axes[1] || 0);
+    x = strongest(x, sx);
+    y = strongest(y, sy);
     const b = gp.buttons;
     const pressed = (i) => b[i] && b[i].pressed;
     if (pressed(14)) bits |= BTN_LEFT;
