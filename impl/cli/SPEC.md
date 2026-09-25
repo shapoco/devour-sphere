@@ -1,7 +1,9 @@
 # Devour Sphere (CLI 版)
 
-Linux の端末で遊ぶ Devour Sphere。半分冗談。フレームを 320x240 のフレームバッファに描き、
-それを色付きの文字に変換して端末に流す。コアプログラム (core/SPEC.md) には手を入れていない。
+概要・操作・ビルドの手順は [README.md](README.md)。この文書は実装の詳細。
+
+フレームを 320x240 のフレームバッファに描き、それを色付きの文字に変換して端末に流す。
+コアプログラム (core/SPEC.md) には手を入れていない。
 
 ## 方針
 
@@ -20,6 +22,7 @@ Linux の端末で遊ぶ Devour Sphere。半分冗談。フレームを 320x240 
 
 ```
 impl/cli/
+  README.md        概要、操作、ビルド
   SPEC.md          この文書
   Makefile         `make` で build/devoursphere を作る (cmake を呼ぶ)。`make run ARGS=...`、`make clean`
   CMakeLists.txt   独立したトップレベル。core と submodule/shapo-gfx を add_subdirectory する
@@ -30,14 +33,7 @@ impl/cli/
 
 ## ビルドと起動
 
-```sh
-cd impl/cli
-make                        # build/devoursphere
-./build/devoursphere        # そのまま遊ぶ
-./build/devoursphere --help
-```
-
-Makefile は cmake を `$(shell command -v cmake)` で探す。GNU make 自身の PATH 探索は
+手順は README.md。Makefile は cmake を `$(shell command -v cmake)` で探す。GNU make 自身の PATH 探索は
 `cmake` という名前の**ディレクトリ** (Emscripten SDK の `upstream/emscripten/cmake/`) で止まって
 "Permission denied" になるため。
 
@@ -57,17 +53,7 @@ Makefile は cmake を `$(shell command -v cmake)` で探す。GNU make 自身�
 
 ## 入力
 
-| 操作 | キー |
-|---|---|
-| 左右旋回 | ← → / A D |
-| ダッシュ / ブレーキ | ↑ / W、↓ / S |
-| A (攻撃・決定) | スペース / J L / Enter |
-| B (緊急回避) | I K / C V B N M |
-| ポーズ / 再開 | Esc / P (ポーズ画面の ↓ でミュート切り替え) |
-| 終了 | Q / Ctrl-C |
-| 再描画 | Ctrl-L (端末が乱れたとき) |
-
-WASM 版と同じ割り当てに Q / Ctrl-C と Ctrl-L を足したもの。キーはデジタルなので方向は常に最大の強さ
+割り当ては README.md。WASM 版と同じ割り当てに終了 (Q / Ctrl-C) と再描画 (Ctrl-L、端末が乱れたとき) を足したもの。キーはデジタルなので方向は常に最大の強さ
 (core 3.7 の `sim::Input` で -127 / 0 / +127)。タイトルの操作案内は既定 (PC 向け) のまま、
 ポーズ画面の案内だけ Q: QUIT を含む文字列に差し替える (`Renderer::setControlHints()`)。
 

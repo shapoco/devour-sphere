@@ -1,7 +1,7 @@
 # Devour Sphere (Xiamocon 版)
 
-[Xiamocon](https://github.com/shapoco/xiamocon) (XIAO RP2350 用のゲーム機型マザーボード)
-で core/ を動かすためのファームウェア。
+概要・入手方法・操作・ビルドの手順は [README.md](README.md)。この文書は実装の詳細。
+
 ゲームのルールと描画はすべて core/ 側にあり、ここには
 「実機へのビルド」「表示への転送」「入力」だけがある。
 
@@ -24,6 +24,7 @@ SDK からは表示転送・DMA・入力・電源管理といった足回りだ�
 
 ```
 impl/xiamocon/
+  README.md            概要、入手方法、操作、ビルド
   SPEC.md              この文書
   devoursphere/        ファームウェアのプロジェクト (ディレクトリ名 = 生成物の名前)
     CMakeLists.txt     RP2350 用 (pico-sdk。リポジトリのホストビルドとは別のトップレベル)
@@ -67,22 +68,8 @@ platformio.ini の core と ShapoGFX は `symlink://` で参照する。素の�
 
 ## ビルドと書き込み
 
-```sh
-source ~/repo/2026/xiamocon/setup.shrc   # XMC_REPO_PATH をリポジトリ側に向ける
-cd impl/xiamocon/devoursphere
+基本の手順は README.md。
 
-# XIAO RP2350
-xmc build -p rp2350_pico_sdk             # .cmake/devoursphere.uf2 を生成
-xmc run   -p rp2350_pico_sdk -d E        # ビルドして書き込み (WSL2、E: はドライブレター)
-
-# XIAO ESP32S3
-xmc build -p esp32s3_pio_arduino         # .pio/build/esp32s3_arduino/firmware.bin
-xmc run   -p esp32s3_pio_arduino -s /dev/ttyACM0
-```
-
-`-p` を省くと両方ビルドする (どちらも通る)。
-- 書き込みは Xiamocon をマスストレージモードにしてから行う
-  (Down ボタンを押しながら電源ボタンを 3 秒長押し、その後 Down を離す)。
 - 反復ビルドは `.cmake/` で `make -j` を直接叩く方が速い。
   `xmc clean` は `.cmake/` ごと消すので、fetch してビルドした picotool も捨ててしまう。
 - **PlatformIO は `lib_deps` のローカルディレクトリを `.pio/libdeps/` に*コピー*する。**
@@ -600,16 +587,7 @@ PSRAM 上の tick は 10.05ms で、RP2350 (SRAM, 250MHz) の 7.4ms に対して
 
 ## 入力
 
-| 操作 | ボタン |
-|---|---|
-| 左右旋回 | LEFT / RIGHT |
-| ダッシュ | UP |
-| ブレーキ | DOWN |
-| A (攻撃・決定) | A / Y |
-| B (緊急回避) | B |
-| ポーズ / 再開 | X |
-| ミュート切り替え | タイトル / ポーズ画面で DOWN (core が処理する) |
-| 計測オーバーレイの切り替え | FUNC、またはタイトル / ポーズ画面で UP |
+割り当ては README.md。ミュート (タイトル / ポーズ画面の DOWN) は core が処理する。
 
 方向ボタンはデジタルなので、方向は常に最大の強さ (core 3.7 の `sim::Input` で -127 / 0 / +127)。
 ボタンのビット (`sim::Button`) から `sim::Input` を作ってそのまま `tick()` に渡す。

@@ -1,7 +1,8 @@
 # Devour Sphere (PicoSystem 版)
 
-[PicoSystem](https://shop.pimoroni.com/products/picosystem) (Pimoroni の RP2040 携帯ゲーム機、
-240x240 ST7789、264KB SRAM) で core/ を動かすためのファームウェア。
+概要・入手方法・操作・ビルドの手順は [README.md](README.md)。この文書は実装の詳細。
+
+ハードウェアは RP2040 (264KB SRAM)、240x240 の ST7789。
 ゲームのルールと描画はすべて core/ 側にあり、ここには
 「クロックとボタン」「表示への転送」「フレームループ」だけがある。
 フレームループは Xiamocon 版 (impl/xiamocon/SPEC.md) と同じ構成で、
@@ -27,6 +28,7 @@ SDK から必要なのは ST7789 の初期化列、ボタンのピン、250MHz �
 
 ```
 impl/picosystem/
+  README.md            概要、入手方法、操作、ビルド
   SPEC.md              この文書
   CMakeLists.txt       pico-sdk プロジェクト (リポジトリのホストビルドとは別のトップレベル)
   pico_sdk_import.cmake  pico-sdk の external/ のコピー
@@ -53,13 +55,8 @@ impl/picosystem/
 
 ## ビルドと書き込み
 
-```sh
-cd impl/picosystem
-cmake -S . -B build -DPICO_SDK_PATH=~/pico/pico-sdk
-cmake --build build -j                  # build/devoursphere.uf2
-```
-
-`build.sh` は上の 2 行をまとめたもの (PICO_SDK_PATH は環境変数か既存の build/ のキャッシュに任せる)。
+手順は README.md。`build.sh` は cmake の構成とビルドの 2 行をまとめたもの
+(PICO_SDK_PATH は環境変数か既存の build/ のキャッシュに任せる)。
 
 - 効果音のパック (build/se_pwm.bin) は CMake がビルド時に core/tools/pack_se.py で
   assets/se/*.wav から作るので、**ffmpeg と python3 が要る**。`make_release.sh` も同様。
@@ -68,8 +65,6 @@ cmake --build build -j                  # build/devoursphere.uf2
   (無ければ SDK が GitHub から取得してビルドする)。
 - ボードは `CMakeLists.txt` が `PICO_BOARD=pimoroni_picosystem` に固定している
   (RP2040、フラッシュ 16MB、フラッシュ分周 2)。
-- 書き込みは PicoSystem を BOOTSEL モードにして .uf2 をコピーする
-  (X を押しながら電源を入れる)。
 - `make_release.sh` はこのターゲットも `picosystem/` に含める。
 
 ## メモリ配分
@@ -417,16 +412,8 @@ f2D        6.0     5.7     7.1
 ボタンは GPIO 16〜23、内部プルアップでアクティブ Low。フレームの先頭で `gpio_get_all()` を
 1 回読む。
 
-| 操作 | ボタン |
-|---|---|
-| 左右旋回 | LEFT / RIGHT |
-| ダッシュ | UP |
-| ブレーキ | DOWN |
-| A (攻撃・決定) | A / Y |
-| B (緊急回避) | B |
-| ポーズ / 再開 | X |
-| ミュート切り替え | タイトル / ポーズ画面で DOWN (core が処理する) |
-| 計測オーバーレイの切り替え (非表示 → FPS のみ → 全部) | タイトル / ポーズ画面で UP (押した瞬間) |
+割り当ては README.md (Xiamocon 版と同じ。FUNC ボタンは無い)。計測オーバーレイの切り替え
+(非表示 → FPS のみ → 全部) はタイトル / ポーズ画面で UP を押した瞬間。ミュートは同じ画面の DOWN で、core が処理する。
 
 方向ボタンはデジタルなので、方向は常に最大の強さ (core 3.7 の `sim::Input` で -127 / 0 / +127)。
 ボタンのビット (`sim::Button`) から `sim::Input` を作ってそのまま `tick()` に渡す。

@@ -1,7 +1,8 @@
 # Devour Sphere (ESPboy 版)
 
-[ESPboy](https://www.espboy.com/) (ESP8266 の携帯ゲーム機。WeMos D1 mini、128x128 の ST7735、
-MCP23017 経由の 8 ボタン、スピーカー) で core/ を動かすためのファームウェア。
+概要・入手方法・操作・ビルドの手順は [README.md](README.md)。この文書は実装の詳細。
+
+ハードウェアは WeMos D1 mini (ESP8266)、128x128 の ST7735、MCP23017 経由の 8 ボタン、スピーカー。
 ゲームのルールと描画はすべて core/ 側にあり、ここには「クロックとボタン」「表示への転送」
 「フレームループ」「音」だけがある。core は **縮小構成** (後述) でビルドする: このチップの RAM
 (DRAM 96KB、外部 RAM なし) と CPU (160MHz のシングルコア、FPU も除算器も無し) には
@@ -29,6 +30,7 @@ WiFi スタックの静的バッファを持ち、リンカに見せる DRAM も
 
 ```
 impl/espboy/
+  README.md                  概要、入手方法、操作、ビルド
   SPEC.md                    この文書
   devoursphere/
     CMakeLists.txt           RTOS SDK のプロジェクト (project.cmake を include)
@@ -55,13 +57,9 @@ Xiamocon 版のものをそのディレクトリから直接コンパイルし�
 
 ## ビルドと書き込み
 
-```sh
-cd impl/espboy/devoursphere
-./build.sh                    # build/devoursphere.bin (+ bootloader, partition-table)
-                              # と 3 つを 1 つにした build/devoursphere.factory.bin
-./flash.sh [/dev/ttyUSB0]     # esptool で書き込み (WeMos の CH340 経由)
-./monitor.sh [/dev/ttyUSB0]   # 起動ログ (メモリの実数)
-```
+手順 (`build.sh` / `flash.sh` / `monitor.sh`) は README.md。`build.sh` は build/devoursphere.bin
+(+ bootloader, partition-table) と、3 つを 1 つにした build/devoursphere.factory.bin を作る。
+`flash.sh` は WeMos の CH340 経由で esptool を呼び、`monitor.sh` は起動ログ (メモリの実数) を見る。
 
 - `IDF_PATH` は環境変数を優先し、未設定なら `${HOME}/esp/ESP8266_RTOS_SDK` (`env.sh`)。
 - ツールチェーンと Python 環境は SDK の `install.sh` が `~/.espressif` に置くもの。
@@ -192,16 +190,8 @@ Low に固定する (`input::init()`)。以後の SPI はすべて D/C だけで
 MCP23017 (I2C 0x20、SDA GPIO4 / SCL GPIO5) のポート A に 8 ボタン (内部プルアップ、押すと 0)。
 SDK の I2C はビットバンギングで、1 回のレジスタ読み (GPIOA) は 0.3ms 程度、フレームに 1 回読む。
 
-| 操作 | ボタン |
-|---|---|
-| 左右旋回 | LEFT / RIGHT |
-| ダッシュ | UP |
-| ブレーキ | DOWN |
-| A (攻撃・決定) | A (ACT) |
-| B (緊急回避) | B (ESC) |
-| ポーズ / 再開 | 左肩 (LFT) |
-| ミュート切り替え | タイトル / ポーズ画面で DOWN (core が処理する) |
-| 計測オーバーレイの切り替え (非表示 → FPS のみ → 全部) | タイトル / ポーズ画面で右肩 (RGT、押した瞬間) |
+割り当ては README.md。ポーズは左肩 (LFT)、計測オーバーレイの切り替え (非表示 → FPS のみ → 全部) は
+タイトル / ポーズ画面で右肩 (RGT) を押した瞬間。ミュートはタイトル / ポーズ画面の DOWN で、core が処理する。
 
 方向ボタンはデジタルなので、方向は常に最大の強さ (core 3.7 の `sim::Input` で -127 / 0 / +127)。
 ボタンのビット (`sim::Button`) から `sim::Input` を作ってそのまま `tick()` に渡す。

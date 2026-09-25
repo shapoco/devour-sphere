@@ -1,6 +1,7 @@
 # Devour Sphere (WASM 版)
 
-ブラウザ上でコアプログラム (core/) を動かすためのフロントエンド。
+概要・操作・ビルドの手順は [README.md](README.md)。この文書は実装の詳細。
+
 ゲームのルールと描画はすべて core/ 側にあり、ここには
 「WebAssembly へのビルド」「ブラウザとの結線」「公開用ページ」だけがある。
 
@@ -20,6 +21,7 @@
 
 ```
 impl/wasm/
+  README.md        概要、操作、ビルド
   SPEC.md          この文書
   main.cpp         C API (WASM エクスポート) とネイティブ確認用の main()
   Makefile         Emscripten ビルド (docs/play/devoursphere.wasm と se.bin を生成)
@@ -43,12 +45,7 @@ docs/
 
 ## ビルド
 
-```sh
-cd impl/wasm
-make            # emcc と ffmpeg が必要。docs/play/devoursphere.wasm と se.bin を生成する
-make se         # 効果音のパック (docs/play/se.bin) だけ作り直す
-make serve      # docs/ を http://localhost:52980/ で配信 (fetch は file:// では動かない)
-```
+手順は README.md。`make` の他に、効果音のパック (docs/play/se.bin) だけ作り直す `make se` がある。
 
 - Emscripten の STANDALONE_WASM モードでビルドする。JS グルーコードは生成せず、
   wasi_snapshot_preview1 のスタブを渡して `WebAssembly.instantiate()` で直接読み込む。
@@ -57,14 +54,8 @@ make serve      # docs/ を http://localhost:52980/ で配信 (fetch は file://
 - `-sALLOW_MEMORY_GROWTH=1` を指定しているため、JS 側は毎フレーム
   `ex.memory.buffer` からフレームバッファのビューを作り直す。
 
-ネイティブ版は CMake のトップレベルからビルドされる:
-
-```sh
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build
-./build/impl/wasm/devoursphere_native [level] [script] [out.ppm] [auto] [seed]
-```
-
+ネイティブ版は CMake のトップレベルからビルドされる (README.md)。
+`build/impl/wasm/devoursphere_native [level] [script] [out.ppm] [auto] [seed]` の
 `level` が 0 ならタイトル画面、1 以上ならそのレベルのスフィアで開始する。
 `script` は「tick 数 x ボタンビット」をコンマで並べた入力列 (例: `5x0,1x16,300x2`。
 数値だけなら入力なしの tick 数)、`auto` を 1 にすると AI がプレイヤーを操作する。
@@ -168,15 +159,8 @@ URL パラメータ (デバッグ用):
 
 ## 入力
 
-| 操作 | キーボード | ゲームパッド | 仮想パッド |
-|---|---|---|---|
-| 左右旋回 | ← → / A D | 左スティック X (アナログ)、十字キー | 方向ディスクの左右 (アナログ) |
-| ダッシュ | ↑ / W | 左スティック上 (アナログ)、十字キー上 | 方向ディスクの上 (アナログ) |
-| ブレーキ | ↓ / S | 左スティック下 (アナログ)、十字キー下 | 方向ディスクの下 (アナログ) |
-| A (攻撃・決定) | スペース / J L / Enter | ボタン 0, 2, 3, 7 | A ボタン |
-| B (緊急回避) | I K / C V B N M (スペースの隣) | ボタン 1, 4, 5 (B とショルダー) | B ボタン |
-| ポーズ / 再開 | Esc / P | Start (ボタン 9) | (無し) |
-| ミュート切り替え | タイトル / ポーズ画面で ↓ (ツールバーの「サウンド」ボタンでも) | 同左 | 同左 |
+割り当ては README.md の表。B (緊急回避) のキーはスペースの隣に並ぶもの (I K / C V B N M)、
+ゲームパッドのボタン番号は標準マッピングのもの (A は 0, 2, 3, 7、B は 1, 4, 5、ポーズは Start = 9)。
 
 - キーは `KeyboardEvent.code` で判定し、ゲームに使うキーは `preventDefault()` する
   (スペースや矢印でページがスクロールしない)。ウィンドウがフォーカスを失ったら全キーを離す。
@@ -221,7 +205,7 @@ URL パラメータ (デバッグ用):
   文言を `lang="ja"` / `lang="en"` 付きで置き、`<head>` の最初のスクリプトが `<html>` に `ja` / `en` クラスと
   `lang` を付け、CSS (`html.ja [lang="en"], html.en [lang="ja"] { display: none }`) で片方だけ見せる
   (docs/index.html も同じ)。play.js が書く文字列 (サウンドボタンのラベル) は同じ判定で切り替える。
-  操作説明の段落は README の操作表と同じ内容 (回避、ポーズ、ミュート、ゲームパッドの割り当てを含む) に保つ。
+  操作説明の段落は impl/wasm/README.md の操作表と同じ内容 (回避、ポーズ、ミュート、ゲームパッドの割り当てを含む) に保つ。
 - ページのメタデータ: 両ページの `<head>` に `<meta name="description">`、favicon (`docs/favicon.ico` と
   高解像度用の `play/icon-512.png`)、OGP (`og:title` / `og:description` / `og:url` / `og:image` など) と
   `twitter:card` = `summary_large_image` (X で大きな画像として表示させる) を置く。`og:url` と `og:image` は

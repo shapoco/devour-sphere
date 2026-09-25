@@ -1,8 +1,9 @@
 # Devour Sphere (M5StickS3 版)
 
-[M5StickS3](https://docs.m5stack.com/en/core/M5StickS3) (ESP32-S3-PICO-1-N8R8、
-1.14 インチ 135x240 の ST7789、BMI270、ES8311 + 1W スピーカー、キー 2 個) で core/ を
-動かすためのファームウェア。ゲームのルールと描画はすべて core/ 側にあり、
+概要・入手方法・操作・ビルドの手順は [README.md](README.md)。この文書は実装の詳細。
+
+ハードウェアは ESP32-S3-PICO-1-N8R8、1.14 インチ 135x240 の ST7789、BMI270、ES8311 + 1W スピーカー、キー 2 個。
+ゲームのルールと描画はすべて core/ 側にあり、
 ここには「実機へのビルド」「表示への転送」「傾きの読み取り」「音」だけがある。
 
 M5Unified / M5GFX は**足回りだけ**を借りる (PMIC とパネルの起動、SPI バス、BMI270、
@@ -28,6 +29,7 @@ M5GFX の描画 API は起動画面でしか使わない。M5Tab5 版と同じ�
 
 ```
 impl/m5sticks3/
+  README.md            概要、入手方法、操作、ビルド
   SPEC.md              この文書
   devoursphere/        ESP-IDF プロジェクト
     CMakeLists.txt     トップレベル
@@ -61,12 +63,7 @@ Xiamocon 版と共有しているもの (そちらの `include/` を include パ
 
 ## ビルドと書き込み
 
-```sh
-cd impl/m5sticks3/devoursphere
-./build.sh                       # DS_IDF_PATH 既定 ${HOME}/esp/5.5
-./run.sh /dev/ttyACM0            # ビルドして書き込み (ポート省略可)
-./monitor.sh                     # シリアルログ
-```
+手順 (`build.sh` / `run.sh` / `monitor.sh`) は README.md。
 
 - **ESP-IDF v5.5.x**。M5GFX / M5Unified の ESP-IDF ビルドが検証されているのが 5.5 系まで。
 - `managed_components/` と `sdkconfig` は生成物なので git 管理外。

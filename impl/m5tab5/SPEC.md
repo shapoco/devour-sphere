@@ -1,7 +1,8 @@
 # Devour Sphere (M5Tab5 版)
 
-[M5Stack Tab5](https://docs.m5stack.com/en/core/Tab5) (ESP32-P4 の 5 インチタブレット型開発機)
-で core/ を動かすためのファームウェア。ゲームのルールと描画はすべて core/ 側にあり、
+概要・入手方法・操作・ビルドの手順は [README.md](README.md)。この文書は実装の詳細。
+
+ゲームのルールと描画はすべて core/ 側にあり、
 ここには「実機へのビルド」「表示への転送」「タッチ入力」「音」だけがある。
 
 M5Unified / M5GFX は**足回りだけ**を借りる (DSI パネルの起動、タッチ、スピーカー、電源)。
@@ -26,6 +27,7 @@ Xiamocon 版が Xiamocon SDK と結んでいるのと同じ取り決め。
 
 ```
 impl/m5tab5/
+  README.md            概要、入手方法、操作、ビルド
   SPEC.md              この文書
   devoursphere/        ESP-IDF プロジェクト
     CMakeLists.txt     トップレベル
@@ -58,12 +60,7 @@ Xiamocon 版と共有しているもの (そちらの `include/` を include パ
 
 ## ビルドと書き込み
 
-```sh
-cd impl/m5tab5/devoursphere
-./build.sh                       # DS_IDF_PATH 既定 ${HOME}/esp/5.5
-./run.sh /dev/ttyACM0            # ビルドして書き込み (ポート省略可)
-./monitor.sh                     # シリアルログ
-```
+手順 (`build.sh` / `run.sh` / `monitor.sh`) は README.md。
 
 - **ESP-IDF v5.5.x が必要**。PPA のドライバ (`esp_driver_ppa`) は 5.4 以降にしかなく、
   M5GFX / M5Unified の ESP-IDF ビルドは 5.5 系までしか検証されていない (6.0 は不可)。
@@ -261,15 +258,8 @@ tick で眠れば 1kHz でも 1 フレームのうちの無視できない時間
 
 ## 入力
 
-| 操作 | 仮想パッド |
-|---|---|
-| 左右旋回 | 方向ディスクの左右 (アナログ) |
-| ダッシュ / ブレーキ | 方向ディスクの上 / 下 (アナログ) |
-| A (攻撃・決定) | 右下の A ボタン |
-| B (緊急回避) | A の左上の小さい丸 |
-| ポーズ / 再開 | 右上隅のポーズボタン |
-| ミュート切り替え | タイトル / ポーズ画面でディスクの下 (core が処理する) |
-| 計測オーバーレイ | タイトル / ポーズ画面でディスクの上 |
+割り当ては README.md (左下の方向ディスク、右下の A、その左上の小さい丸が B、右上隅のポーズボタン)。
+ミュート (タイトル / ポーズ画面でディスクの下) は core が処理する。
 
 - 配置とサイズは WASM 版の横画面レイアウト (play.js と play/index.html) をそのまま
   持ってきた: ディスク 150px、A 96px、B 72px を 360px の高さに対して。

@@ -14,10 +14,7 @@ and fonts.
 
 - **Play:** https://shapoco.github.io/devour-sphere/play/
 - **Specifications (Japanese):** [SPEC.md](SPEC.md), [core/SPEC.md](core/SPEC.md),
-  [impl/wasm/SPEC.md](impl/wasm/SPEC.md), [impl/xiamocon/SPEC.md](impl/xiamocon/SPEC.md),
-  [impl/picosystem/SPEC.md](impl/picosystem/SPEC.md), [impl/m5tab5/SPEC.md](impl/m5tab5/SPEC.md),
-  [impl/m5sticks3/SPEC.md](impl/m5sticks3/SPEC.md), [impl/espboy/SPEC.md](impl/espboy/SPEC.md),
-  [impl/cli/SPEC.md](impl/cli/SPEC.md)
+  and a SPEC.md in each port's directory (see [Ports](#ports))
 
 ## Download
 
@@ -30,92 +27,51 @@ and fonts.
   the README.txt inside says how to flash each one.
 - **Browser:** nothing to download, just follow the Play link above.
 
+## Ports
+
+Each port's README says how to flash it, which button does what, and how to
+build it.
+
+| Device | Chip | Directory |
+|---|---|---|
+| Browser | WebAssembly | [impl/wasm/](impl/wasm/README.md) |
+| [Xiamocon](https://github.com/shapoco/xiamocon) | RP2350 / ESP32S3 | [impl/xiamocon/](impl/xiamocon/README.md) |
+| [PicoSystem](https://shop.pimoroni.com/products/picosystem) | RP2040 | [impl/picosystem/](impl/picosystem/README.md) |
+| [M5Stack Tab5](https://docs.m5stack.com/en/core/Tab5) | ESP32-P4 | [impl/m5tab5/](impl/m5tab5/README.md) |
+| [M5StickS3](https://docs.m5stack.com/en/core/M5StickS3) | ESP32-S3 | [impl/m5sticks3/](impl/m5sticks3/README.md) |
+| [ESPboy](https://www.espboy.com/) | ESP8266 | [impl/espboy/](impl/espboy/README.md) |
+| Terminal | any POSIX | [impl/cli/](impl/cli/README.md) |
+
 ## Controls
 
-| Action | Keyboard | Xiamocon | PicoSystem |
-|---|---|---|---|
-| Turn | ← → / A D | ← → | ← → |
-| Dash (costs health) | ↑ / W | ↑ | ↑ |
-| Brake (turns faster) | ↓ / S | ↓ | ↓ |
-| Fire / confirm | Space / J L | A / Y | A / Y |
-| Emergency dodge (0.3 s invincible barrel roll, once every 3 s) | I K / C V B N M | B | B |
-| Pause / resume | Esc / P | X | X |
-| Toggle mute | ↓ on the title or pause screen | same | same |
-| Toggle the timing overlay | (none) | ↑ on the title or pause screen, or FUNC | ↑ on the title or pause screen |
-| Benchmark (results: A next page, B close) | hold a B key for 3 s on the title | hold B for 3 s on the title | same |
+Every port has the same actions; how they are mapped to its keys, pad or
+tilt is in its README.
 
-The browser version also takes a gamepad and touch input (an on-screen pad).
-The gamepad's left stick, the on-screen direction disc and the M5StickS3's tilt
-are analog: how far you push sets how hard you turn, dash or brake.
-The M5Tab5 version is played with that same landscape pad layout: a direction
-disc in the bottom left, A in the bottom right, the dodge button above and left
-of it, and pause in the top right corner.
+| Action | |
+|---|---|
+| Turn | left / right |
+| Dash (costs health) | up |
+| Brake (turns faster) | down |
+| Fire / confirm | A |
+| Emergency dodge | B: a 0.3 s invincible barrel roll, once every 3 s |
+| Pause / resume | a pause button |
+| Toggle mute | down on the title or pause screen |
+| Benchmark | hold B for 3 s on the title (results: A next page, B close) |
 
-The M5StickS3 version is played by tipping the stick itself. Whichever way you
-lay it on its side at start up becomes the neutral attitude; tipping it from
-there steers, tipping its far edge away dashes and tipping it near brakes
-(full strength at 7 degrees sideways, 10 degrees forward or back).
-KEY1 fires, KEY2 is the emergency dodge, shaking the stick pauses, and KEY2 on
-the title or pause screen shows the timing overlay.
+Analog inputs (a gamepad stick, an on-screen disc, tilt) set how hard you
+turn, dash or brake by how far they are pushed.
 
 ## Build
+
+The core, its tests and the native tools build on the host with CMake:
 
 ```sh
 git submodule update --init
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build && ctest --test-dir build
-make -C impl/wasm        # the WASM version (Emscripten)
-./launch_web_server.sh   # http://localhost:52980/play/
 ```
 
-For [Xiamocon](https://github.com/shapoco/xiamocon) (a XIAO RP2350 / ESP32S3 handheld):
-
-```sh
-source ~/path/to/xiamocon/setup.shrc
-cd impl/xiamocon/devoursphere
-xmc build                      # both targets
-```
-
-For PicoSystem (RP2040), with pico-sdk alone:
-
-```sh
-cd impl/picosystem
-cmake -S . -B build -DPICO_SDK_PATH=~/path/to/pico-sdk
-cmake --build build -j         # build/devoursphere.uf2 (packing the sound effects needs ffmpeg and python3)
-```
-
-For [M5Stack Tab5](https://docs.m5stack.com/en/core/Tab5) (ESP32-P4), with ESP-IDF v5.5.x:
-
-```sh
-cd impl/m5tab5/devoursphere
-./build.sh                     # DS_IDF_PATH defaults to ${HOME}/esp/5.5
-./run.sh /dev/ttyACM0          # build and flash (the port may be omitted)
-```
-
-For [M5StickS3](https://docs.m5stack.com/en/core/M5StickS3) (ESP32-S3), with
-ESP-IDF v5.5.x:
-
-```sh
-cd impl/m5sticks3/devoursphere
-./build.sh                     # DS_IDF_PATH defaults to ${HOME}/esp/5.5
-./run.sh /dev/ttyACM0          # build and flash (the port may be omitted)
-```
-
-For [ESPboy](https://www.espboy.com/) (ESP8266), with ESP8266_RTOS_SDK v3.4
-(not Arduino; see [impl/espboy/SPEC.md](impl/espboy/SPEC.md) for the toolchain):
-
-```sh
-cd impl/espboy/devoursphere
-./build.sh                     # IDF_PATH defaults to ${HOME}/esp/ESP8266_RTOS_SDK
-./flash.sh /dev/ttyUSB0        # esptool over the WeMos D1 mini's USB serial
-```
-
-For a terminal (half a joke: colored ASCII art; C++17 and cmake are all it needs):
-
-```sh
-cd impl/cli
-make && ./build/devoursphere   # also --mode=braille / --mode=half (see --help)
-```
+Each port is built in its own directory: see its README.
 
 ## How it is built
 
@@ -267,10 +223,10 @@ Knobs for when it does not fit or does not keep up:
 
 If you get Devour Sphere running on a new commercial device or on open-source
 hardware, please send a pull request. A directory `impl/<device>/` with the
-port's code and a SPEC.md on what you learned about the machine (how to build
-it, how the input and the display are done, what bit you, and benchmark results
-if you can) would be ideal. The benchmark starts when B is held for three
-seconds on the title screen.
+port's code, a README.md (how to flash it, the controls, how to build it) and
+a SPEC.md on what you learned about the machine (how the input and the display
+are done, what bit you, and benchmark results if you can) would be ideal.
+The benchmark starts when B is held for three seconds on the title screen.
 
 ## License
 

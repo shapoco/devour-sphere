@@ -88,13 +88,13 @@ README.md            紹介 (英語)
 README.ja.md         紹介 (日本語)
 CMakeLists.txt       ネイティブビルド (コア、テスト、確認用フロントエンド)
 core/                コアプログラム (core/SPEC.md)
-impl/wasm/           WASM 版 (impl/wasm/SPEC.md)
-impl/xiamocon/       Xiamocon 版 (impl/xiamocon/SPEC.md)
-impl/picosystem/     PicoSystem 版 (impl/picosystem/SPEC.md)
-impl/m5tab5/         M5Tab5 版 (impl/m5tab5/SPEC.md)
-impl/m5sticks3/      M5StickS3 版 (impl/m5sticks3/SPEC.md)
-impl/espboy/         ESPboy 版 (impl/espboy/SPEC.md)
-impl/cli/            CLI 版 (impl/cli/SPEC.md)
+impl/wasm/           WASM 版 (impl/wasm/README.md、SPEC.md)
+impl/xiamocon/       Xiamocon 版 (impl/xiamocon/README.md、SPEC.md)
+impl/picosystem/     PicoSystem 版 (impl/picosystem/README.md、SPEC.md)
+impl/m5tab5/         M5Tab5 版 (impl/m5tab5/README.md、SPEC.md)
+impl/m5sticks3/      M5StickS3 版 (impl/m5sticks3/README.md、SPEC.md)
+impl/espboy/         ESPboy 版 (impl/espboy/README.md、SPEC.md)
+impl/cli/            CLI 版 (impl/cli/README.md、SPEC.md)
 docs/                公開用の静的サイト (docs/play/ がゲーム)
 assets/se/           効果音の素材 (効果音ラボ、assets/se/README.md)
 assets/release/      リリース zip にそのまま入れるファイル (README.txt、upload.sh)
@@ -116,39 +116,8 @@ make -C impl/wasm                                # WASM 版 (emcc が必要)
 ./launch_web_server.sh                           # http://localhost:52980/play/
 ```
 
-Xiamocon 版は pico-sdk を使う別のトップレベルのビルドになる (Xiamocon SDK が必要):
-
-```sh
-source ~/repo/2026/xiamocon/setup.shrc
-cd impl/xiamocon/devoursphere
-xmc build                                        # RP2350 と ESP32S3 の両方
-xmc build -p rp2350_pico_sdk                     # .cmake/devoursphere.uf2 だけ
-```
-
-PicoSystem 版も pico-sdk を使う別のトップレベルのビルド (Xiamocon SDK は不要):
-
-```sh
-cd impl/picosystem
-cmake -S . -B build -DPICO_SDK_PATH=~/pico/pico-sdk
-cmake --build build -j                           # build/devoursphere.uf2
-```
-
-M5Tab5 版と M5StickS3 版は ESP-IDF v5.5.x のプロジェクト
-(`DS_IDF_PATH` の既定は `${HOME}/esp/5.5`):
-
-```sh
-cd impl/m5tab5/devoursphere                      # または impl/m5sticks3/devoursphere
-./build.sh                                       # build/devoursphere.bin
-./run.sh /dev/ttyACM0                            # ビルドして書き込み
-```
-
-CLI 版は独立したトップレベルで、C++17 と cmake があれば作れる:
-
-```sh
-cd impl/cli
-make                                             # build/devoursphere
-./build/devoursphere                             # 端末で遊ぶ (--help でオプション)
-```
+WASM 版以外の各版は、それぞれのディレクトリの独立したトップレベルでビルドする。
+手順は各版の README.md (impl/<版>/README.md)、注意点は同じ場所の SPEC.md。
 
 C/C++ のコードは .clang-format (ShapoGFX と同じ設定) で整形する。
 

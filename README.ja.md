@@ -12,11 +12,8 @@
 線・点プリミティブ、2D 描画とフォント) はすべて ShapoGFX で行っている。
 
 - **遊ぶ:** https://shapoco.github.io/devour-sphere/play/
-- **仕様:** [SPEC.md](SPEC.md), [core/SPEC.md](core/SPEC.md),
-  [impl/wasm/SPEC.md](impl/wasm/SPEC.md), [impl/xiamocon/SPEC.md](impl/xiamocon/SPEC.md),
-  [impl/picosystem/SPEC.md](impl/picosystem/SPEC.md), [impl/m5tab5/SPEC.md](impl/m5tab5/SPEC.md),
-  [impl/m5sticks3/SPEC.md](impl/m5sticks3/SPEC.md), [impl/espboy/SPEC.md](impl/espboy/SPEC.md),
-  [impl/cli/SPEC.md](impl/cli/SPEC.md)
+- **仕様:** [SPEC.md](SPEC.md)、[core/SPEC.md](core/SPEC.md)、
+  各移植のディレクトリの SPEC.md ([移植](#移植) を参照)
 
 ## ダウンロード
 
@@ -27,88 +24,49 @@
   (書き込み方は zip 内の README.txt)。
 - **ブラウザ版:** ダウンロード不要。上の「遊ぶ」のリンクから。
 
+## 移植
+
+書き込み方、操作の割り当て、ビルド手順は各移植の README (英語) にあります。
+
+| デバイス | チップ | ディレクトリ |
+|---|---|---|
+| ブラウザ | WebAssembly | [impl/wasm/](impl/wasm/README.md) |
+| [Xiamocon](https://github.com/shapoco/xiamocon) | RP2350 / ESP32S3 | [impl/xiamocon/](impl/xiamocon/README.md) |
+| [PicoSystem](https://shop.pimoroni.com/products/picosystem) | RP2040 | [impl/picosystem/](impl/picosystem/README.md) |
+| [M5Stack Tab5](https://docs.m5stack.com/en/core/Tab5) | ESP32-P4 | [impl/m5tab5/](impl/m5tab5/README.md) |
+| [M5StickS3](https://docs.m5stack.com/en/core/M5StickS3) | ESP32-S3 | [impl/m5sticks3/](impl/m5sticks3/README.md) |
+| [ESPboy](https://www.espboy.com/) | ESP8266 | [impl/espboy/](impl/espboy/README.md) |
+| 端末 | POSIX | [impl/cli/](impl/cli/README.md) |
+
 ## 操作
 
-| 操作 | キー | Xiamocon | PicoSystem |
-|---|---|---|---|
-| 旋回 | ← → / A D | ← → | ← → |
-| ダッシュ (体力を消費) | ↑ / W | ↑ | ↑ |
-| ブレーキ (旋回が速くなる) | ↓ / S | ↓ | ↓ |
-| 攻撃・決定 | スペース / J L | A / Y | A / Y |
-| 緊急回避 (0.3 秒無敵のバレルロール、3 秒に 1 回) | I K / C V B N M | B | B |
-| ポーズ / 再開 | Esc / P | X | X |
-| ミュート切り替え | タイトル / ポーズ画面で ↓ | 同左 | 同左 |
-| 計測表示の切り替え | (なし) | タイトル / ポーズ画面で ↑、または FUNC | タイトル / ポーズ画面で ↑ |
-| ベンチマーク (結果は A で次のページ、B で閉じる) | タイトル画面で B のキーを 3 秒 | タイトル画面で B を 3 秒 | 同左 |
+操作の種類はどの版も同じです。キー・仮想パッド・傾きへの割り当ては各移植の README を見てください。
 
-ブラウザ版はゲームパッドとタッチ操作 (仮想パッド) にも対応。
-ゲームパッドの左スティック、仮想パッドの方向ディスク、M5StickS3 の傾きはアナログで、
+| 操作 | |
+|---|---|
+| 旋回 | 左右 |
+| ダッシュ (体力を消費) | 上 |
+| ブレーキ (旋回が速くなる) | 下 |
+| 攻撃・決定 | A |
+| 緊急回避 | B (0.3 秒無敵のバレルロール、3 秒に 1 回) |
+| ポーズ / 再開 | ポーズボタン |
+| ミュート切り替え | タイトル / ポーズ画面で下 |
+| ベンチマーク | タイトル画面で B を 3 秒 (結果は A で次のページ、B で閉じる) |
+
+アナログの入力 (ゲームパッドのスティック、仮想パッドの方向ディスク、傾き) は、
 倒した量に応じて旋回・ダッシュ・ブレーキの強さが変わる。
-M5Tab5 版はブラウザ版の横画面と同じ配置の仮想パッドで遊ぶ
-(左下の方向ディスク、右下の A、その左上の回避ボタン、右上隅のポーズ)。
-
-M5StickS3 版は本体を倒して遊ぶ。起動時に横倒しにした姿勢が基準になり、
-そこから傾けた方向が方向の入力 (奥に倒すとダッシュ、手前でブレーキ、左右 7 度・前後 10 度で最大)。
-KEY1 が攻撃、KEY2 が緊急回避、本体を振るとポーズ、
-計測表示は タイトル / ポーズ画面で KEY2。
 
 ## ビルド
+
+コア、テスト、確認用のネイティブツールはホストの CMake でビルドする:
 
 ```sh
 git submodule update --init
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build && ctest --test-dir build
-make -C impl/wasm        # WASM 版 (Emscripten)
-./launch_web_server.sh   # http://localhost:52980/play/
 ```
 
-実機 ([Xiamocon](https://github.com/shapoco/xiamocon) / XIAO RP2350・ESP32S3) 版:
-
-```sh
-source ~/path/to/xiamocon/setup.shrc
-cd impl/xiamocon/devoursphere
-xmc build                      # 両方のターゲット
-```
-
-PicoSystem (RP2040) 版 (pico-sdk のみ):
-
-```sh
-cd impl/picosystem
-cmake -S . -B build -DPICO_SDK_PATH=~/path/to/pico-sdk
-cmake --build build -j         # build/devoursphere.uf2 (効果音のパックに ffmpeg と python3 が要る)
-```
-
-[M5Stack Tab5](https://docs.m5stack.com/en/core/Tab5) (ESP32-P4) 版 (ESP-IDF v5.5.x):
-
-```sh
-cd impl/m5tab5/devoursphere
-./build.sh                     # DS_IDF_PATH 既定 ${HOME}/esp/5.5
-./run.sh /dev/ttyACM0          # ビルドして書き込み (ポート省略可)
-```
-
-[M5StickS3](https://docs.m5stack.com/en/core/M5StickS3) (ESP32-S3) 版 (ESP-IDF v5.5.x):
-
-```sh
-cd impl/m5sticks3/devoursphere
-./build.sh                     # DS_IDF_PATH 既定 ${HOME}/esp/5.5
-./run.sh /dev/ttyACM0          # ビルドして書き込み (ポート省略可)
-```
-
-[ESPboy](https://www.espboy.com/) (ESP8266) 版 (ESP8266_RTOS_SDK v3.4。Arduino ではない。
-ツールチェーンは [impl/espboy/SPEC.md](impl/espboy/SPEC.md)):
-
-```sh
-cd impl/espboy/devoursphere
-./build.sh                     # IDF_PATH 既定 ${HOME}/esp/ESP8266_RTOS_SDK
-./flash.sh /dev/ttyUSB0        # WeMos D1 mini の USB シリアル経由で esptool
-```
-
-端末版 (半分冗談。色付きの ASCII アートで遊ぶ。C++17 と cmake だけ):
-
-```sh
-cd impl/cli
-make && ./build/devoursphere   # --mode=braille / --mode=half もある (--help)
-```
+各移植はそれぞれのディレクトリでビルドする (各 README を参照)。
 
 ## 実装
 
@@ -242,8 +200,9 @@ tick のたびに `pollEffects()` を呼んでください (tick の出すイベ
 ### 移植を募集しています
 
 新しい市販のデバイスや OSS ハードウェアで Devour Sphere が動いたら、ぜひプルリクエストをください。
-`impl/<デバイス名>/` に移植側のコードと、その機種について分かったこと (ビルドの手順、入力と表示の
-やり方、ハマった点、できればベンチマークの結果) をまとめた SPEC.md を置いてもらえると助かります。
+`impl/<デバイス名>/` に移植側のコードと、README.md (書き込み方、操作、ビルドの手順) と、
+その機種について分かったこと (入力と表示のやり方、ハマった点、できればベンチマークの結果) を
+まとめた SPEC.md を置いてもらえると助かります。
 ベンチマークはタイトル画面で B を 3 秒押すと始まります。
 
 ## License
