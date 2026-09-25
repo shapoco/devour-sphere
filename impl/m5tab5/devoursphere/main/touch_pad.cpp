@@ -2,6 +2,8 @@
 
 #include <M5Unified.h>
 
+#include <cmath>
+
 #include "devoursphere/render/renderer.hpp"
 #include "devoursphere/sim/game.hpp"
 #include "shapoco/gfx2d/fonts.hpp"
@@ -79,14 +81,31 @@ void TouchPad::track(Grab &g, const Circle &c, const int32_t *ids,
   }
 }
 
-// One axis of the disc (frame pixels from its center) as -127..127: 0 up to
-// PAD_AXIS_DEAD, full from PAD_AXIS_FULL, linear in between
-static int8_t discAxis(int d) {
-  const int a = d < 0 ? -d : d;
-  if (a <= PAD_AXIS_DEAD) return 0;
-  int v = (a - PAD_AXIS_DEAD) * sim::INPUT_MAX / (PAD_AXIS_FULL - PAD_AXIS_DEAD);
-  if (v > sim::INPUT_MAX) v = sim::INPUT_MAX;
-  return (int8_t)(d < 0 ? -v : v);
+// The knob's offset (frame pixels from the center) as the two axes of
+// sim::Input, the way play.js's roundAxes() reads the web page's disc and a
+// gamepad's stick. The strength is the distance: nothing up to PAD_DEAD_R,
+// full from PAD_FULL_R. The direction is carried from the circle onto a
+// square (the larger component becomes 1), so that the knob pushed all the
+// way on a diagonal is full on both axes: a quick turn is a full turn under
+// a full brake, and the two multiply. Read each axis on its own, a full
+// diagonal only just reached full (0.45 r against 0.42 r). Each component
+// then has a dead zone of its own (PAD_AXIS_DEAD, the rest rescaled).
+static void discAxes(int dx, int dy, int8_t &x, int8_t &y) {
+  x = y = 0;
+  const float len = std::sqrt((float)(dx * dx + dy * dy));
+  if (len <= PAD_DEAD_R) return;
+  float k = (len - PAD_DEAD_R) / (float)(PAD_FULL_R - PAD_DEAD_R);
+  if (k > 1.0f) k = 1.0f;
+  const int ax = dx < 0 ? -dx : dx, ay = dy < 0 ? -dy : dy;
+  const float m = (float)(ax > ay ? ax : ay);
+  auto axis = [&](int c) {
+    float a = ((c < 0 ? -c : c) / m - PAD_AXIS_DEAD) / (1.0f - PAD_AXIS_DEAD);
+    if (a < 0) a = 0;
+    const int v = (int)(a * k * sim::INPUT_MAX + 0.5f);
+    return (int8_t)(c < 0 ? -v : v);
+  };
+  x = axis(dx);
+  y = axis(dy);
 }
 
 sim::Input TouchPad::poll() {
@@ -130,10 +149,9 @@ sim::Input TouchPad::poll() {
     }
     knobX_ = dx;
     knobY_ = dy;
-    // Each axis on its own, from where the knob is, so the diagonals give
-    // dash-while-turning
-    x = discAxis(dx);
-    y = discAxis(dy);
+    // Both axes from where the knob is, so the diagonals give
+    // dash-while-turning and the quick turn
+    discAxes(dx, dy, x, y);
   }
   if (a_.id >= 0) bits |= sim::Button::A;
   if (b_.id >= 0) bits |= sim::Button::B;

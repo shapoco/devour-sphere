@@ -368,13 +368,29 @@ function strongest(...vs) {
   return best;
 }
 
-// One axis of an analog source (any unit) as -127..127: 0 up to `dead`, full
-// from `full` on, linear in between
-function analogAxis(v, dead, full) {
-  const a = Math.abs(v);
-  if (a <= dead) return 0;
-  const k = Math.min(1, (a - dead) / (full - dead));
-  return Math.sign(v) * Math.round(k * AXIS_MAX);
+// A round analog control (the gamepad's stick, the touch disc) as the two
+// axes, -127..127 each. The strength is the length of the vector (dx, dy),
+// in any unit: nothing up to `dead`, full from `full` on, linear in between.
+// The direction is carried from the circle onto a square (the larger
+// component becomes 1), so that the control pushed all the way on a
+// diagonal is full on both axes: a quick turn is a full turn under a full
+// brake, and the two multiply (half of each is well under half the turn).
+// Read each axis on its own, a full diagonal gave only about 0.7 per axis.
+// Each component of the square then has a small dead zone of its own
+// (AXIS_DEAD, the rest rescaled), so that a push a few degrees off an axis
+// does not leak a weak dash or brake into a turn (10 degrees off: 3 / 127).
+const AXIS_DEAD = 0.15;
+
+function roundAxes(dx, dy, dead, full) {
+  const len = Math.hypot(dx, dy);
+  if (len <= dead) return [0, 0];
+  const k = Math.min(1, (len - dead) / (full - dead));
+  const m = Math.max(Math.abs(dx), Math.abs(dy));
+  const axis = (c) => {
+    const a = Math.max(0, (Math.abs(c) / m - AXIS_DEAD) / (1 - AXIS_DEAD));
+    return Math.sign(c) * Math.round(a * k * AXIS_MAX);
+  };
+  return [axis(dx), axis(dy)];
 }
 
 const KEY_MAP = {
@@ -410,37 +426,16 @@ function setupKeyboard(input) {
   window.addEventListener('blur', () => { input.keys = 0; });
 }
 
-// The left stick is analog. Its strength is the length of the stick's
-// vector: nothing within PAD_DEAD of the center (sticks do not return to
-// exactly 0), full from PAD_FULL on. Its direction is carried from the
-// round gate onto a square (the larger component becomes 1), so that the
-// stick pushed all the way on a diagonal is full on both axes: a quick turn
-// is a full turn under a full brake, and the two multiply (half of each is
-// well under half the turn). Reading each axis on its own left the
-// diagonal at about 0.7 per axis, and less on some pads. Each component of
-// the square then has a small dead zone of its own (PAD_AXIS_DEAD, the rest
-// rescaled), so that a stick pushed a few degrees off an axis does not leak
-// a weak dash or brake into a turn. The d-pad is digital.
-const PAD_DEAD = 0.1, PAD_FULL = 0.9, PAD_AXIS_DEAD = 0.15;
-
-function stickAxes(ax, ay) {
-  const len = Math.hypot(ax, ay);
-  if (len <= PAD_DEAD) return [0, 0];
-  const k = Math.min(1, (len - PAD_DEAD) / (PAD_FULL - PAD_DEAD));
-  const m = Math.max(Math.abs(ax), Math.abs(ay));
-  const axis = (c) => {
-    const a = Math.max(0, (Math.abs(c) / m - PAD_AXIS_DEAD) / (1 - PAD_AXIS_DEAD));
-    return Math.sign(c) * Math.round(a * k * AXIS_MAX);
-  };
-  return [axis(ax), axis(ay)];
-}
+// The left stick is analog (roundAxes): nothing within 0.1 of the center
+// (sticks do not return to exactly 0), full from 0.9. The d-pad is digital.
+const PAD_DEAD = 0.1, PAD_FULL = 0.9;
 
 function pollGamepad(input) {
   if (!navigator.getGamepads) return;
   let bits = 0, x = 0, y = 0;
   for (const gp of navigator.getGamepads()) {
     if (!gp) continue;
-    const [sx, sy] = stickAxes(gp.axes[0] || 0, gp.axes[1] || 0);
+    const [sx, sy] = roundAxes(gp.axes[0] || 0, gp.axes[1] || 0, PAD_DEAD, PAD_FULL);
     x = strongest(x, sx);
     y = strongest(y, sy);
     const b = gp.buttons;
@@ -458,14 +453,15 @@ function pollGamepad(input) {
   input.padY = y;
 }
 
-// Virtual game pad: an analog direction disc (each axis on its own, so dash
-// + turn works), an A button (fire) and a B button (dodge). Shown on touch
+// Virtual game pad: an analog direction disc (both axes at once, so dash +
+// turn works), an A button (fire) and a B button (dodge). Shown on touch
 // devices, or with the toggle button.
 //
-// The knob travels 32% of the disc's width from the center. Each axis is 0
-// up to 7% of the width and full from 21%: the knob at the end of its travel
-// on a diagonal (22.6% on both axes) is still a full turn with a full dash.
-const DISC_TRAVEL = 0.32, DISC_DEAD = 0.07, DISC_FULL = 0.21;
+// The knob travels 32% of the disc's width from the center. It reads like
+// the gamepad's stick (roundAxes): nothing within 6% of the width, full from
+// 28% (a little short of the end of the travel, so a thumb that does not
+// quite reach the rim still gets it), in any direction.
+const DISC_TRAVEL = 0.32, DISC_DEAD = 0.06, DISC_FULL = 0.28;
 function setupTouchPad(input) {
   const dpad = document.getElementById('dpad');
   const abtn = document.getElementById('abtn');
@@ -488,8 +484,8 @@ function setupTouchPad(input) {
     const len = Math.hypot(dx, dy);
     if (len > max) { dx *= max / len; dy *= max / len; }
     if (knob) knob.style.transform = `translate(${dx}px, ${dy}px)`;
-    input.touchX = analogAxis(dx, r.width * DISC_DEAD, r.width * DISC_FULL);
-    input.touchY = analogAxis(dy, r.width * DISC_DEAD, r.width * DISC_FULL);
+    [input.touchX, input.touchY] =
+      roundAxes(dx, dy, r.width * DISC_DEAD, r.width * DISC_FULL);
   }
   dpad.addEventListener('pointerdown', (e) => {
     dpadPointer = e.pointerId;

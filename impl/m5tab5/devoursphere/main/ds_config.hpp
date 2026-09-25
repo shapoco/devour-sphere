@@ -134,14 +134,18 @@ constexpr Circle PAD_B = {PAD_A.cx - PAD_A.r - 36 - PAD_EDGE,
 // else). HUD_INSET_TOP keeps the HUD's top row clear of it.
 constexpr Circle PAD_PAUSE = {SCREEN_W - PAD_EDGE - 16, PAD_EDGE + 16, 16};
 
-// The disc is analog. Its thresholds, as fractions of its radius, are
-// play.js's (which expresses them against the diameter: the knob travels up
-// to 0.32 w, each axis is 0 up to 0.07 w and full from 0.21 w). The knob at
-// the end of its travel on a diagonal (0.45 r on both axes) is still a full
-// turn with a full dash.
+// The disc is analog and reads like play.js's (roundAxes): the strength is
+// the knob's distance from the center, nothing up to PAD_DEAD_R and full
+// from PAD_FULL_R, in any direction (touch_pad.cpp). The thresholds are
+// play.js's as fractions of the radius (it expresses them against the
+// diameter: the knob travels up to 0.32 w, dead 0.06 w, full 0.28 w).
 constexpr int PAD_KNOB_R = PAD_DISC.r * 64 / 100;
-constexpr int PAD_AXIS_DEAD = PAD_DISC.r * 14 / 100;
-constexpr int PAD_AXIS_FULL = PAD_DISC.r * 42 / 100;
+constexpr int PAD_DEAD_R = PAD_DISC.r * 12 / 100;
+constexpr int PAD_FULL_R = PAD_DISC.r * 56 / 100;
+// Each component of the direction carried onto a square has a dead zone of
+// its own, so that a push a few degrees off an axis does not leak a weak
+// dash or brake into a turn (play.js's AXIS_DEAD)
+constexpr float PAD_AXIS_DEAD = 0.15f;
 
 // Opacity of the pad over the game (play.js uses 0.55 in landscape)
 constexpr int PAD_OPACITY = 140;  // of 255
