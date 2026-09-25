@@ -1,8 +1,8 @@
 # Devour Sphere
 
-https://github.com/user-attachments/assets/b8855ba7-7ce3-45a3-9633-efb35ae5db60
-
 English | [日本語](README.ja.md)
+
+https://github.com/user-attachments/assets/b8855ba7-7ce3-45a3-9633-efb35ae5db60
 
 A 3D shooter played above "the Sphere", a cyberspace world: fight the other
 entities, devour the fragments they drop and grow huge.
@@ -14,7 +14,7 @@ a graphics library for embedded systems. All of the drawing goes through it:
 scanline 3D that needs no framebuffer, line and point primitives, 2D drawing
 and fonts.
 
-- **Play:** https://shapoco.github.io/devour-sphere/play/
+- **Play in the browser:** https://shapoco.github.io/devour-sphere/play/
 - **Specifications (Japanese):** [SPEC.md](SPEC.md), [core/SPEC.md](core/SPEC.md),
   and a SPEC.md in each port's directory (see [Ports](#ports))
 

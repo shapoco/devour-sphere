@@ -1,8 +1,8 @@
 # Devour Sphere
 
-https://github.com/user-attachments/assets/b8855ba7-7ce3-45a3-9633-efb35ae5db60
-
 [English](README.md) | 日本語
+
+https://github.com/user-attachments/assets/b8855ba7-7ce3-45a3-9633-efb35ae5db60
 
 サイバー空間の「スフィア」上空で、他のエンティティと戦い、
 フラグメントを喰らって巨大化していく3D シューティングゲームです。
@@ -13,7 +13,7 @@ https://github.com/user-attachments/assets/b8855ba7-7ce3-45a3-9633-efb35ae5db60
 のデモとして作られたサンプルアプリケーションで、描画 (フレームバッファ不要のスキャンライン 3D、
 線・点プリミティブ、2D 描画とフォント) はすべて ShapoGFX で行っている。
 
-- **遊ぶ:** https://shapoco.github.io/devour-sphere/play/
+- **ブラウザで遊ぶ:** https://shapoco.github.io/devour-sphere/play/
 - **仕様:** [SPEC.md](SPEC.md)、[core/SPEC.md](core/SPEC.md)、
   各移植のディレクトリの SPEC.md ([移植](#移植) を参照)
 
