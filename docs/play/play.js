@@ -376,10 +376,14 @@ function strongest(...vs) {
 // diagonal is full on both axes: a quick turn is a full turn under a full
 // brake, and the two multiply (half of each is well under half the turn).
 // Read each axis on its own, a full diagonal gave only about 0.7 per axis.
-// Each component of the square then has a small dead zone of its own
-// (AXIS_DEAD, the rest rescaled), so that a push a few degrees off an axis
-// does not leak a weak dash or brake into a turn (10 degrees off: 3 / 127).
-const AXIS_DEAD = 0.15;
+// Each component of the square is then 0 up to AXIS_DEAD of the larger one
+// (about 8.5 degrees off an axis: a push a little off an axis does not leak
+// a weak dash or brake into a turn) and full from AXIS_FULL (about 31
+// degrees), linear in between. So anywhere within about 14 degrees of a
+// diagonal is full on both axes, the same as two keys: a thumb pushing
+// "down and to the side" is rarely at 45 degrees, and at 30 degrees a plain
+// square still gave only half the brake (a circle in 2.7 s against 2 s).
+const AXIS_DEAD = 0.15, AXIS_FULL = 0.6;
 
 function roundAxes(dx, dy, dead, full) {
   const len = Math.hypot(dx, dy);
@@ -387,7 +391,7 @@ function roundAxes(dx, dy, dead, full) {
   const k = Math.min(1, (len - dead) / (full - dead));
   const m = Math.max(Math.abs(dx), Math.abs(dy));
   const axis = (c) => {
-    const a = Math.max(0, (Math.abs(c) / m - AXIS_DEAD) / (1 - AXIS_DEAD));
+    const a = Math.min(1, Math.max(0, (Math.abs(c) / m - AXIS_DEAD) / (AXIS_FULL - AXIS_DEAD)));
     return Math.sign(c) * Math.round(a * k * AXIS_MAX);
   };
   return [axis(dx), axis(dy)];

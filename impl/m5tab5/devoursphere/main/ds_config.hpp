@@ -142,10 +142,13 @@ constexpr Circle PAD_PAUSE = {SCREEN_W - PAD_EDGE - 16, PAD_EDGE + 16, 16};
 constexpr int PAD_KNOB_R = PAD_DISC.r * 64 / 100;
 constexpr int PAD_DEAD_R = PAD_DISC.r * 12 / 100;
 constexpr int PAD_FULL_R = PAD_DISC.r * 56 / 100;
-// Each component of the direction carried onto a square has a dead zone of
-// its own, so that a push a few degrees off an axis does not leak a weak
-// dash or brake into a turn (play.js's AXIS_DEAD)
+// Each component of the direction carried onto a square is 0 up to
+// PAD_AXIS_DEAD of the larger one (about 8.5 degrees off an axis: no weak
+// dash or brake leaks into a turn) and full from PAD_AXIS_FULL (about 31
+// degrees): within about 14 degrees of a diagonal both axes are full, as
+// with two keys (play.js's AXIS_DEAD / AXIS_FULL)
 constexpr float PAD_AXIS_DEAD = 0.15f;
+constexpr float PAD_AXIS_FULL = 0.6f;
 
 // Opacity of the pad over the game (play.js uses 0.55 in landscape)
 constexpr int PAD_OPACITY = 140;  // of 255

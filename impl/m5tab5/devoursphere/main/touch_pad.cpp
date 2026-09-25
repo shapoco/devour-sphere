@@ -89,7 +89,8 @@ void TouchPad::track(Grab &g, const Circle &c, const int32_t *ids,
 // way on a diagonal is full on both axes: a quick turn is a full turn under
 // a full brake, and the two multiply. Read each axis on its own, a full
 // diagonal only just reached full (0.45 r against 0.42 r). Each component
-// then has a dead zone of its own (PAD_AXIS_DEAD, the rest rescaled).
+// then goes from 0 at PAD_AXIS_DEAD to full at PAD_AXIS_FULL of the larger
+// one, so a thumb that is not quite at 45 degrees still gets both in full.
 static void discAxes(int dx, int dy, int8_t &x, int8_t &y) {
   x = y = 0;
   const float len = std::sqrt((float)(dx * dx + dy * dy));
@@ -99,8 +100,10 @@ static void discAxes(int dx, int dy, int8_t &x, int8_t &y) {
   const int ax = dx < 0 ? -dx : dx, ay = dy < 0 ? -dy : dy;
   const float m = (float)(ax > ay ? ax : ay);
   auto axis = [&](int c) {
-    float a = ((c < 0 ? -c : c) / m - PAD_AXIS_DEAD) / (1.0f - PAD_AXIS_DEAD);
+    float a = ((c < 0 ? -c : c) / m - PAD_AXIS_DEAD) /
+              (PAD_AXIS_FULL - PAD_AXIS_DEAD);
     if (a < 0) a = 0;
+    if (a > 1) a = 1;
     const int v = (int)(a * k * sim::INPUT_MAX + 0.5f);
     return (int8_t)(c < 0 ? -v : v);
   };
