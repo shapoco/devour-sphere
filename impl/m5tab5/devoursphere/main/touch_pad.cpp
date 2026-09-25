@@ -30,9 +30,14 @@ void ring(g2::Graphics2D &g, int cx, int cy, int r, g2::Color c) {
   g.drawCircle(cx, cy, r, c);
 }
 
+// floor(sqrt(v)). The starting bit has to be a power of FOUR: from 1 << 15
+// (an odd power of two) every result came out sqrt(2) times too large, which
+// stopped the knob at 48 / sqrt(2) = 34 px instead of PAD_KNOB_R and with it
+// the analog disc at about 96 of 127 (found with the steering check on the
+// timing overlay, 2026-09-25).
 int isqrt32(int32_t v) {
   if (v <= 0) return 0;
-  int32_t r = 0, bit = 1 << 15;
+  int32_t r = 0, bit = 1 << 30;
   while (bit > v) bit >>= 2;
   while (bit) {
     if (v >= r + bit) {

@@ -29,6 +29,7 @@
 #include "se_player.hpp"
 #include "touch_pad.hpp"
 
+#include <cmath>
 #include <cstdio>
 
 namespace sim = devoursphere::sim;
@@ -107,6 +108,46 @@ int ticksDue() {
 void keepHighScore() {
   g_game->keepHighScore();
   g_store.poll(*g_game);
+}
+
+// The steering check on the full overlay (three lines below the standard
+// ones), for comparing the disc with two keys, whose values are in the
+// labels: IN is what the game got from the disc (keys: 127 each), TURN the
+// player's heading rate over the last half second (a full turn under a full
+// brake: 180), SIM how fast the game ran against the wall clock (100).
+// `ran` ticks ran with `in`; call it while the Game is ours.
+void steerLines(int ran, const sim::Input &in) {
+  static sim::Vec3 prevT = {};
+  static int ticksAcc = 0;
+  static int64_t angleAcc = 0;  // brad
+  static int64_t windowUs = 0, lastUs = 0;
+  const int64_t now = esp_timer_get_time();
+  if (lastUs) windowUs += now - lastUs;
+  lastUs = now;
+  const sim::Entity &p = g_game->player();
+  const int32_t d = sim::dotQ30(prevT, p.frame.t);
+  if (prevT.x || prevT.y || prevT.z) {
+    const float c = d / (float)sim::Q30_ONE;
+    angleAcc += (int64_t)(std::acos(c > 1 ? 1 : (c < -1 ? -1 : c)) *
+                          (32768 / 3.14159265f));
+  }
+  prevT = p.frame.t;
+  ticksAcc += ran;
+  std::snprintf(g_prof.extra[0], sizeof g_prof.extra[0], "IN X%+4d Y%+4d KEY127",
+                in.x, in.y);
+  if (windowUs >= 500000 && ticksAcc > 0) {
+    const int degPerSec =
+        (int)(angleAcc * 360 / 65536 * sim::TICK_RATE / ticksAcc);
+    const int simPct =
+        (int)((int64_t)ticksAcc * ds::TICK_US * 100 / windowUs);
+    std::snprintf(g_prof.extra[1], sizeof g_prof.extra[1],
+                  "TURN %3d/S  KEYS 180", degPerSec);
+    std::snprintf(g_prof.extra[2], sizeof g_prof.extra[2],
+                  "SIM %3d%% OF REAL 100", simPct);
+    ticksAcc = 0;
+    angleAcc = 0;
+    windowUs = 0;
+  }
 }
 
 void drawPad(const shapoco::gfx2d::Surface &band, int bandY, void *) {
@@ -241,6 +282,7 @@ void loop() {
   // from here until the next dispatch, and the simulation must not advance
   // between beginFrame() and the last band: renderBand() draws the HUD.
   if (ran > 0) {
+    steerLines(ran, g_simInput);
     keepHighScore();
     g_bench.beforeFrame(*g_game, g_renderer, ds::benchSample(g_prof));
     devoursphere::profileClockUs = g_bench.active() ? clockUs : nullptr;
@@ -291,6 +333,7 @@ void loop() {
     ds::frameIdle();
     return;
   }
+  steerLines(ticks, input);
   keepHighScore();
   g_bench.beforeFrame(*g_game, g_renderer, ds::benchSample(g_prof));
   devoursphere::profileClockUs = g_bench.active() ? clockUs : nullptr;
