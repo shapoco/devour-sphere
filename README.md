@@ -1,5 +1,7 @@
 # Devour Sphere
 
+https://github.com/user-attachments/assets/b8855ba7-7ce3-45a3-9633-efb35ae5db60
+
 English | [日本語](README.ja.md)
 
 A 3D shooter played above "the Sphere", a cyberspace world: fight the other
