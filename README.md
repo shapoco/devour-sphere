@@ -161,7 +161,7 @@ game.reset(seed);
 
 for (;;) {
   while (tickIsDue()) {          // fixed rate (60 Hz by default)
-    game.tick(readButtons());    // the input driver
+    game.tick(readInput());      // the input driver (returns a sim::Input)
     renderer.pollEffects(game);
     playSounds(game.sounds());   // the sound driver (optional)
   }
@@ -182,11 +182,27 @@ the events a tick raises are cleared by the next.
 
 #### Input (required)
 
-All `tick()` takes is seven bits of button state
-(`Button::LEFT / RIGHT / UP / DOWN / A / B / PAUSE`, in
-[entities.hpp](core/include/devoursphere/sim/entities.hpp)). Keys, a d-pad,
-a touch screen -- anything that can be reduced to those bits will do. The lines
-of help on the title screen are replaced with `Renderer::setControlHints()`.
+All `tick()` takes is a `sim::Input`
+([entities.hpp](core/include/devoursphere/sim/entities.hpp)): two direction
+axes `x` / `y` from -127 to +127, and three buttons (`Button::A / B / PAUSE`).
+Positive `x` turns right; negative `y` dashes and positive `y` brakes. How far
+the axis is pushed is how hard it acts.
+
+- **A digital d-pad** can hand over its button bits as they are
+  (`Button::LEFT / RIGHT / UP / DOWN` included): an `Input` converts from them,
+  and each direction becomes full strength, -127 / 0 / +127
+  (`game.tick(Button::A | Button::LEFT)` works).
+- **An analog control** (a stick, a touch disc, tilt) is mapped onto -127..+127
+  by the port, with **a dead zone and a saturation point it chooses for its
+  device**. The core takes the value as a linear strength. For a stick in a
+  round gate, map it so that a full diagonal is full on both axes: a full turn
+  under a full brake is the quick turn (`roundAxes()` in the wasm port is an
+  example).
+- On the menus the core reads the axes as a d-pad (a direction is pressed from
+  64 and released below 40).
+
+The lines of help on the title screen are replaced with
+`Renderer::setControlHints()`.
 
 #### Display (required)
 
@@ -246,6 +262,15 @@ Knobs for when it does not fit or does not keep up:
 | [impl/espboy/](impl/espboy/) | the smallest machine: ESP8266, 96 KB, one core, the core built in a reduced configuration, bands pushed by the CPU |
 | [impl/wasm/](impl/wasm/) | the browser (Emscripten): keyboard, gamepad, touch, localStorage |
 | [impl/cli/](impl/cli/) | the shortest one: one `renderBand()` for the whole frame, out to a terminal |
+
+### Ports wanted
+
+If you get Devour Sphere running on a new commercial device or on open-source
+hardware, please send a pull request. A directory `impl/<device>/` with the
+port's code and a SPEC.md on what you learned about the machine (how to build
+it, how the input and the display are done, what bit you, and benchmark results
+if you can) would be ideal. The benchmark starts when B is held for three
+seconds on the title screen.
 
 ## License
 

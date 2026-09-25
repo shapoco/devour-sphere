@@ -150,7 +150,7 @@ game.reset(seed);
 
 for (;;) {
   while (tickIsDue()) {          // 固定レート (既定 60 Hz)
-    game.tick(readButtons());    // 入力ドライバ
+    game.tick(readInput());      // 入力ドライバ (sim::Input を返す)
     renderer.pollEffects(game);
     playSounds(game.sounds());   // サウンドドライバ (任意)
   }
@@ -170,9 +170,19 @@ tick のたびに `pollEffects()` を呼んでください (tick の出すイベ
 
 #### 入力 (必須)
 
-`tick()` に渡すのは 7 ビットのボタン状態だけです
-(`Button::LEFT / RIGHT / UP / DOWN / A / B / PAUSE`、[entities.hpp](core/include/devoursphere/sim/entities.hpp))。
-キーボードでも十字キーでもタッチでも、このビットにできれば何でも構いません。
+`tick()` に渡すのは `sim::Input` ([entities.hpp](core/include/devoursphere/sim/entities.hpp)) で、
+方向の 2 軸 `x` / `y` (-127〜+127) と 3 つのボタン (`Button::A / B / PAUSE`) だけです。
+`x` は正が右旋回、`y` は負がダッシュで正がブレーキ。倒した量がそのまま強さになります。
+
+- **デジタルの方向キー**なら、ボタンのビット (`Button::LEFT / RIGHT / UP / DOWN` を含む) を
+  そのまま渡せます。`Input` はビットから作れて、方向は -127 / 0 / +127 の最大の強さになります
+  (`game.tick(Button::A | Button::LEFT)` のように書けます)。
+- **アナログの入力** (スティック、タッチのディスク、傾きなど) は、機器に合わせた**不感帯と飽和を
+  移植側で決めて** -127〜+127 に写します。コアは値をそのまま線形の強さとして使います。
+  丸い可動域のスティックは、斜めいっぱいで両軸が最大になるように写すのがおすすめです
+  (最大の旋回と最大のブレーキでクイックターンになるため。wasm 版の `roundAxes()` が例)。
+- メニューでは、コアが軸を方向キーとして読みます (強さ 64 で入り、40 で抜ける)。
+
 タイトル画面に出る操作の案内文は `Renderer::setControlHints()` で差し替えます。
 
 #### 表示 (必須)
@@ -228,6 +238,13 @@ tick のたびに `pollEffects()` を呼んでください (tick の出すイベ
 | [impl/espboy/](impl/espboy/) | 一番小さな機械 (ESP8266、96KB、1 コア)。core を縮小構成でビルドし、帯を CPU で転送する |
 | [impl/wasm/](impl/wasm/) | ブラウザ (Emscripten)、キーボード / ゲームパッド / タッチ、localStorage |
 | [impl/cli/](impl/cli/) | 一番短い例。全画面を 1 回の `renderBand()` で描いて端末に流すだけ |
+
+### 移植を募集しています
+
+新しい市販のデバイスや OSS ハードウェアで Devour Sphere が動いたら、ぜひプルリクエストをください。
+`impl/<デバイス名>/` に移植側のコードと、その機種について分かったこと (ビルドの手順、入力と表示の
+やり方、ハマった点、できればベンチマークの結果) をまとめた SPEC.md を置いてもらえると助かります。
+ベンチマークはタイトル画面で B を 3 秒押すと始まります。
 
 ## License
 
