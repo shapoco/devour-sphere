@@ -19,9 +19,9 @@ https://github.com/user-attachments/assets/b8855ba7-7ce3-45a3-9633-efb35ae5db60
 
 ## ダウンロード
 
-- **M5Stack Tab5:** ビルド済みのファームウェアを [M5Burner](https://docs.m5stack.com/en/download)
-  から書き込めます。M5Burner の ESP32-P4 (Tab5) のリストで "Devour Sphere" を探してください。
-- **その他のボード:** Xiamocon (RP2350 / ESP32S3)、PicoSystem、M5StickS3、ESPboy のバイナリは
+- **M5Stack Tab5/StickS3:** ビルド済みのファームウェアを [M5Burner](https://docs.m5stack.com/en/download)
+  から書き込めます。M5Burner の Tab5/StickS3 のリストで "Devour Sphere" を探してください。
+- **その他のボード:** Xiamocon (RP2350 / ESP32S3)、PicoSystem、ESPboy のバイナリは
   [Releases](https://github.com/shapoco/devour-sphere/releases) に zip で置いてあります
   (書き込み方は zip 内の README.txt)。
 - **ブラウザ版:** ダウンロード不要。上の「遊ぶ」のリンクから。
