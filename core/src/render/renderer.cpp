@@ -716,14 +716,15 @@ void Renderer::updateCamera(float dt) {
       wantAhead = wantAhead + (wantDist * 4.0f - wantAhead) * dash;
       wantDown *= 1.0f - dash;
     }
-    if (p.braking) {
-      wantDist *= 1.25f;
-      wantHeight *= 1.25f;
-      wantFovMul = 82.0f / 70.0f;
+    // The brake pulls back and widens in proportion to how hard it is held
+    const float brake = p.brake * (1.0f / sim::INPUT_MAX);
+    if (brake > 0) {
+      wantDist *= 1.0f + 0.25f * brake;
+      wantHeight *= 1.0f + 0.25f * brake;
+      wantFovMul += (82.0f / 70.0f - wantFovMul) * brake;
     }
 #if DEVOURSPHERE_CAMERA_ROLL
-    wantRoll =
-        (p.turnLevel / 256.0f) * (p.braking ? 14.0f : 9.0f) * PI / 180.0f;
+    wantRoll = (p.turnLevel / 256.0f) * (9.0f + 5.0f * brake) * PI / 180.0f;
 #endif
   } else if (inFlight_) {
     // The flight between spheres. The camera circles the player from

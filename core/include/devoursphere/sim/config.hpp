@@ -16,8 +16,8 @@ namespace devoursphere::sim {
 // structure); a platform that stores the high score keeps the major with it
 // and drops the score when the major differs. Anything else bumps the minor.
 constexpr int VERSION_MAJOR = 3;
-constexpr int VERSION_MINOR = 6;
-constexpr const char *VERSION_STRING = "v3.6";
+constexpr int VERSION_MINOR = 7;
+constexpr const char *VERSION_STRING = "v3.7";
 
 constexpr int32_t FU_UNITS = 256;  // units per fragment unit (see FU below)
 

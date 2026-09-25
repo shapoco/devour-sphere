@@ -504,8 +504,12 @@ void Game::checkTransitions() {
   }
 }
 
-void Game::tick(uint8_t buttons) {
+void Game::tick(const Input &in) {
   tickProfile_.begin();
+  // The menus read the axes as a digital pad
+  const uint8_t buttons =
+      (uint8_t)((in.buttons & ~Button::DIRECTIONS) |
+                directionBits(in, prevButtons_ & Button::DIRECTIONS));
   uint8_t pressed = buttons & (uint8_t)~prevButtons_;
   prevButtons_ = buttons;
   events_ = 0;
@@ -611,15 +615,17 @@ void Game::tick(uint8_t buttons) {
   if (dodgeTicks_ > 0) dodgeTicks_--;
   if (dodgeCooldown_ > 0) dodgeCooldown_--;
   if (state_ == GameState::PLAYING && p.alive && !autoPlayer_) {
-    updatePlayerControls(buttons, pressed);
+    updatePlayerControls(in, pressed);
   } else if (state_ == GameState::LAUNCH || state_ == GameState::ARRIVE) {
     // Dashing through the flight; the dash ramps down over the last second
     // of the arrival so that the player lands at cruising speed and the
     // camera does not start in its dash position
     p.turn = 0;
-    p.dashing = !(state_ == GameState::ARRIVE &&
-                  stateTimer_ >= ARRIVE_TICKS - DASH_RAMP_DOWN_TICKS);
-    p.braking = false;
+    p.dash = (state_ == GameState::ARRIVE &&
+              stateTimer_ >= ARRIVE_TICKS - DASH_RAMP_DOWN_TICKS)
+                 ? 0
+                 : INPUT_MAX;
+    p.brake = 0;
     p.firing = false;
   }
   playerClimb_ = 0;

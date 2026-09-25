@@ -8,7 +8,10 @@
 
 namespace devoursphere::sim {
 
-// Button state for one tick (bit set = pressed)
+// Button state for one tick (bit set = pressed). A, PAUSE and B are buttons;
+// the four directions are the axes of Input read as a digital pad (what the
+// menus go by, see directionBits()), and how a digital pad is written
+// (Input's constructor from bits).
 namespace Button {
 constexpr uint8_t LEFT = 1 << 0;
 constexpr uint8_t RIGHT = 1 << 1;
@@ -17,7 +20,50 @@ constexpr uint8_t DOWN = 1 << 3;  // brake
 constexpr uint8_t A = 1 << 4;      // fire / confirm
 constexpr uint8_t PAUSE = 1 << 5;  // pause / resume (PLAYING, LAUNCH, ARRIVE)
 constexpr uint8_t B = 1 << 6;      // emergency dodge (PLAYING)
+constexpr uint8_t DIRECTIONS = LEFT | RIGHT | UP | DOWN;
 }  // namespace Button
+
+// Full strength of an axis of Input (and of Entity::turn / dash / brake)
+constexpr int INPUT_MAX = 127;
+// An axis counts as a direction button on the menus from this strength on,
+// and until it drops below DIRECTION_OFF (hysteresis)
+constexpr int DIRECTION_ON = 64;
+constexpr int DIRECTION_OFF = 40;
+
+// The input for one tick: the direction as two axes, and the buttons.
+// x: -127 full left .. +127 full right (turn). y: -127 full up (dash) ..
+// +127 full down (brake). The magnitude is the strength, linear from 0: the
+// dead zone and the saturation belong to the platform, which knows its
+// device (a digital pad gives -127, 0 or +127). -128 counts as -127.
+struct Input {
+  int8_t x = 0, y = 0;
+  uint8_t buttons = 0;  // Button::A | PAUSE | B (the direction bits are unused)
+
+  constexpr Input() = default;
+  constexpr Input(int8_t x_, int8_t y_, uint8_t buttons_)
+      : x(x_), y(y_), buttons(buttons_) {}
+  // A digital pad: the direction bits of Button become full-strength axes
+  // (implicit, so that `tick(Button::A)` and `tick(0)` read naturally)
+  constexpr Input(uint8_t bits)
+      : x((int8_t)(((bits & Button::RIGHT) ? INPUT_MAX : 0) -
+                   ((bits & Button::LEFT) ? INPUT_MAX : 0))),
+        y((int8_t)(((bits & Button::DOWN) ? INPUT_MAX : 0) -
+                   ((bits & Button::UP) ? INPUT_MAX : 0))),
+        buttons((uint8_t)(bits & ~Button::DIRECTIONS)) {}
+};
+
+// The axes of `in` as direction bits of Button, with hysteresis: `held` is
+// what the previous call returned (a direction that was on stays on down to
+// DIRECTION_OFF)
+constexpr uint8_t directionBits(const Input &in, uint8_t held) {
+  const int on = DIRECTION_ON, off = DIRECTION_OFF;
+  uint8_t d = 0;
+  if (-in.x >= ((held & Button::LEFT) ? off : on)) d |= Button::LEFT;
+  if (in.x >= ((held & Button::RIGHT) ? off : on)) d |= Button::RIGHT;
+  if (-in.y >= ((held & Button::UP) ? off : on)) d |= Button::UP;
+  if (in.y >= ((held & Button::DOWN) ? off : on)) d |= Button::DOWN;
+  return d;
+}
 
 // Kite half-size (units) of a fragment of size 2^sizeLog2 (area grows with
 // size)
@@ -96,7 +142,7 @@ struct Entity {
 
   bool alive : 1;
   bool isPlayer : 1;
-  bool dashing : 1, braking : 1, firing : 1;
+  bool firing : 1;
   bool absorbedBig : 1;  // was bigger than the player when it started
                          // absorbing it (the kill sound; the size shrinks
                          // while absorbed)
@@ -106,7 +152,7 @@ struct Entity {
                          // worth no score (see RESPAWN_PACK_MAX)
   Weapon weapon;
   uint8_t hue;          // 0..255 color hue (render hint)
-  int8_t turn;          // -1 left, 0, +1 right (current input)
+  int8_t turn;          // -127 left .. +127 right (current input, INPUT_MAX)
   uint8_t evadeFrom;    // AI: entity whose fire triggered it (NO_ENTITY)
   int8_t evadeDir;      // AI: escape side (+1 / -1; see EvadeMode)
   uint8_t evadeMode;    // AI: EvadeMode
@@ -115,6 +161,9 @@ struct Entity {
   AiMode aiMode;
   uint8_t upgrade;  // UpgradeKind carried (released when the entity dies)
   uint8_t rank;     // 1 = largest on the sphere (the player's is maintained)
+  // Current input, 0..INPUT_MAX: how hard the dash / the brake is held
+  // (never both; the AI uses 0 or INPUT_MAX)
+  uint8_t dash, brake;
 };
 
 // Effective size for absorption and color: size * (0.25 + 0.75 * hp / hpMax)

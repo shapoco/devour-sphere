@@ -17,7 +17,7 @@
 //   bench.beforeFrame(game, renderer, sample);   // what it measured last frame
 //   profileClockUs = bench.active() || overlayOn ? clock : nullptr;
 //   renderer.beginFrame(game, bench.dt(ran));
-//   ... run bench.ticks(ticksDue()) ticks with bench.input(buttons) ...
+//   ... run bench.ticks(ticksDue()) ticks with bench.input(in) ...
 
 #include <cstdint>
 
@@ -71,10 +71,11 @@ class Benchmark {
   float dt(int ran) const {
     return (running() ? 1 : ran) * (1.0f / sim::TICK_RATE);
   }
-  // The buttons to hand the game. Nothing while running; on the results A
+  // The input to hand the game. Nothing while running; on the results A
   // turns the page and B closes them (as does A on the last page), and
-  // after that nothing reaches the game until every button is released.
-  uint8_t input(uint8_t buttons);
+  // after that nothing reaches the game until every button is released and
+  // the direction is back near the center.
+  sim::Input input(const sim::Input &in);
 
   // The results of the last run as lines of monospace text (the table, one
   // column per scene), as the log gets them; empty before a run has

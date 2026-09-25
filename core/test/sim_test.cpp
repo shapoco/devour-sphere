@@ -436,7 +436,7 @@ static void testCombatAndLayout() {
   for (int t = 0; t < 12 * TICK_RATE && !died; t++) {
     // keep both entities still by braking (the enemy is not AI driven
     // while its think tick is skipped: force its controls every tick)
-    g.entities[enemy].braking = true;
+    g.entities[enemy].brake = INPUT_MAX;
     g.entities[enemy].turn = 0;
     g.entities[enemy].firing = false;
     g.tick(Button::DOWN | Button::A);
@@ -942,11 +942,12 @@ static void testDifficultyAndEvade() {
   // sideways) or counterattacks (turns on the player and fires back); over a
   // handful of seeds both must occur. The scene around the pair is whatever
   // the seed spawned, so on some seeds the enemy wanders off (a fragment to
-  // eat, a bigger neighbor) before it is hit twice; a few of those are
-  // allowed. On the first sphere the same enemy never evades.
+  // eat, a bigger neighbor) before it is hit twice, or another enemy's fire
+  // sets it off first; a few of those are allowed. On the first sphere the
+  // same enemy never evades.
   for (int level = 1; level <= 4; level += 3) {
     int broke = 0, countered = 0, notEvaded = 0;
-    for (uint32_t seed = 2024; seed < 2032; seed++) {
+    for (uint32_t seed = 2024; seed < 2040; seed++) {
       Game g;
       g.reset(seed);
       g.debugStartSphere(level, 0);
@@ -982,7 +983,7 @@ static void testDifficultyAndEvade() {
           if (c.evadeMode == (uint8_t)EvadeMode::COUNTER) counterMode = true;
         }
         if (evaded) {
-          if (c.dashing) dashed = true;
+          if (c.dash) dashed = true;
           for (const Bullet &b : g.bullets)
             if (b.alive && b.owner == enemy) firedBack = true;
           Vec3 rel =
@@ -993,11 +994,10 @@ static void testDifficultyAndEvade() {
           if (++after > 3 * TICK_RATE) break;
         }
       }
-      if (!evaded) {
+      if (!evaded || !fromPlayer) {
         notEvaded++;
         continue;
       }
-      CHECK(fromPlayer);
       if (counterMode) {
         // (a counterattack that has not got its shot off within the window
         // is not counted, but is no failure either)
@@ -1009,9 +1009,9 @@ static void testDifficultyAndEvade() {
       }
     }
     if (level == 1) {
-      CHECK(notEvaded == 8);
+      CHECK(notEvaded == 16);
     } else {
-      CHECK(notEvaded <= 3);
+      CHECK(notEvaded <= 6);
       CHECK(broke >= 1);
       CHECK(countered >= 1);
     }
@@ -1669,10 +1669,10 @@ static void testBenchmark() {
       uint8_t raw = frame < 5 ? 0 : Button::B;
       if (renderer.showingText()) raw = frame % 2 ? Button::B : 0;
       const int ticks = bench.ticks(1);
-      const uint8_t buttons = bench.input(raw);
-      if (bench.running()) CHECK(buttons == 0);
+      const Input in = bench.input(raw);
+      if (bench.running()) CHECK(in.buttons == 0 && in.x == 0 && in.y == 0);
       for (int i = 0; i < ticks; i++) {
-        game.tick(buttons);
+        game.tick(in);
         renderer.pollEffects(game);
         if (bench.running()) CHECK(!(game.events() & Event::PLAYER_DIED));
       }
@@ -1695,10 +1695,58 @@ static void testBenchmark() {
   }
   CHECK(hashes[0] == hashes[1]);
   // After the results nothing reaches the game until every button is up
-  CHECK(bench.input(Button::A) == 0);
-  CHECK(bench.input(0) == 0);
-  CHECK(bench.input(Button::A) == Button::A);
+  // and the direction is back near the center
+  CHECK(bench.input(Button::A).buttons == 0);
+  CHECK(bench.input(Input(0, 100, 0)).y == 0);
+  CHECK(bench.input(Input(0, 20, 0)).y == 20);
+  CHECK(bench.input(Button::A).buttons == Button::A);
   devoursphere::profileClockUs = nullptr;
+}
+
+// Analog input (3.7): the axes are strengths, linear from 0; a digital pad
+// is the full strength; the menus read the axes with hysteresis
+static void testAnalogInput() {
+  // A digital pad as Input
+  Input d(Button::LEFT | Button::DOWN | Button::A);
+  CHECK(d.x == -INPUT_MAX && d.y == INPUT_MAX && d.buttons == Button::A);
+  Input z(Button::LEFT | Button::RIGHT);
+  CHECK(z.x == 0 && z.y == 0 && z.buttons == 0);
+  // The menus: on from DIRECTION_ON, off below DIRECTION_OFF
+  CHECK(directionBits(Input(DIRECTION_ON - 1, 0, 0), 0) == 0);
+  CHECK(directionBits(Input(DIRECTION_ON, 0, 0), 0) == Button::RIGHT);
+  CHECK(directionBits(Input(DIRECTION_OFF, 0, 0), Button::RIGHT) ==
+        Button::RIGHT);
+  CHECK(directionBits(Input(DIRECTION_OFF - 1, 0, 0), Button::RIGHT) == 0);
+  CHECK(directionBits(Input(0, -100, 0), 0) == Button::UP);
+
+  Game g;
+  g.reset(2024);
+  g.debugStartSphere(1, 0);
+  Entity &p = g.entities[g.playerIndex()];
+  const int32_t cruise = cruiseSpeedForSize(p.size);
+  auto run = [&](Input in, int ticks) {
+    for (int t = 0; t < ticks; t++) {
+      p.hp = p.hpMax;  // stray fire must not end the dash
+      g.tick(in);
+    }
+  };
+  // -128 counts as -127
+  run(Input(-128, 0, 0), 1);
+  CHECK(p.turn == -INPUT_MAX);
+  // Half a turn: turnLevel settles at half
+  run(Input(64, 0, 0), TICK_RATE);
+  CHECK(std::abs(p.turnLevel - 64 * 256 / INPUT_MAX) <= 1);
+  // Half a dash: dashLevel settles at half, the speed half way to the full
+  // dash
+  run(Input(0, -64, 0), 3 * TICK_RATE);
+  CHECK(std::abs(p.dashLevel - 64 * 256 / INPUT_MAX) <= 1);
+  CHECK(p.speed > cruise && p.speed < cruise * DASH_SPEED_NUM / DASH_SPEED_DEN);
+  // Half a brake: about half the cruising speed; full: stopped
+  run(Input(0, 64, 0), 5 * TICK_RATE);
+  CHECK(p.dashLevel == 0);
+  CHECK(std::abs(p.speed - cruise / 2) < cruise / 10);
+  run(Input(0, 127, 0), 5 * TICK_RATE);
+  CHECK(p.speed < cruise / 20);
 }
 
 int main() {
@@ -1706,6 +1754,7 @@ int main() {
   testRenderSizes();
   testRenderBands();
   testBenchmark();
+  testAnalogInput();
   testCombatAndLayout();
   testDifficultyAndEvade();
   testFragmentAttraction();

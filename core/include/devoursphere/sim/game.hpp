@@ -2,7 +2,7 @@
 #define DEVOURSPHERE_SIM_GAME_HPP
 
 // The whole game state and its deterministic update. The renderer reads the
-// public members; the platform layer feeds `tick()` with the button state.
+// public members; the platform layer feeds `tick()` with the input.
 
 #include <cstdint>
 
@@ -104,8 +104,8 @@ class Game {
   // Reset everything and enter the title screen
   void reset(uint32_t seed);
 
-  // Advance the simulation by one tick with the given button state
-  void tick(uint8_t buttons);
+  // Advance the simulation by one tick with the given input
+  void tick(const Input &in);
 
   // Debug: skip the menus and start playing on a sphere of the given level
   void debugStartSphere(int level, int weapon);
@@ -332,7 +332,7 @@ class Game {
   int16_t dodgeTicks_ = 0;
   int16_t dodgeCooldown_ = 0;
   int8_t dodgeDir_ = 1;  // +1 right, -1 left
-  void startDodge(uint8_t buttons);
+  void startDodge(int turn);
   void resetPlayerTimers() {
     playerMercy_ = 0;
     dodgeTicks_ = 0;
@@ -409,7 +409,7 @@ class Game {
   void addFragmentToEntity(Entity &c, int sizeLog2, int32_t lx, int32_t ly);
   void enforceFragmentLimit(Entity &c);
 
-  void updatePlayerControls(uint8_t buttons, uint8_t pressed);
+  void updatePlayerControls(const Input &in, uint8_t pressed);
   void updateAi(int idx);
   void moveEntity(Entity &c);
   void updateLayout(Entity &c);

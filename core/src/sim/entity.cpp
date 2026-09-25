@@ -9,27 +9,28 @@ static constexpr int32_t COS_FIRE_CONE = (int32_t)(0.9659 * Q30_ONE);
 // cos(AI_FLANK_CONE): in front of the player
 static constexpr int32_t COS_FLANK_CONE = (int32_t)(0.8660 * Q30_ONE);
 
-void Game::updatePlayerControls(uint8_t buttons, uint8_t pressed) {
+// An axis of Input as a strength -INPUT_MAX..INPUT_MAX (-128 is -127)
+static int8_t axis(int8_t v) { return v < -INPUT_MAX ? -INPUT_MAX : v; }
+
+void Game::updatePlayerControls(const Input &in, uint8_t pressed) {
   Entity &c = entities[playerIndex_];
-  c.turn = 0;
-  if (buttons & Button::LEFT) c.turn -= 1;
-  if (buttons & Button::RIGHT) c.turn += 1;
-  c.braking = (buttons & Button::DOWN) != 0;
-  c.dashing =
-      (buttons & Button::UP) != 0 && !c.braking && c.hp > (c.hpMax >> 3);
-  c.firing = (buttons & Button::A) != 0;
+  c.turn = axis(in.x);
+  const int y = axis(in.y);
+  // One axis: the dash forward (up), the brake back (down)
+  c.brake = (uint8_t)(y > 0 ? y : 0);
+  c.dash = (uint8_t)(y < 0 && c.hp > (c.hpMax >> 3) ? -y : 0);
+  c.firing = (in.buttons & Button::A) != 0;
   if ((pressed & Button::B) && dodgeCooldown_ == 0 && dodgeTicks_ == 0) {
-    startDodge(buttons);
+    startDodge(c.turn);
   }
 }
 
-// Emergency dodge: a barrel roll sideways. The side is the turn input, else
-// away from the nearest enemy bullet nearby, else to the right
-void Game::startDodge(uint8_t buttons) {
+// Emergency dodge: a barrel roll sideways. The side is the turn input (any
+// strength), else away from the nearest enemy bullet nearby, else to the
+// right
+void Game::startDodge(int turn) {
   const Entity &c = entities[playerIndex_];
-  int dir = 0;
-  if (buttons & Button::LEFT) dir -= 1;
-  if (buttons & Button::RIGHT) dir += 1;
+  int dir = turn > 0 ? 1 : (turn < 0 ? -1 : 0);
   if (dir == 0) {
     constexpr int64_t NEAR2 = (int64_t)(60 * FU) * (60 * FU);
     int64_t best = NEAR2;
@@ -78,9 +79,15 @@ static int8_t steerTowards(const Entity &c, const Vec3 &targetN, bool flee,
   int16_t err = headingError(c.frame, d);
   if (errOut) *errOut = err;
   constexpr int16_t DEAD = (int16_t)degToBrad(4);
-  if (err > DEAD) return -1;  // target is on the left
-  if (err < -DEAD) return 1;
+  if (err > DEAD) return -INPUT_MAX;  // target is on the left
+  if (err < -DEAD) return INPUT_MAX;
   return 0;
+}
+
+// The AI's orders are all or nothing; the brake wins over the dash
+static void setDashOrBrake(Entity &c, bool brake, bool dash) {
+  c.brake = brake ? INPUT_MAX : 0;
+  c.dash = !brake && dash ? INPUT_MAX : 0;
 }
 
 // A target far around and close by: brake for a quick turn instead of
@@ -98,8 +105,8 @@ void Game::updateAi(int idx) {
   c.aiMode = AiMode::WANDER;
   c.aiTarget = -1;
   c.firing = false;
-  c.dashing = false;
-  c.braking = false;
+  c.dash = 0;
+  c.brake = 0;
 
   // Threats: bigger entities that can attack or absorb us
   int threat = -1;
@@ -216,9 +223,8 @@ void Game::updateAi(int idx) {
     if (!shooter) {
       // Shooter unknown or gone: break off in the remembered direction
       c.aiMode = AiMode::FLEE;
-      c.turn = c.evadeDir;
-      c.braking = c.evadeTicks > AI_EVADE_TICKS / 2;
-      c.dashing = !c.braking;
+      c.turn = (int8_t)(c.evadeDir * INPUT_MAX);
+      setDashOrBrake(c, c.evadeTicks > AI_EVADE_TICKS / 2, true);
       return;
     }
     const Entity &o = entities[from];
@@ -231,7 +237,7 @@ void Game::updateAi(int idx) {
       int16_t err;
       c.turn = steerTowards(c, o.frame.n, false, &err);
       int32_t a = err < 0 ? -err : err;
-      c.braking = a > (int32_t)AI_EVADE_TURN_ANGLE;
+      const bool braking = a > (int32_t)AI_EVADE_TURN_ANGLE;
       Vec3 dn = normalizeQ30(tangentTowards(c.frame.n, o.frame.n));
       const WeaponSpec &ws = WEAPON_SPECS[(int)c.weapon];
       int64_t range = (int64_t)bulletSpeed(ws, c.size) * ws.lifetime;
@@ -240,7 +246,8 @@ void Game::updateAi(int idx) {
           tangentialDist2(c.frame.n, o.frame.n,
                           (int32_t)(range > INT32_MAX ? INT32_MAX : range), d2);
       c.firing = inRange && dotQ30(c.frame.t, dn) > COS_FIRE_CONE;
-      c.dashing = !c.braking && inRange && d2 > (int64_t)(30 * FU) * (30 * FU);
+      setDashOrBrake(c, braking,
+                     inRange && d2 > (int64_t)(30 * FU) * (30 * FU));
       return;
     }
     // Break off: get out of the shooter's line of fire. The escape heading
@@ -266,18 +273,18 @@ void Game::updateAi(int idx) {
     Vec3 escape = side - Vec3{d.x >> 1, d.y >> 1, d.z >> 1};
     int16_t err = headingError(c.frame, escape);
     constexpr int16_t DEAD = (int16_t)degToBrad(4);
-    c.turn = err > DEAD ? -1 : (err < -DEAD ? 1 : 0);
+    c.turn = (int8_t)(err > DEAD ? -INPUT_MAX : (err < -DEAD ? INPUT_MAX : 0));
     int32_t a = err < 0 ? -err : err;
-    c.braking = a > (int32_t)AI_EVADE_TURN_ANGLE;
-    c.dashing = !c.braking;
+    setDashOrBrake(c, a > (int32_t)AI_EVADE_TURN_ANGLE, true);
     return;
   }
   if (threat >= 0 && !provokedAtPlayer) {
     c.aiMode = AiMode::FLEE;
     c.aiTarget = (int16_t)threat;
     c.turn = steerTowards(c, entities[threat].frame.n, true);
-    c.dashing = (tier.flags & AI_DASH) && c.hp > (c.hpMax >> 1) &&
-                threatD2 < (int64_t)(30 * FU) * (30 * FU);
+    setDashOrBrake(c, false,
+                   (tier.flags & AI_DASH) && c.hp > (c.hpMax >> 1) &&
+                       threatD2 < (int64_t)(30 * FU) * (30 * FU));
     return;
   }
   // Food first unless the prey is much closer (everything is prey now)
@@ -286,7 +293,7 @@ void Game::updateAi(int idx) {
     c.aiTarget = (int16_t)food;
     int16_t err;
     c.turn = steerTowards(c, floatingFragments[food].n, false, &err);
-    c.braking = wantsQuickTurn(err, foodD2);
+    setDashOrBrake(c, wantsQuickTurn(err, foodD2), false);
     return;
   }
   if (prey >= 0) {
@@ -324,7 +331,7 @@ void Game::updateAi(int idx) {
     int16_t err;
     c.turn = steerTowards(c, goal, false, &err);
     // Prey far around and close by: quick turn under brake
-    c.braking = wantsQuickTurn(err, preyRealD2);
+    const bool braking = wantsQuickTurn(err, preyRealD2);
     // Fire when the aim point is in the cone and the prey within range
     Vec3 dn = normalizeQ30(tangentTowards(c.frame.n, flanking ? o.frame.n : goal));
     int64_t range = (int64_t)bulletSpeed(ws, c.size) * ws.lifetime;
@@ -341,16 +348,17 @@ void Game::updateAi(int idx) {
     // Dash after far prey, once roughly pointed at it (the dash slows the
     // turn: dashing through a U-turn would take longer than turning first)
     const int32_t aerr = err < 0 ? -err : err;
-    c.dashing = ((tier.flags & AI_DASH) || provokedAtPlayer) &&
-                aerr <= (int32_t)AI_EVADE_TURN_ANGLE &&
-                preyRealD2 > (int64_t)(40 * FU) * (40 * FU) &&
-                c.hp > (c.hpMax >> 1);
+    setDashOrBrake(c, braking,
+                   ((tier.flags & AI_DASH) || provokedAtPlayer) &&
+                       aerr <= (int32_t)AI_EVADE_TURN_ANGLE &&
+                       preyRealD2 > (int64_t)(40 * FU) * (40 * FU) &&
+                       c.hp > (c.hpMax >> 1));
     return;
   }
   // Wander: keep a slowly drifting heading
   c.aiWanderAngle = (uint16_t)(c.aiWanderAngle + rng_.range(-3000, 3000));
   int32_t r = rng_.range(0, 7);
-  c.turn = (int8_t)(r == 0 ? -1 : (r == 1 ? 1 : 0));
+  c.turn = (int8_t)(r == 0 ? -INPUT_MAX : (r == 1 ? INPUT_MAX : 0));
 }
 
 // Progress of the dodge after `elapsed` of DODGE_TICKS ticks as a smoothstep
@@ -364,14 +372,18 @@ static int32_t dodgeProgressQ16(int elapsed) {
 
 void Game::moveEntity(Entity &c) {
   int32_t cruise = cruiseSpeedForSize(c.size);
-  // The dash builds up slowly and fades faster
-  if (c.dashing && !c.braking) {
-    c.dashLevel = (int16_t)(c.dashLevel + 256 / DASH_RAMP_UP_TICKS + 1);
-    if (c.dashLevel > 256) c.dashLevel = 256;
+  // The dash builds up slowly towards the strength held and fades faster
+  // (full strength takes DASH_RAMP_UP_TICKS / DASH_RAMP_DOWN_TICKS)
+  const int32_t dashTarget = c.brake ? 0 : c.dash * 256 / INPUT_MAX;
+  if (c.dashLevel < dashTarget) {
+    int32_t v = c.dashLevel + 256 / DASH_RAMP_UP_TICKS + 1;
+    c.dashLevel = (int16_t)(v > dashTarget ? dashTarget : v);
   } else {
-    c.dashLevel = (int16_t)(c.dashLevel - 256 / DASH_RAMP_DOWN_TICKS - 1);
-    if (c.dashLevel < 0) c.dashLevel = 0;
+    int32_t v = c.dashLevel - 256 / DASH_RAMP_DOWN_TICKS - 1;
+    c.dashLevel = (int16_t)(v < dashTarget ? dashTarget : v);
   }
+  // The brake scales everything between none and full (brakeQ8 0..256)
+  const int32_t brakeQ8 = c.brake * 256 / INPUT_MAX;
   int32_t dashExtra =
       cruise * (DASH_SPEED_NUM - DASH_SPEED_DEN) / DASH_SPEED_DEN;
   if (c.isPlayer) {
@@ -379,22 +391,25 @@ void Game::moveEntity(Entity &c) {
                 THRUSTER_DASH_PCT[upgradeLevel(UpgradeKind::THRUSTER)] / 100;
   }
   int32_t target = cruise + (int32_t)(((int64_t)dashExtra * c.dashLevel) >> 8);
-  uint16_t rate = TURN_RATE;
-  if (c.braking) {
-    target = 0;
-    rate = TURN_RATE_BRAKE;
-  } else if (c.dashLevel > 128) {
-    rate = TURN_RATE_DASH;
-  }
-  int shift = c.braking ? BRAKE_DECEL_SHIFT : SPEED_ACCEL_SHIFT;
+  // The brake eases the speed towards target * (1 - brake): 0 at full
+  target = (int32_t)(((int64_t)target * (256 - brakeQ8)) >> 8);
+  // The turn rate follows the dash as it builds up (slower) and the brake
+  // (faster), both in proportion
+  int32_t rate =
+      TURN_RATE + (((int32_t)TURN_RATE_DASH - TURN_RATE) * c.dashLevel >> 8);
+  rate += ((int32_t)TURN_RATE_BRAKE - rate) * brakeQ8 >> 8;
+  // ... and so does the rate of approach (braking eases more gently)
   int32_t delta = target - c.speed;
-  int32_t step = delta >> shift;
+  int32_t stepAccel = delta >> SPEED_ACCEL_SHIFT;
+  int32_t stepBrake = delta >> BRAKE_DECEL_SHIFT;
+  int32_t step =
+      stepAccel + (int32_t)(((int64_t)(stepBrake - stepAccel) * brakeQ8) >> 8);
   if (step == 0 && delta != 0) step = delta > 0 ? 1 : -1;
   c.speed += step;
 
   // The turn builds up and stops gradually
   {
-    int32_t target = c.turn * 256;
+    int32_t target = c.turn * 256 / INPUT_MAX;
     int32_t d = target - c.turnLevel;
     int32_t step = 256 / TURN_RAMP_TICKS + 1;
     if (d > step) d = step;
@@ -424,8 +439,9 @@ void Game::moveEntity(Entity &c) {
     int32_t roll = dodgeProgressQ16(DODGE_TICKS - dodgeTicks_ + 1);
     c.bank = (int16_t)(uint16_t)(dodgeDir_ > 0 ? roll : -roll);
   } else {
-    int32_t bankTarget =
-        ((int32_t)(c.braking ? BANK_MAX_BRAKE : BANK_MAX) * c.turnLevel) >> 8;
+    int32_t bankMax =
+        BANK_MAX + ((((int32_t)BANK_MAX_BRAKE - BANK_MAX) * brakeQ8) >> 8);
+    int32_t bankTarget = (bankMax * c.turnLevel) >> 8;
     int32_t db = bankTarget - c.bank;
     int32_t bs = db >> BANK_APPROACH_SHIFT;
     if (bs == 0 && db != 0) bs = db > 0 ? 1 : -1;

@@ -175,22 +175,23 @@ void Benchmark::finish(Game &game, Renderer &renderer, uint32_t seed) {
   showPage(renderer);
 }
 
-uint8_t Benchmark::input(uint8_t buttons) {
+sim::Input Benchmark::input(const sim::Input &in) {
+  const uint8_t buttons = in.buttons;
   const uint8_t pressed = buttons & (uint8_t)~prevButtons_;
   prevButtons_ = buttons;
   switch (phase_) {
-    case Phase::RUNNING: return 0;
+    case Phase::RUNNING: return {};
     case Phase::RESULTS:
       if (pressed & sim::Button::B) closeWanted_ = true;
       if (pressed & sim::Button::A) pagesWanted_++;
-      return 0;
+      return {};
     case Phase::IDLE: break;
   }
   if (holdOff_) {
-    if (buttons) return 0;
+    if (buttons || sim::directionBits(in, 0)) return {};
     holdOff_ = false;
   }
-  return buttons;
+  return in;
 }
 
 // --- Results ----------------------------------------------------------------
