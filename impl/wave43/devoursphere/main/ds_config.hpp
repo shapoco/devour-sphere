@@ -35,7 +35,8 @@ constexpr int PANEL_H = 800;
 // come from this one value, so the picture and the pad cannot disagree.
 //
 // Which one is the right way up depends on how you hold the board, and
-// nothing in the software can tell. NOT YET CHECKED ON HARDWARE.
+// nothing in the software can tell. 1 comes out right on hardware
+// (2026-09-23).
 constexpr int PANEL_ROTATION = 1;
 static_assert(PANEL_ROTATION == 1 || PANEL_ROTATION == 3,
               "landscape is rotation 1 or 3");
@@ -161,6 +162,25 @@ constexpr int HUD_INSET_LEFT = PAD_DISC.cx + PAD_DISC.r + 8;
 constexpr int HUD_INSET_RIGHT = SCREEN_W - (PAD_A.cx - PAD_A.r) + 8;
 constexpr int HUD_INSET_TOP = PAD_PAUSE.cy + PAD_PAUSE.r + 6;
 constexpr int HUD_INSET_BOTTOM = 0;
+
+// --- Sound ------------------------------------------------------------------
+// Sounds mixed at once, as the Tab5's M5Unified speaker does: every sound a
+// tick asks for is played, the way the browser plays them, and a request that
+// finds all of them busy is dropped (inaudible under the ones playing).
+constexpr int SE_VOICES = 8;
+
+// Frames the mixer hands the codec at a time, and how many such DMA buffers
+// the I2S keeps queued. At the pack's 24 kHz, 144 frames are 6 ms, so a
+// sound starts at most about 4 x 6 = 24 ms after the tick that asked for it
+// -- a little over a frame, against the 60 ms the I2S driver's defaults would
+// add.
+constexpr int SE_CHUNK_FRAMES = 144;
+constexpr int SE_DMA_BUFFERS = 4;
+
+// The codec's output volume, 0-100 (esp_codec_dev_set_out_vol). The mix
+// itself is at unity and saturates rather than wrapping, so this is the knob.
+// Waveshare's own example plays music at 60.
+constexpr int SE_VOLUME = 75;
 
 // --- Backlight --------------------------------------------------------------
 constexpr int BACKLIGHT_PERCENT = 100;

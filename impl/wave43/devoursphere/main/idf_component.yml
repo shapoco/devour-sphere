@@ -6,3 +6,7 @@ dependencies:
   # use. The panel's init sequence and timings are copied into board.cpp.
   espressif/esp_lcd_st7701: "~2.0.2"
   espressif/esp_lcd_touch_gt911: "^1.2.1"
+  # The ES8311 codec and its I2S data path, the library Waveshare's own BSP
+  # for this board drives its speaker with (esp32_p4_wifi6_touch_lcd_4_3
+  # 1.0.1, bsp_audio_codec_speaker_init()).
+  espressif/esp_codec_dev: "~1.5"

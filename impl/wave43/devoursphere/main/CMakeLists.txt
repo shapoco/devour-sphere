@@ -13,7 +13,7 @@ idf_component_register(
         "panel_out.cpp"
         "touch_pad.cpp"
         "ds_platform.cpp"
-        "se_player_none.cpp"
+        "se_player_wave43.cpp"
         "${XMC_APP}/src/profiler.cpp"
     INCLUDE_DIRS "." "${XMC_APP}/include"
     REQUIRES
@@ -21,6 +21,7 @@ idf_component_register(
         shapogfx
         esp_driver_ppa
         esp_driver_i2c
+        esp_driver_i2s
         esp_driver_ledc
         esp_driver_gpio
         esp_lcd
@@ -29,6 +30,12 @@ idf_component_register(
         esp_timer
         nvs_flash
 )
+
+# The sound pack: the browser's own (signed 16-bit PCM at 24 kHz), which the
+# Tab5 and ESP32S3 front ends embed too. Committed, so nothing has to run
+# here -- but if the material changes, `make -C impl/wasm se` rebuilds it
+# first. The symbols come out as _binary_se_bin_start / _end.
+target_add_binary_data(${COMPONENT_LIB} "${DS_ROOT}/docs/play/se.bin" BINARY)
 
 target_compile_options(${COMPONENT_LIB} PRIVATE -Wall -Wextra)
 # The FUNC-less timing overlay (UP on the title or pause screen); 0 compiles

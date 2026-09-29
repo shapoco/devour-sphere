@@ -71,7 +71,9 @@ void backlightSet(int percent) {
   ledc_update_duty(LEDC_LOW_SPEED_MODE, BL_CHANNEL);
 }
 
-bool touchInit() {
+bool i2cInit() {
+  // One bus for the GT911 and the ES8311. The driver serializes the two
+  // devices' transactions itself.
   i2c_master_bus_config_t bus = {};
   bus.clk_source = I2C_CLK_SRC_DEFAULT;
   bus.i2c_port = I2C_PORT;
@@ -80,9 +82,13 @@ bool touchInit() {
   bus.glitch_ignore_cnt = 7;
   if (i2c_new_master_bus(&bus, &g_i2c) != ESP_OK) {
     trace("i2c bus failed", 0);
+    g_i2c = nullptr;
     return false;
   }
+  return true;
+}
 
+bool touchInit() {
   // The GT911 answers at 0x5D or at 0x14 depending on the level of INT while
   // it comes out of reset -- and INT is not wired here, so which one it is
   // cannot be chosen, only found.
@@ -173,11 +179,13 @@ bool init() {
       ESP_CACHE_MSYNC_FLAG_DIR_C2M | ESP_CACHE_MSYNC_FLAG_TYPE_DATA);
   trace("panel fb", (uint32_t)(uintptr_t)g_fb);
 
-  if (!touchInit()) trace("running without touch", 0);
+  if (!i2cInit() || !touchInit()) trace("running without touch", 0);
 
   backlightSet(BACKLIGHT_PERCENT);
   return true;
 }
+
+void *i2cBus() { return g_i2c; }
 
 uint16_t *framebuffer() { return g_fb; }
 uint32_t framebufferBytes() { return FB_BYTES; }

@@ -2,10 +2,11 @@
 #define DS_BOARD_HPP
 
 // Bringing the wave_43 up: the backlight, the MIPI-DSI panel (an ST7701
-// behind two lanes) and the GT911 touch controller. What M5Unified does for
-// the Tab5 port, done here on the IDF's own drivers, with the panel's init
-// sequence and timings taken from Kern's BSP for the same board
-// (~/Kern/components/wave_43/wave_43.c), which runs them on IDF 6.1.
+// behind two lanes), the I2C bus and the GT911 touch controller on it. What
+// M5Unified does for the Tab5 port, done here on the IDF's own drivers, with
+// the panel's init sequence and timings taken from Kern's BSP for the same
+// board (~/Kern/components/wave_43/wave_43.c), which runs them on IDF 6.1.
+// The audio codec on the same bus is se_player_wave43.cpp's.
 //
 // Nothing here draws: the panel is left scanning out its framebuffer, and
 // PanelOut writes into that with the PPA.
@@ -26,10 +27,15 @@ struct TouchPoint {
 
 namespace board {
 
-// The panel, the backlight and the touch, in that order. False if the panel
-// could not be brought up (the touch is allowed to fail: the game still
-// runs, showing its title demo, and the log says why).
+// The panel, the backlight, the I2C bus and the touch, in that order. False
+// if the panel could not be brought up (the touch is allowed to fail: the
+// game still runs, showing its title demo, and the log says why).
 bool init();
+
+// The I2C bus the touch controller and the audio codec share (an
+// i2c_master_bus_handle_t; void here so that this header does not drag the
+// driver in). Null if it could not be created.
+void *i2cBus();
 
 // The DSI framebuffer: PANEL_W x PANEL_H RGB565, little-endian, no row
 // padding. Null before init().

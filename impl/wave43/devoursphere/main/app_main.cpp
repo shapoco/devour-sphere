@@ -5,8 +5,8 @@
 // loop, the touch pad and the memory the core is given. The frame is
 // rasterized by core/render into band buffers and pushed by PanelOut
 // (panel_out.hpp). This is the Tab5 port's frame loop with M5Unified taken
-// out: the panel and the touch are on the IDF's own drivers, and there is no
-// sound yet.
+// out: the panel, the touch and the sound (se_player_wave43.cpp) are on the
+// IDF's own drivers.
 //
 // Cores, as on the Tab5 and both handhelds: core1 runs the simulation while
 // core0 builds the scene, rasterizes and feeds the PPA. core0 asks for a batch
