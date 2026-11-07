@@ -7,7 +7,7 @@
  *
  *   screen     four squares light up with A, B, C and the dial's push;
  *              a bar follows the dial's turn (one step = one pixel, so the
- *              steps per detent can be counted); a dot blinks once a second
+ *              steps per detent can be counted; clockwise lengthens it); a dot blinks once a second
  *   buzzer     B gives a short beep
  *   dial held  2 s: back to the Paradise
  *
@@ -25,7 +25,7 @@ __attribute__((section(".pmxcfg"), used)) volatile const PmxCfg g_cfg = { 0x4358
 
 static volatile u32 g_ms;
 static volatile u32 g_enc_last; static volatile int g_enc_steps;
-static const signed char g_qd[16] = {0,-1,1,0, 1,0,0,-1, -1,0,0,1, 0,1,-1,0};
+static const signed char g_qd[16] = {0,1,-1,0, -1,0,0,1, 1,0,0,-1, 0,-1,1,0}; /* clockwise positive */
 
 void systick_c(void){
   g_ms++;

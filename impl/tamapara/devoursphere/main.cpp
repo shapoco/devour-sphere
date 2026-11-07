@@ -71,8 +71,9 @@ namespace {
 volatile uint32_t g_encLast = 0;
 volatile int g_encAcc = 0;      // quadrature steps towards the next detent
 volatile int g_encDetents = 0;  // detents since the last frame read them
+// Gray code transitions of P2.0/P2.1; clockwise is positive on the device
 __attribute__((section(".pram_rodata.main"))) const int8_t QD[16] = {
-    0, -1, 1, 0, 1, 0, 0, -1, -1, 0, 0, 1, 0, 1, -1, 0};
+    0, 1, -1, 0, -1, 0, 0, 1, 1, 0, 0, -1, 0, -1, 1, 0};
 }  // namespace
 
 extern "C" PRAM_TEXT void systick_c(void) {
@@ -114,12 +115,13 @@ uint32_t g_lastUs = 0;
 uint32_t g_accUs = 0;
 
 // ---- The buttons and the dial --------------------------------------------------
-// A (left) and C (right) turn, B fires, the dial pressed dodges, the dial
-// turned is the throttle (dash / brake, held until turned back). A and C
-// together pause. On the title and the pause screen the dial turned toggles
-// the sound (the core's DOWN), B with A held cycles the timing overlay,
-// the dial held 2 s goes back to the Paradise, and A and C held 3 s on the
-// title start the benchmark.
+// A (left) and B (right) turn, C fires, the dial pressed dodges, the dial
+// turned clockwise is the throttle (dash / brake, held until turned back).
+// A and B together pause. On the title and the pause screen the dial turned
+// toggles the sound (the core's DOWN), C with A held cycles the timing
+// overlay, the dial held 2 s goes back to the Paradise, and A and B held 3 s
+// on the title start the benchmark.
+constexpr uint32_t BTN_LEFT = BTN_A, BTN_RIGHT = BTN_B, BTN_FIRE = BTN_C;
 struct Pad {
   uint32_t acSince = 0;     // ms when A and C were both first seen (0: not)
   uint32_t wheelSince = 0;  // ms when the dial was first seen pressed
@@ -142,22 +144,23 @@ sim::Input readInput(const render::HudState &hud) {
 
   const bool title = hud.state == sim::GameState::TITLE;
   const bool menu = title || hud.paused;  // where the extras live
-  const bool a = raw & BTN_A, b = raw & BTN_B, c = raw & BTN_C, w = raw & BTN_WHEEL;
+  const bool left = raw & BTN_LEFT, right = raw & BTN_RIGHT, fire = raw & BTN_FIRE,
+             w = raw & BTN_WHEEL;
 
   uint8_t bits = 0;
   int8_t x = 0, y = 0;
 
-  // A and C together: a pause after a short hold (a steering overlap is
+  // Both turn buttons: a pause after a short hold (a steering overlap is
   // not one); on the title, a long hold is the benchmark (the core wants B)
-  if (a && c) {
+  if (left && right) {
     if (!g_pad.acSince) g_pad.acSince = now | 1u;
     const uint32_t held = now - g_pad.acSince;
     if (held >= ds::PAUSE_HOLD_MS && !title) bits |= sim::Button::PAUSE;
     if (title && held >= ds::BENCH_HOLD_MS) bits |= sim::Button::B;
   } else {
     g_pad.acSince = 0;
-    if (a) x = -sim::INPUT_MAX;
-    if (c) x = sim::INPUT_MAX;
+    if (left) x = -sim::INPUT_MAX;
+    if (right) x = sim::INPUT_MAX;
   }
 
   // The dial pressed: the dodge; held on the title or the pause screen: back
@@ -169,10 +172,10 @@ sim::Input readInput(const render::HudState &hud) {
     g_pad.wheelSince = 0;
   }
 
-  // B: fire / confirm. With A held on the title or pause screen it cycles
+  // C: fire / confirm. With A held on the title or pause screen it cycles
   // the overlay instead (and the press is not the core's).
-  if (b) {
-    if (menu && a && !(g_pad.prev & BTN_B)) {
+  if (fire) {
+    if (menu && left && !(g_pad.prev & BTN_FIRE)) {
       g_prof.toggle();
       g_pad.overlayDone = true;
     }
@@ -410,12 +413,12 @@ void gameMain() {
   g_game.reset(ds::randomSeed());
   g_store.load(g_game);
   g_renderer.setControlHints(render::ControlHints{
-      "A / C: TURN   B: FIRE   PUSH DIAL: DODGE",
-      "A/C: TURN  B: FIRE  DIAL: DODGE",
+      "A / B: TURN   C: FIRE   PUSH DIAL: DODGE",
+      "A/B: TURN  C: FIRE  DIAL: DODGE",
       "TURN DIAL: DASH / BRAKE",
       "DIAL: DASH / BRAKE",
-      "A+C: RESUME    DIAL: SOUND",
-      "A+C: RESUME   DIAL: SOUND",
+      "A+B: RESUME    DIAL: SOUND",
+      "A+B: RESUME   DIAL: SOUND",
   });
   g_renderer.init(ds::SCREEN_W, ds::SCREEN_H, g_arena, sizeof(g_arena), ds::SPAN_CAPACITY);
   g_renderer.setDetailTriangles(ds::DETAIL_TRIANGLES);

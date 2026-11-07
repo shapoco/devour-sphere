@@ -63,15 +63,15 @@ first write.
 
 | Action | On the Paradise |
 |---|---|
-| Turn left / right | A / C |
-| Fire / confirm | B |
+| Turn left / right | A / B |
+| Fire / confirm | C |
 | Emergency dodge | press the dial |
-| Dash / brake | turn the dial (a throttle: it stays where you leave it) |
-| Pause / resume | A and C together |
+| Dash / brake | turn the dial clockwise / back (a throttle: it stays where you leave it) |
+| Pause / resume | A and B together |
 | Toggle mute | turn the dial on the title or pause screen |
-| Timing overlay | hold A, press B on the title or pause screen |
+| Timing overlay | hold A, press C on the title or pause screen |
 | Back to the Tamagotchi | hold the dial 2 s on the title or pause screen |
-| Benchmark | hold A and C 3 s on the title (B next page, dial close) |
+| Benchmark | hold A and B 3 s on the title (C next page, dial close) |
 
 The benchmark's result lines also go out of the dongle's UART at 460800 baud.
 

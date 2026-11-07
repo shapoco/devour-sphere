@@ -50,9 +50,9 @@ constexpr uint32_t SYS_CLOCK_KHZ = 96000;
 constexpr uint32_t SYSTICK_RELOAD = SYS_CLOCK_KHZ - 1;
 
 // --- The dial -----------------------------------------------------------
-// Quadrature steps per detent. Most encoders give one full cycle (4 steps)
-// per click; the hello program's bar shows the real figure (../hello/).
-constexpr int DETENT_STEPS = 4;
+// Quadrature steps per detent: the Paradise's dial gives one step per click
+// (the hello program's bar, measured on the device 2026-11-07)
+constexpr int DETENT_STEPS = 1;
 // One detent of the dial moves the throttle (dash / brake, sim::Input::y)
 // by this much; three clicks reach full dash
 constexpr int THROTTLE_STEP = 43;
