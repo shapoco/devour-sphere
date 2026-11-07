@@ -116,25 +116,27 @@ uint32_t g_accUs = 0;
 
 // ---- The buttons and the dial --------------------------------------------------
 // The dial turned is the steering lever: counterclockwise left, clockwise
-// right, three clicks to the stop, back to the middle for straight ahead.
-// On the menus one click is one press of left or right. A brakes, C
-// accelerates, B fires / confirms, the dial pressed dodges, A and C
-// together pause. On the title and the pause screen a short press of A
-// toggles the sound (the core's DOWN), B with the dial held cycles the
-// timing overlay, the dial held 2 s goes back to the Paradise, and A and C
-// held 3 s on the title start the benchmark.
-constexpr uint32_t BTN_BRAKE = BTN_A, BTN_FIRE = BTN_B, BTN_ACCEL = BTN_C;
+// right, LEVER_MAX clicks to the stop, back to the middle for straight
+// ahead. On the menus one click is one press of left or right. A fires /
+// confirms, B accelerates, C brakes, the dial pressed dodges. B and C
+// pressed together (within PAUSE_PAIR_MS of each other) pause. On the title
+// and the pause screen a short press of C toggles the sound (the core's
+// DOWN), A with the dial held cycles the timing overlay, the dial held 2 s
+// goes back to the Paradise, and B and C held 3 s on the title start the
+// benchmark.
+constexpr uint32_t BTN_FIRE = BTN_A, BTN_ACCEL = BTN_B, BTN_BRAKE = BTN_C;
 struct Pad {
-  uint32_t acSince = 0;      // ms when A and C were both first seen (0: not)
+  uint32_t accelSince = 0;   // ms when B was first seen pressed (0: not)
+  uint32_t brakeSince = 0;   // ms when C was first seen pressed (0: not)
+  bool brakeJoined = false;  // B was pressed during this hold of C
+  bool pairHeld = false;     // B and C are down as a pair (pause / benchmark)
   uint32_t wheelSince = 0;   // ms when the dial was first seen pressed
-  uint32_t aSince = 0;       // ms when A was first seen pressed
-  bool aJoined = false;      // C was pressed during this hold of A
   int lever = 0;             // -LEVER_MAX .. LEVER_MAX clicks
   int clicks = 0;            // menu clicks not yet given to a tick (sign = side)
-  bool mutePending = false;  // a short press of A not yet given to a tick
+  bool mutePending = false;  // a short press of C not yet given to a tick
   bool pulseOn = false;      // the previous tick carried a press: this one is its release
   uint32_t prev = 0;         // raw buttons of the previous frame
-  bool overlayDone = false;  // the overlay toggle fired for this press of B
+  bool overlayDone = false;  // the overlay toggle fired for this press of A
 };
 Pad g_pad;
 
@@ -154,7 +156,7 @@ sim::Input readInput(const render::HudState &hud) {
   const bool inRun = hud.state == sim::GameState::PLAYING ||
                      hud.state == sim::GameState::LAUNCH || hud.state == sim::GameState::ARRIVE;
   const bool playing = inRun && !hud.paused;
-  const bool brake = raw & BTN_BRAKE, accel = raw & BTN_ACCEL, fire = raw & BTN_FIRE,
+  const bool fire = raw & BTN_FIRE, accel = raw & BTN_ACCEL, brake = raw & BTN_BRAKE,
              w = raw & BTN_WHEEL;
 
   uint8_t bits = 0;
@@ -174,28 +176,46 @@ sim::Input readInput(const render::HudState &hud) {
   }
   if (playing) x = (int8_t)(g_pad.lever * sim::INPUT_MAX / ds::LEVER_MAX);
 
-  // A and C together: the pause (the core acts on the press); on the title
-  // a long hold is the benchmark (the core wants B for three seconds)
-  if (brake && accel) {
-    if (!g_pad.acSince) g_pad.acSince = now | 1u;
-    if (!title) bits |= sim::Button::PAUSE;
-    if (title && now - g_pad.acSince >= ds::BENCH_HOLD_MS) bits |= sim::Button::B;
+  // When B and C went down
+  if (accel) {
+    if (!g_pad.accelSince) g_pad.accelSince = now | 1u;
   } else {
-    g_pad.acSince = 0;
-    if (playing && brake) y = sim::INPUT_MAX;   // brake is y > 0
-    if (playing && accel) y = -sim::INPUT_MAX;  // dash is y < 0
+    g_pad.accelSince = 0;
+  }
+  if (brake) {
+    if (!g_pad.brakeSince) {
+      g_pad.brakeSince = now | 1u;
+      g_pad.brakeJoined = accel;
+    }
+    if (accel) g_pad.brakeJoined = true;
   }
 
-  // A alone, pressed briefly on the title or the pause screen: the sound
-  if (brake) {
-    if (!g_pad.aSince) {
-      g_pad.aSince = now | 1u;
-      g_pad.aJoined = accel;
+  // B and C down together, pressed within PAUSE_PAIR_MS of each other: the
+  // pause (the core acts on the press); the pair stays a pair until one is
+  // released. On the title a long hold of the pair is the benchmark (the
+  // core wants B for three seconds). B over C otherwise cancel out.
+  if (accel && brake) {
+    if (!g_pad.pairHeld) {
+      const int32_t gap = (int32_t)(g_pad.accelSince - g_pad.brakeSince);
+      g_pad.pairHeld = (gap < 0 ? -gap : gap) <= (int32_t)ds::PAUSE_PAIR_MS;
     }
-    if (accel) g_pad.aJoined = true;
-  } else if (g_pad.aSince) {
-    if (menu && !g_pad.aJoined && now - g_pad.aSince < ds::MUTE_PRESS_MS) g_pad.mutePending = true;
-    g_pad.aSince = 0;
+    if (g_pad.pairHeld) {
+      if (!title) bits |= sim::Button::PAUSE;
+      const uint32_t since = g_pad.accelSince > g_pad.brakeSince ? g_pad.accelSince : g_pad.brakeSince;
+      if (title && now - since >= ds::BENCH_HOLD_MS) bits |= sim::Button::B;
+    }
+  } else {
+    g_pad.pairHeld = false;
+    if (playing && accel) y = -sim::INPUT_MAX;  // dash is y < 0
+    if (playing && brake) y = sim::INPUT_MAX;   // brake is y > 0
+  }
+
+  // C alone, pressed briefly on the title or the pause screen: the sound
+  if (!brake && g_pad.brakeSince) {
+    if (menu && !g_pad.brakeJoined && now - g_pad.brakeSince < ds::MUTE_PRESS_MS) {
+      g_pad.mutePending = true;
+    }
+    g_pad.brakeSince = 0;
   }
 
   // The dial pressed: the dodge; held on the title or the pause screen: back
@@ -207,7 +227,7 @@ sim::Input readInput(const render::HudState &hud) {
     g_pad.wheelSince = 0;
   }
 
-  // B: fire / confirm. With the dial held on the title or pause screen it
+  // A: fire / confirm. With the dial held on the title or pause screen it
   // cycles the overlay instead (and the press is not the core's).
   if (fire) {
     if (menu && w && !(g_pad.prev & BTN_FIRE)) {
@@ -226,7 +246,7 @@ sim::Input readInput(const render::HudState &hud) {
   return in;
 }
 
-// The menu presses the dial's clicks and A's short press stand for, one per
+// The menu presses the dial's clicks and C's short press stand for, one per
 // tick with a release tick between them, so none is lost on a frame without
 // a tick and each click is its own press (the core reads the axes as a pad)
 sim::Input tickInput(const sim::Input &base) {
@@ -454,12 +474,12 @@ void gameMain() {
   g_game.reset(ds::randomSeed());
   g_store.load(g_game);
   g_renderer.setControlHints(render::ControlHints{
-      "DIAL: TURN   B: FIRE   PUSH DIAL: DODGE",
-      "DIAL: TURN  B: FIRE  PUSH: DODGE",
-      "C: DASH   A: BRAKE",
-      "C / A: DASH / BRAKE",
-      "A+C: RESUME    A: SOUND",
-      "A+C: RESUME   A: SOUND",
+      "DIAL: TURN   A: FIRE   PUSH DIAL: DODGE",
+      "DIAL: TURN  A: FIRE  PUSH: DODGE",
+      "B: DASH   C: BRAKE",
+      "B / C: DASH / BRAKE",
+      "B+C: RESUME    C: SOUND",
+      "B+C: RESUME   C: SOUND",
   });
   g_renderer.init(ds::SCREEN_W, ds::SCREEN_H, g_arena, sizeof(g_arena), ds::SPAN_CAPACITY);
   g_renderer.setDetailTriangles(ds::DETAIL_TRIANGLES);

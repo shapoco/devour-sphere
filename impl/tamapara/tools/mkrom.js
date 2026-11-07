@@ -9,6 +9,8 @@
  *
  *   node mkrom.js --rom backup.bin --pram pram.bin [--xip xip.bin] --out new.bin [--keep-hiscore]
  *   node mkrom.js --rom new.bin --remove --out restored.bin     # the stock handlers back, our area erased
+ *   node mkrom.js --rom backup.bin --place                      # where a program would go in this dump, as
+ *                                                               # shell assignments for build.sh (make_bin.sh)
  *
  * Where things go (the Studio's places, so its own programs would not
  * collide): launcher at 0x0B0000 and image at 0x0A0000 when that area is
@@ -31,6 +33,7 @@ const XIP_DEC = 0x11000;                      // the window shows the flash from
 const xip = (off) => 0x10000000 + off - XIP_DEC;
 const APP_OFF_STD = 0xA0000, STUB_OFF_STD = 0xB0000;
 const CODE_END = 0x10F000;                    // the Studio's six-field page; nothing of ours above
+const HISCORE_OFF = 0x10D000;                 // the high score sector (build.sh's default; free on every edition)
 const PMXC = 0x43584D50, DSPH = 0x48505344;
 const PH_APP = 0x1234ABCD, PH_AUTO = 0x66666661, PH_ORIG = [0x22222221, 0x33333331, 0x44444441, 0x55555551];
 const HOOK_OFF = [0x40, 0x46, 0x4C, 0x52];    // the four hooks in the launcher, the originals at 0x94
@@ -42,18 +45,20 @@ const hex = (v) => '0x' + v.toString(16).toUpperCase().padStart(6, '0');
 function isFF(b, off, len) { for (let i = off; i < off + len; i++) if (b[i] !== 0xFF) return false; return true; }
 
 function args() {
-  const a = { keepHiscore: false, remove: false };
+  const a = { keepHiscore: false, remove: false, place: false };
   const v = process.argv.slice(2);
   for (let i = 0; i < v.length; i++) {
     const k = v[i];
     if (k === '--rom') a.rom = v[++i]; else if (k === '--pram') a.pram = v[++i]; else if (k === '--xip') a.xip = v[++i];
     else if (k === '--out') a.out = v[++i]; else if (k === '--stub') a.stub = v[++i];
     else if (k === '--keep-hiscore') a.keepHiscore = true; else if (k === '--remove') a.remove = true;
+    else if (k === '--place') a.place = true;
     else throw new Error('unknown argument ' + k);
   }
-  if (!a.rom || !a.out || (!a.remove && !a.pram)) {
+  if (!a.rom || (!a.place && (!a.out || (!a.remove && !a.pram)))) {
     console.error('usage: node mkrom.js --rom backup.bin --pram pram.bin [--xip xip.bin] --out new.bin [--keep-hiscore]\n' +
-                  '       node mkrom.js --rom new.bin --remove --out restored.bin');
+                  '       node mkrom.js --rom new.bin --remove --out restored.bin\n' +
+                  '       node mkrom.js --rom backup.bin --place');
     process.exit(2);
   }
   a.stub = a.stub || path.join(__dirname, '..', 'hw', 'stub_tpl.bin');
@@ -93,6 +98,10 @@ function stubPlace(rom) {
   return { stub: p, app: p + 0x1000 };
 }
 
+/** Where the game's flash part goes: right behind the launcher and the image, whichever is higher
+ *  (the Studio's layout has the launcher above the image: 0xB1000; ours has it below: image + 64 KB) */
+const xipPlace = (p) => Math.max(p.stub + 0x1000, p.app + 0x10000);
+
 /** Our launcher already installed? Returns { stub, app, origs } or null */
 function installed(rom, tab) {
   const home = tab.PSID_HOME;
@@ -116,6 +125,15 @@ function main() {
   if (!tab.PSID_HOME) throw new Error('home screen not found in the scene table');
   const prev = installed(rom, tab);
   const out = new Uint8Array(rom);
+
+  if (a.place) {
+    // the game's flash part follows the image, so build.sh needs the place before building
+    const p = prev || stubPlace(rom);
+    console.log('# launcher ' + hex(p.stub) + ', image ' + hex(p.app) + (prev ? ' (a program of ours is installed there)' : ''));
+    console.log('XIP_FLASH_OFF=' + hex(xipPlace(p)));
+    console.log('HISCORE_OFF=' + hex(HISCORE_OFF));
+    return;
+  }
 
   if (a.remove) {
     if (!prev) throw new Error('no launcher of ours is installed');
@@ -152,9 +170,9 @@ function main() {
     if (what === 'high score sector' && a.keepHiscore) continue;
     if (!isFF(clean, o, n) && !(what === 'high score sector' && prev)) throw new Error(what + ' at ' + hex(o) + ' (' + n + ' bytes): the area is in use');
   }
-  if (xipLen && xipOff !== app + 0x10000) {
+  if (xipLen && xipOff !== xipPlace(place)) {
     throw new Error('the image was built for its flash part at ' + hex(xipOff) + ', but this ROM puts the image at ' + hex(app) +
-                    ' (flash part would be ' + hex(app + 0x10000) + '). Rebuild with XIP_FLASH_OFF=' + hex(app + 0x10000));
+                    ' (flash part would be ' + hex(xipPlace(place)) + '). Rebuild with XIP_FLASH_OFF=' + hex(xipPlace(place)));
   }
   for (const [o, n] of need) for (const [p, m] of need) if (o !== p && o < p + m && p < o + n) throw new Error('areas overlap');
 

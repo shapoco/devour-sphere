@@ -28,51 +28,61 @@ Paramix Studio. The game core it links against stays MIT.
   Studio's "Device" button) and the UART dongle Paramix Studio uses
   (3.3 V, the three contacts at the top; Chrome or Edge for Web Serial).
 - `arm-none-eabi-gcc` (13 is known to work) and `node` to build and to make
-  the ROM. Optional: `pip install unicorn pillow` for `tools/sim.py`.
+  the ROM (`make_bin.sh` runs both). Optional: `pip install unicorn pillow` for `tools/sim.py`.
 
 Nothing here contains or needs the firmware; the program is put into
 **your own dump**.
 
 ## Build and write
 
+Put your backup at `roms/golden.bin` (the `roms/` directory is kept out of
+git) and run the script at the top of this directory:
+
 ```sh
-cd impl/tamapara/devoursphere
-./build.sh                              # build/pram.bin, build/xip.bin  (Glacier / Tropical layout)
-# XIP_FLASH_OFF=0xB1000 ./build.sh      # Land / Water / Sky (see SPEC.md)
-node ../tools/mkrom.js --rom /path/to/backup.bin --pram build/pram.bin --xip build/xip.bin --out /path/to/new.bin
+cd impl/tamapara
+./make_bin.sh        # builds hello/ and devoursphere/, then writes
+                     # roms/hello.bin and roms/devoursphere.bin
 ```
 
-Then in Paramix Studio: open `new.bin`, "Device", put the Paradise on its
-download screen (Planet, A, Connect, Download, Download), Connect, and
-"Write new ROM to the device" with "Only write changes" ticked. About 50
-sectors of 4 KB are written. On the device: home screen, hold A and C for
-about two seconds.
+Each output is your backup with one program added: `roms/hello.bin` holds
+the test program, `roms/devoursphere.bin` the game. Then in Paramix Studio:
+open the file, "Device", put the Paradise on its download screen (Planet, A,
+Connect, Download, Download), Connect, and "Write new ROM to the device"
+with "Only write changes" ticked (18 sectors of 4 KB for hello, about 50
+for the game). On the device: home screen, hold A and C for about two
+seconds.
+
+Try `roms/hello.bin` first: it shows the buttons, the dial's steps, a
+blinking dot and beeps on B, and the dial held 2 s goes back. Read SPEC.md
+"書き込みの手順と注意" before the first write.
+
+The script works for every edition: where the program goes depends on how
+far the firmware reaches (Land, Water and Sky have the Studio's DOOM place
+free; Glacier and Tropical do not), and `mkrom.js --place` reads that off
+the dump before the game is built for it. Another dump can be given as the
+first argument. The pieces by hand: `hello/build.sh`, `devoursphere/build.sh`
+(`XIP_FLASH_OFF` from `--place`) and `tools/mkrom.js` (see SPEC.md).
 
 **Back to the stock state:** write your backup the same way (only the
-changed sectors go), or `node tools/mkrom.js --rom new.bin --remove --out restored.bin`
+changed sectors go), or `node tools/mkrom.js --rom roms/devoursphere.bin --remove --out roms/restored.bin`
 and write that. The firmware itself is never modified except for the four
 home screen handlers the launcher hooks; Paramix Studio's own rescue (hold C
 while switching on) stays available if it was installed.
-
-Try `hello/` first (`./build.sh`, then `mkrom.js` with `--pram hello/build/hello.bin`
-and no `--xip`): it shows the buttons, the dial's steps, a blinking dot and
-beeps on B, and the dial held 2 s goes back. Read SPEC.md "書き込みの手順と注意" before the
-first write.
 
 ## Controls
 
 | Action | On the Paradise |
 |---|---|
-| Turn left / right | turn the dial: counterclockwise left, clockwise right, three clicks to the stop, back to the middle for straight ahead |
+| Turn left / right | turn the dial: counterclockwise left, clockwise right, five clicks to the stop, back to the middle for straight ahead |
 | Menus | one click of the dial = one press of left / right |
-| Dash / brake | C / A |
-| Fire / confirm | B |
+| Dash / brake | B / C |
+| Fire / confirm | A |
 | Emergency dodge | press the dial |
-| Pause / resume | A and C together |
-| Toggle mute | a short press of A on the title or pause screen |
-| Timing overlay | hold the dial, press B on the title or pause screen |
+| Pause / resume | B and C pressed together (within 0.2 s of each other) |
+| Toggle mute | a short press of C on the title or pause screen |
+| Timing overlay | hold the dial, press A on the title or pause screen |
 | Back to the Tamagotchi | hold the dial 2 s on the title or pause screen |
-| Benchmark | hold A and C 3 s on the title (B next page, dial close) |
+| Benchmark | hold B and C 3 s on the title (A next page, dial close) |
 
 The benchmark's result lines also go out of the dongle's UART at 460800 baud.
 

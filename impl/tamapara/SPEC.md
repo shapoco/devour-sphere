@@ -104,7 +104,9 @@ XIP 部 (xip.bin) は残りの `.text` / `.rodata` と `.init_array`。リンク
 | 0x10E000〜 | 触らない (Studio の設定ページ 0x10E000、六フィールドのページ 0x10F000、DPD ファーム 0x110000) |
 
 Land / Water / Sky はランチャ 0xB0000、イメージ 0xA0000 が空いているので mkrom.js はそこを使う。
-その場合 XIP 部は 0xB1000 (`XIP_FLASH_OFF=0xB1000 ./build.sh`)。mkrom.js はイメージの設定ブロックと
+その場合 XIP 部は 0xB1000 (`XIP_FLASH_OFF=0xB1000 ./build.sh`)。`node tools/mkrom.js --rom dump.bin --place` が
+ダンプを見てこの 2 値をシェルの代入文で出すので、make_bin.sh はそれを eval してからビルドする (エディションの
+指定は不要)。mkrom.js はイメージの設定ブロックと
 ROM の空きを照合し、合わなければ何も書かずに理由を出す。
 
 ランチャは `stub_tpl.bin` のプレースホルダ (`APP_SRC` = イメージの窓アドレス、`ORIG0..3` = ホーム画面の元の
@@ -141,15 +143,15 @@ Paramix 1.6.8 の PARA_BACK と同じ)、バックライトを消し、ボタン
 
 | 操作 | core への入力 | 備考 |
 |---|---|---|
-| ダイヤル回転 (プレイ中) | レバー: `x` = クリック数 × 127 / 3。反時計回りで左、時計回りで右、±3 クリック (`LEVER_MAX`) で打ち止め | 回し戻すまで保持。PLAYING / LAUNCH / ARRIVE 以外では中立に戻す (エンコーダは相対値なので、打ち止めがあるから中立がずれない) |
+| ダイヤル回転 (プレイ中) | レバー: `x` = クリック数 × 127 / `LEVER_MAX`。反時計回りで左、時計回りで右、±`LEVER_MAX` (5) クリックで打ち止め | 回し戻すまで保持。PLAYING / LAUNCH / ARRIVE 以外では中立に戻す (エンコーダは相対値なので、打ち止めがあるから中立がずれない) |
 | ダイヤル回転 (プレイ中以外) | 1 クリック = 左 / 右を 1 回 (`x` = ∓127 を 1 tick、次の tick で離す) | クリックは tick に渡すまで溜めておく (`tickInput()`)。core はメニューで軸をパッドとして読み、押された瞬間だけ見る |
-| A / C | `y` = +127 (ブレーキ) / -127 (ダッシュ) | プレイ中のみ |
-| B | `Button::A` (攻撃・決定) | |
+| B / C | `y` = -127 (ダッシュ) / +127 (ブレーキ) | プレイ中のみ。両方押しでペアでなければ打ち消して 0 |
+| A | `Button::A` (攻撃・決定) | |
 | ダイヤル押下 | `Button::B` (緊急回避) | |
-| A+C 同時 | `Button::PAUSE` (押した瞬間に core が切り替える) | |
-| A 短押し (タイトル / ポーズ、`MUTE_PRESS_MS` 未満、C が加わらない) | 離したときに `y` = +127 を 1 tick (core の DOWN = ミュート切り替え) | A+C でポーズ / 再開しても切り替わらないよう、押した瞬間ではなく離したときに判定 |
-| A+C 3 秒 (タイトル) | `Button::B` を保持 → core のベンチマーク開始 (B 3 秒) | ダイヤル長押しは復帰に使うため |
-| ダイヤルを押しながら B (タイトル / ポーズ) | 計測オーバーレイの切り替え。その B は core に渡さない | |
+| B+C 同時 (押し下げの時間差 `PAUSE_PAIR_MS` = 200ms 以内) | `Button::PAUSE` (押した瞬間に core が切り替える) | ペアはどちらかを離すまで続く。長く押している B に C が加わるのはブレーキであってポーズではない |
+| C 短押し (タイトル / ポーズ、`MUTE_PRESS_MS` 未満、B が加わらない) | 離したときに `y` = +127 を 1 tick (core の DOWN = ミュート切り替え) | B+C でポーズ / 再開しても切り替わらないよう、押した瞬間ではなく離したときに判定 |
+| B+C のペアを 3 秒 (タイトル) | `Button::B` を保持 → core のベンチマーク開始 (B 3 秒) | ダイヤル長押しは復帰に使うため |
+| ダイヤルを押しながら A (タイトル / ポーズ) | 計測オーバーレイの切り替え。その A は core に渡さない | |
 | ダイヤル 2 秒長押し (タイトル / ポーズ) | 純正へ戻る (`leave()`) | ベンチマーク表示中は `Button::B` を出さない (閉じるのは短押し) |
 
 エンコーダは SysTick で読み、グレイコードの遷移表で ±1 し、`DETENT_STEPS` ごとに 1 クリック。
@@ -213,13 +215,16 @@ Unicorn に PRAM イメージと XIP 部 (と任意で実機のダンプ) を載
 ## 書き込みの手順と注意
 
 1. Paramix Studio で ROM を読んでバックアップを取る (16MB)。
-2. `hello/build.sh` → `node tools/mkrom.js --rom backup.bin --pram hello/build/hello.bin --out hello_rom.bin`。
-3. Studio で hello_rom.bin を開き、Device → ダウンロード画面 (Planet, A, Connect, Download, Download) → Connect →
+2. バックアップを `roms/golden.bin` に置いて `./make_bin.sh` (hello と本体をビルドし、`roms/hello.bin` と
+   `roms/devoursphere.bin` を作る)。手でやるなら `hello/build.sh` →
+   `node tools/mkrom.js --rom roms/golden.bin --pram hello/build/hello.bin --out roms/hello.bin`。
+3. Studio で roms/hello.bin を開き、Device → ダウンロード画面 (Planet, A, Connect, Download, Download) → Connect →
    "Write new ROM to the device" ("Only write changes" にチェック。差分 18 セクタ)。
 4. 本体のホーム画面で A+C を約 2 秒。4 つの四角 (A/B/C/ダイヤル)、ダイヤルの棒、点滅する点が出れば起動成功。
    B でビープ。ダイヤルを時計回りに 1 クリック回すと棒が 1 ピクセル伸びる (= `DETENT_STEPS`)。
    ダイヤル 2 秒長押しで純正に戻る。
-5. 本体用: `devoursphere/build.sh` → mkrom.js (`--xip` 付き) → 同じ手順で書く (差分約 50 セクタ)。
+5. 本体用: `roms/devoursphere.bin` を同じ手順で書く (差分約 50 セクタ)。手でやるなら `devoursphere/build.sh` →
+   mkrom.js (`--xip` 付き)。
 6. 元に戻す: バックアップを同じ手順で書く (差分だけ書かれる)。または `mkrom.js --remove`。
 
 注意:

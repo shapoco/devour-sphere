@@ -55,14 +55,18 @@ constexpr uint32_t SYSTICK_RELOAD = SYS_CLOCK_KHZ - 1;
 constexpr int DETENT_STEPS = 1;
 // The steering lever: clicks from the middle to the stop on either side
 // (counterclockwise left, clockwise right)
-constexpr int LEVER_MAX = 3;
+constexpr int LEVER_MAX = 5;
 
 // --- Holds --------------------------------------------------------------
-// A pressed alone and released within this time on the title or the pause
-// screen toggles the sound (a longer press, or one C joined, does not)
+// B and C count as a pair (the pause) only when they went down within this
+// time of each other; C joining a long-held B is a brake, not a pause
+constexpr uint32_t PAUSE_PAIR_MS = 200;
+// C pressed alone and released within this time on the title or the pause
+// screen toggles the sound (a longer press, or one B joined, does not)
 constexpr uint32_t MUTE_PRESS_MS = 400;
-// A and C held this long on the title start the benchmark (the core wants
-// B for three seconds; the dial's push is taken by the way out below)
+// The B and C pair held this long on the title starts the benchmark (the
+// core wants B for three seconds; the dial's push is taken by the way out
+// below)
 constexpr uint32_t BENCH_HOLD_MS = 3000;
 // The dial held this long on the title or the pause screen goes back to
 // the Paradise
