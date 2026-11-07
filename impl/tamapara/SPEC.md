@@ -158,9 +158,13 @@ Paramix 1.6.8 の PARA_BACK と同じ)、バックライトを消し、ボタン
 ## 表示
 
 `hw_px_begin(0, y, 128, y+32)` → `hw_px_raw(帯, 8192)` → `hw_px_end()`。帯は RGB565_SWAPPED (メモリ上で
-ビッグエンディアン) なので、そのままのバイト順がパネルの順になる。`hw_px_raw()` は 16 バイトずつ SPI の
-FIFO に詰める (Paramix DOOM v0.8.17 の方式)。全画面 32KB の所要時間は起動時に `measureTransfer()` で測り、
-オーバーレイの `XFR` に出る。**実機で未計測**。
+ビッグエンディアン) なので、そのままのバイト順がパネルの順になる。全画面 32KB の所要時間は起動時に
+`measureTransfer()` で測り、オーバーレイの `XFR` に出る。
+
+- `LCD_FASTCLK` (build.sh): SPI1 の分周を 1 から 0 に (倍速)。Paramix の DOOM とエミュレータ群はすべてこの設定。
+- `LCD_STREAM` (build.sh): `hw_px_raw()` が帯 8KB を一続きで送る (FIFO フルのビットだけ見る)。無しだと Paramix
+  DOOM v0.8.17 の方式で、16 バイトごとにバスが空になるのを待って FIFO をクリアする。
+- 実機の XFR: 分周 1 + 16 バイト方式で 11.74ms (2026-11-07)。倍速 + 一続きは未計測。
 
 ## 音
 

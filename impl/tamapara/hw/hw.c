@@ -306,8 +306,14 @@ void hw_back_to_paradise(void){
   for(;;){}
 }
 
-/* DOOM: pixels as ready-made bytes (palette already in send order), 16 bytes per SPI pass */
+/* DOOM: pixels as ready-made bytes (palette already in send order), 16 bytes per SPI pass.
+   LCD_STREAM (Devour Sphere): the whole run in one pass, polling only the FIFO-full bit per
+   byte, so the bus is not drained and refilled every 16 bytes. */
 void hw_px_raw(const u8* p, u32 n){
+#ifdef LCD_STREAM
+  spi_tx(p,n);
+#else
   while(n>=16u){ spi_tx(p,16); p+=16; n-=16u; }
   if(n) spi_tx(p,n);
+#endif
 }
