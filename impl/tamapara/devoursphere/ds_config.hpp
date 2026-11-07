@@ -1,0 +1,73 @@
+#ifndef DS_CONFIG_HPP
+#define DS_CONFIG_HPP
+
+// Tunables of the Tamagotchi Paradise front end. See ../SPEC.md for the
+// reasoning. The Xiamocon, PicoSystem and ESPboy front ends have a file of
+// the same name with the same members, which is what lets them share
+// profiler.cpp (impl/xiamocon/devoursphere/src/).
+
+#include <cstddef>
+#include <cstdint>
+
+#include "devoursphere/sim/config.hpp"
+
+namespace ds {
+
+constexpr int SCREEN_W = 128;
+constexpr int SCREEN_H = 128;
+
+// One band buffer of 32 rows (8 KB): the panel is fed by the CPU through
+// SPI1's FIFO, so a second buffer would overlap nothing. The ESPboy's
+// reasoning for 32 rows holds here too.
+constexpr int BAND_H = 32;
+constexpr int BAND_COUNT = SCREEN_H / BAND_H;
+static_assert(SCREEN_H % BAND_H == 0, "the bands must tile the screen exactly");
+
+// Working memory of the 3D renderer (the ESPboy's figure; the 128 KB SRAM
+// would allow more, the CPU is what limits the scene)
+constexpr size_t ARENA_SIZE = 16 * 1024;
+
+// Triangles a frame may spend on full entity bodies
+constexpr int DETAIL_TRIANGLES = 72;
+
+// Spans held per scanline
+constexpr int SPAN_CAPACITY = 64;
+
+// The simulation runs at a fixed rate whatever the frame rate is
+constexpr uint32_t TICK_US = 1000000u / devoursphere::sim::TICK_RATE;
+
+// Ticks a single frame may catch up on
+constexpr int MAX_CATCHUP = 3;
+
+// The main stack: the top 16 KB of the SRAM (0x1801C000..0x18020000). The
+// stack watch fills this much below the top with a pattern at start-up.
+constexpr uint32_t STACK_TOP = 0x18020000u;
+constexpr uint32_t STACK_BYTES = 16 * 1024;
+
+// The core clock after hw_init (the PLL the firmware itself uses); SysTick
+// counts it, 1 ms per interrupt
+constexpr uint32_t SYS_CLOCK_KHZ = 96000;
+constexpr uint32_t SYSTICK_RELOAD = SYS_CLOCK_KHZ - 1;
+
+// --- The dial -----------------------------------------------------------
+// Quadrature steps per detent. Most encoders give one full cycle (4 steps)
+// per click; the hello program's bar shows the real figure (../hello/).
+constexpr int DETENT_STEPS = 4;
+// One detent of the dial moves the throttle (dash / brake, sim::Input::y)
+// by this much; three clicks reach full dash
+constexpr int THROTTLE_STEP = 43;
+
+// --- Holds --------------------------------------------------------------
+// A and C together count as PAUSE once both have been held this long: a
+// steering overlap (A released after C was pressed) stays a turn
+constexpr uint32_t PAUSE_HOLD_MS = 100;
+// A and C held this long on the title start the benchmark (the core wants
+// B for three seconds; the dial's push is taken by the way out below)
+constexpr uint32_t BENCH_HOLD_MS = 3000;
+// The dial held this long on the title or the pause screen goes back to
+// the Paradise
+constexpr uint32_t LEAVE_HOLD_MS = 2000;
+
+}  // namespace ds
+
+#endif

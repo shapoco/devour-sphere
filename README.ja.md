@@ -21,7 +21,7 @@ https://github.com/user-attachments/assets/b8855ba7-7ce3-45a3-9633-efb35ae5db60
 
 - **M5Stack Tab5/StickS3:** ビルド済みのファームウェアを [M5Burner](https://docs.m5stack.com/en/download)
   から書き込めます。M5Burner の Tab5/StickS3 のリストで "Devour Sphere" を探してください。
-- **その他のボード:** Xiamocon (RP2350 / ESP32S3)、PicoSystem、ESPboy のバイナリは
+- **その他のボード:** Xiamocon (RP2350 / ESP32S3)、PicoSystem、ESPboy、Tamagotchi Paradise のバイナリは
   [Releases](https://github.com/shapoco/devour-sphere/releases) に zip で置いてあります
   (書き込み方は zip 内の README.txt)。
 - **ブラウザ版:** ダウンロード不要。上の「遊ぶ」のリンクから。
@@ -38,6 +38,7 @@ https://github.com/user-attachments/assets/b8855ba7-7ce3-45a3-9633-efb35ae5db60
 | [M5Stack Tab5](https://docs.m5stack.com/en/core/Tab5) | ESP32-P4 | [impl/m5tab5/](impl/m5tab5/README.md) |
 | [M5StickS3](https://docs.m5stack.com/en/core/M5StickS3) | ESP32-S3 | [impl/m5sticks3/](impl/m5sticks3/README.md) |
 | [ESPboy](https://www.espboy.com/) | ESP8266 | [impl/espboy/](impl/espboy/README.md) |
+| Tamagotchi Paradise (バンダイ) | Sonix SNC73410 (Cortex-M3) | [impl/tamapara/](impl/tamapara/README.md) |
 | 端末 | POSIX | [impl/cli/](impl/cli/README.md) |
 
 ## 操作
@@ -196,6 +197,7 @@ tick のたびに `pollEffects()` を呼んでください (tick の出すイベ
 | [impl/m5tab5/](impl/m5tab5/) | ESP-IDF、フルサイズのフレーム + ハードウェアの拡大回転、タッチの仮想パッド |
 | [impl/m5sticks3/](impl/m5sticks3/) | 横倒しの 240x135、傾きで操作 (IMU)、振ってポーズ |
 | [impl/espboy/](impl/espboy/) | 一番小さな機械 (ESP8266、96KB、1 コア)。core を縮小構成でビルドし、帯を CPU で転送する |
+| [impl/tamapara/](impl/tamapara/) | 玩具の純正ファームのゲスト。SDK の無い SoC にベアメタル、64KB の PRAM イメージ + フラッシュ窓のコード、ランチャをダンプに埋め込む (GPL-3、Paramix Studio 由来) |
 | [impl/wasm/](impl/wasm/) | ブラウザ (Emscripten)、キーボード / ゲームパッド / タッチ、localStorage |
 | [impl/cli/](impl/cli/) | 一番短い例。全画面を 1 回の `renderBand()` で描いて端末に流すだけ |
 

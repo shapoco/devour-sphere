@@ -23,8 +23,8 @@ and fonts.
 - **M5Stack Tab5/StickS3:** a prebuilt firmware can be flashed straight from
   [M5Burner](https://docs.m5stack.com/en/download) — look for "Devour Sphere"
   in its Tab5/StickS3 list.
-- **Other boards:** binaries for Xiamocon (RP2350 / ESP32S3), PicoSystem and ESPboy are
-  zipped up under [Releases](https://github.com/shapoco/devour-sphere/releases);
+- **Other boards:** binaries for Xiamocon (RP2350 / ESP32S3), PicoSystem, ESPboy and the
+  Tamagotchi Paradise are zipped up under [Releases](https://github.com/shapoco/devour-sphere/releases);
   the README.txt inside says how to flash each one.
 - **Browser:** nothing to download, just follow the Play link above.
 
@@ -41,6 +41,7 @@ build it.
 | [M5Stack Tab5](https://docs.m5stack.com/en/core/Tab5) | ESP32-P4 | [impl/m5tab5/](impl/m5tab5/README.md) |
 | [M5StickS3](https://docs.m5stack.com/en/core/M5StickS3) | ESP32-S3 | [impl/m5sticks3/](impl/m5sticks3/README.md) |
 | [ESPboy](https://www.espboy.com/) | ESP8266 | [impl/espboy/](impl/espboy/README.md) |
+| Tamagotchi Paradise (Bandai) | Sonix SNC73410 (Cortex-M3) | [impl/tamapara/](impl/tamapara/README.md) |
 | Terminal | any POSIX | [impl/cli/](impl/cli/README.md) |
 
 ## Controls
@@ -217,6 +218,7 @@ Knobs for when it does not fit or does not keep up:
 | [impl/m5tab5/](impl/m5tab5/) | ESP-IDF, a full-size frame plus hardware scale and rotate, a touch pad |
 | [impl/m5sticks3/](impl/m5sticks3/) | 240x135 on its side, steered by tilting the board (IMU), shake to pause |
 | [impl/espboy/](impl/espboy/) | the smallest machine: ESP8266, 96 KB, one core, the core built in a reduced configuration, bands pushed by the CPU |
+| [impl/tamapara/](impl/tamapara/) | a guest of a toy's stock firmware: bare metal on an undocumented SoC, a 64 KB PRAM image plus code in a cached flash window, a launcher patched into a flash dump (GPL-3, after Paramix Studio) |
 | [impl/wasm/](impl/wasm/) | the browser (Emscripten): keyboard, gamepad, touch, localStorage |
 | [impl/cli/](impl/cli/) | the shortest one: one `renderBand()` for the whole frame, out to a terminal |
 

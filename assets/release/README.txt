@@ -3,9 +3,9 @@ Built from commit @COMMIT@
 https://github.com/shapoco/devour-sphere
 
 Firmware for Xiamocon (a XIAO RP2350 / ESP32S3 handheld), for PicoSystem
-(Pimoroni, RP2040), for M5Stack Tab5 (ESP32-P4), for M5StickS3 (ESP32-S3)
-and for ESPboy (ESP8266). The browser version needs no download: see
-docs/play/ on the project page.
+(Pimoroni, RP2040), for M5Stack Tab5 (ESP32-P4), for M5StickS3 (ESP32-S3),
+for ESPboy (ESP8266) and for the Tamagotchi Paradise (Bandai). The browser
+version needs no download: see docs/play/ on the project page.
 
 Controls on the handhelds: LEFT / RIGHT turn, UP dashes, DOWN brakes, A / Y
 fire and confirm, B is the emergency dodge (a 0.3 s barrel roll that enemy
@@ -76,3 +76,22 @@ espboy/           - for ESPboy (ESP8266)
     brakes, A fires, B is the emergency dodge, the left shoulder pauses; on
     the title or pause screen DOWN toggles mute and the right shoulder the
     timing overlay. The sound is a one-voice square wave on the speaker.
+
+tamapara/         - for the Tamagotchi Paradise (Bandai, Sonix SNC73410)
+  devour-sphere.pram.bin, devour-sphere.xip.bin, hello.bin, tools/mkrom.js,
+  hw/stub_tpl.bin, README.md, LICENSE (this directory is GPL-3.0-or-later)
+    Not a firmware to flash as it is: the game is a guest of the toy's own
+    firmware and goes into a dump of YOUR device. Read the 16 MB flash with
+    Paramix Studio (https://github.com/mameise/Paramix-Studio, "Device"),
+    then
+      node tools/mkrom.js --rom backup.bin --pram devour-sphere.pram.bin \
+           --xip devour-sphere.xip.bin --out new.bin
+    and write new.bin with Paramix Studio ("Write new ROM to the device",
+    "Only write changes"). On the toy: home screen, hold A and C. Built for
+    the Glacier / Tropical editions (firmware up to 0xB5E00); Land, Water
+    and Sky need a build with XIP_FLASH_OFF=0xB1000 (see README.md). Try
+    hello.bin the same way first (no --xip): it shows the buttons and the
+    dial. A / C turn, B fires, the dial pressed dodges, the dial turned is
+    the throttle (dash / brake), A+C pause, the dial held 2 s on the title
+    or pause screen goes back to the Tamagotchi. Back to stock: write your
+    backup the same way. Keep the backup.

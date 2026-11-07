@@ -31,6 +31,7 @@ mkdir -p "${RELS_DIR}/picosystem"
 mkdir -p "${RELS_DIR}/m5tab5"
 mkdir -p "${RELS_DIR}/m5sticks3"
 mkdir -p "${RELS_DIR}/espboy"
+mkdir -p "${RELS_DIR}/tamapara"
 
 pushd "${REPO_DIR}/impl/xiamocon/devoursphere/"
   ./build_esp32s3.sh
@@ -84,6 +85,22 @@ pushd "${REPO_DIR}/impl/espboy/devoursphere/"
   cp \
     "${ASSETS_DIR}/release/espboy/upload.sh" \
     "${RELS_DIR}/espboy/upload.sh"
+popd
+
+# The Paradise: the two program parts, the hello program, and what makes the
+# ROM out of the user's own dump (no firmware is shipped). GPL-3 directory.
+pushd "${REPO_DIR}/impl/tamapara/"
+  ./hello/build.sh
+  ./devoursphere/build.sh
+  cp "devoursphere/build/pram.bin" "${RELS_DIR}/tamapara/devour-sphere.pram.bin"
+  cp "devoursphere/build/xip.bin" "${RELS_DIR}/tamapara/devour-sphere.xip.bin"
+  cp "hello/build/hello.bin" "${RELS_DIR}/tamapara/hello.bin"
+  mkdir -p "${RELS_DIR}/tamapara/tools" "${RELS_DIR}/tamapara/hw"
+  cp "tools/mkrom.js" "${RELS_DIR}/tamapara/tools/mkrom.js"
+  cp "hw/stub_tpl.bin" "${RELS_DIR}/tamapara/hw/stub_tpl.bin"
+  cp "hw/NOTICE.md" "${RELS_DIR}/tamapara/hw/NOTICE.md"
+  cp "LICENSE" "${RELS_DIR}/tamapara/LICENSE"
+  cp "README.md" "${RELS_DIR}/tamapara/README.md"
 popd
 
 sed \

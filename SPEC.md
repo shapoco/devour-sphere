@@ -71,6 +71,16 @@ core は縮小構成 (半径 2^16 のスフィアに 48 体、深度なし、フ
 
 詳細は impl/espboy/SPEC.md を参照のこと。
 
+### Tamagotchi Paradise 版
+
+impl/tamapara/ 配下に Tamagotchi Paradise (バンダイ、Sonix SNC73410、Cortex-M3 96MHz、128x128) 向けの実装が
+置かれる。純正ファームのゲストプログラムとして動く: Paramix Studio (mameise、GPL-3) と同じ方式で、空いている
+フラッシュにプログラムを置き、ホーム画面で A+C を押すとランチャが先頭 64KB を PRAM にコピーして起動する。
+残りのコードはキャッシュ付きのフラッシュ窓で実行する。core は ESPboy 版と同じ縮小構成。ハード層は Paramix
+Studio の DOOM 移植から取ったので、このディレクトリだけ GPL-3.0-or-later。
+
+詳細は impl/tamapara/SPEC.md を参照のこと。
+
 ### CLI 版
 
 impl/cli/ 配下に Linux の端末で遊ぶ実装が置かれる (半分冗談)。320x240 のフレームバッファに描き、
@@ -94,6 +104,7 @@ impl/picosystem/     PicoSystem 版 (impl/picosystem/README.md、SPEC.md)
 impl/m5tab5/         M5Tab5 版 (impl/m5tab5/README.md、SPEC.md)
 impl/m5sticks3/      M5StickS3 版 (impl/m5sticks3/README.md、SPEC.md)
 impl/espboy/         ESPboy 版 (impl/espboy/README.md、SPEC.md)
+impl/tamapara/       Tamagotchi Paradise 版 (impl/tamapara/README.md、SPEC.md、GPL-3)
 impl/cli/            CLI 版 (impl/cli/README.md、SPEC.md)
 docs/                公開用の静的サイト (docs/play/ がゲーム)
 assets/se/           効果音の素材 (効果音ラボ、assets/se/README.md)
