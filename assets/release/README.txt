@@ -91,7 +91,7 @@ tamapara/         - for the Tamagotchi Paradise (Bandai, Sonix SNC73410)
     the Glacier / Tropical editions (firmware up to 0xB5E00); Land, Water
     and Sky need a build with XIP_FLASH_OFF=0xB1000 (see README.md). Try
     hello.bin the same way first (no --xip): it shows the buttons and the
-    dial. A / B turn, C fires, the dial pressed dodges, the dial turned is
-    the throttle (dash / brake), A+B pause, the dial held 2 s on the title
+    dial. The dial turned steers (three clicks to the stop), C / A dash and
+    brake, B fires, the dial pressed dodges, A+C pause, the dial held 2 s on the title
     or pause screen goes back to the Tamagotchi. Back to stock: write your
     backup the same way. Keep the backup.

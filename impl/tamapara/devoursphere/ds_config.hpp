@@ -53,14 +53,14 @@ constexpr uint32_t SYSTICK_RELOAD = SYS_CLOCK_KHZ - 1;
 // Quadrature steps per detent: the Paradise's dial gives one step per click
 // (the hello program's bar, measured on the device 2026-11-07)
 constexpr int DETENT_STEPS = 1;
-// One detent of the dial moves the throttle (dash / brake, sim::Input::y)
-// by this much; three clicks reach full dash
-constexpr int THROTTLE_STEP = 43;
+// The steering lever: clicks from the middle to the stop on either side
+// (counterclockwise left, clockwise right)
+constexpr int LEVER_MAX = 3;
 
 // --- Holds --------------------------------------------------------------
-// A and C together count as PAUSE once both have been held this long: a
-// steering overlap (A released after C was pressed) stays a turn
-constexpr uint32_t PAUSE_HOLD_MS = 100;
+// A pressed alone and released within this time on the title or the pause
+// screen toggles the sound (a longer press, or one C joined, does not)
+constexpr uint32_t MUTE_PRESS_MS = 400;
 // A and C held this long on the title start the benchmark (the core wants
 // B for three seconds; the dial's push is taken by the way out below)
 constexpr uint32_t BENCH_HOLD_MS = 3000;
