@@ -26,4 +26,8 @@ void hw_px_begin(u32 x0, u32 y0, u32 x1, u32 y1);
 void hw_px_row(const u16* r, u32 n);   /* host-order RGB565, swapped on the way */
 void hw_px_raw(const u8* p, u32 n);    /* bytes as they are */
 void hw_px_end(void);
+/* After hw_px_begin(): the bytes go out by DMA (LCD_DMA). Wait before the next panel access and
+ * before reusing the buffer; the wait also ends the pixel run, so no hw_px_end(). */
+void hw_px_dma_start(const u8* p, u32 n);
+void hw_px_dma_wait(void);
 #endif

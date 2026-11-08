@@ -61,6 +61,7 @@ void ds_uart_puts(const char *s) {
 __attribute__((used, section(".pram_text.fault"))) void ds_fault_c(u32 *fr) {
   (void)fr;
   hw_tone(0);
+  hw_px_dma_wait();  /* a band may still be going out */
   static u16 row[128];
   for (u32 x = 0; x < 128; x++) row[x] = 0xF800u;
   for (u32 y = 0; y < 128; y++) { hw_px_begin(0, y, 128, y + 1); hw_px_row(row, 128); hw_px_end(); }

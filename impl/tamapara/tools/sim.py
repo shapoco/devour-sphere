@@ -127,7 +127,7 @@ def h_fault(uc):
     state['fault'] = 'fault at ms %d: pc %08x lr %08x psr %08x cfsr %08x' % (state['ms'], fr[6], fr[5], fr[7], struct.unpack('<I', uc.mem_read(0xE000ED28, 4))[0])
     uc.emu_stop()
 HOOKS = {'hw_init': h_nop, 'hw_wdt_feed': h_nop, 'hw_buttons': h_btn, 'hw_px_begin': h_begin, 'hw_px_row': h_row,
-         'hw_px_raw': h_raw, 'hw_px_end': h_nop, 'hw_push': h_push, 'hw_tone': h_tone, 'hw_backlight': h_nop,
+         'hw_px_raw': h_raw, 'hw_px_dma_start': h_raw, 'hw_px_dma_wait': h_nop, 'hw_px_end': h_nop, 'hw_push': h_push, 'hw_tone': h_tone, 'hw_backlight': h_nop,
          'hw_bl_pwm_off': h_nop, 'hw_back_to_paradise': h_back, 'flash_prog4k': h_prog4k, 'flash_update4k': h_update4k,
          'flash_erase4k': h_erase4k, 'flash_prog': h_prog, 'ds_frame_mark': h_frame, 'fault_c': h_fault, 'ds_fault_c': h_fault}
 for name, f in HOOKS.items():

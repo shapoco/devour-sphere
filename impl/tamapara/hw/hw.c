@@ -317,3 +317,50 @@ void hw_px_raw(const u8* p, u32 n){
   if(n) spi_tx(p,n);
 #endif
 }
+
+#ifdef LCD_DMA
+/* The panel's SPI0 by DMA, so the CPU can draw while a band goes out. The registers follow the
+ * stock firmware's transfer (PRAM 0x3FC8 and 0x3A84), in 8 bit frames and polled instead of IRQ 58.
+ * The DC line stays high until hw_px_dma_wait(). */
+#define SDMA 0x4000F000u
+#define SDMA_CH 0x4000F100u
+#define SDMA_POLLS 4000000u
+static u8 g_dma_busy;
+void hw_px_dma_start(const u8* p, u32 n){
+  REG(SDMA+0x08) |= 1u;
+  REG(SDMA+0x10) |= 1u; REG(SDMA+0x10) |= 0x10000u;
+  REG(SDMA+0x28) |= 1u; REG(SDMA+0x24) |= 1u;
+  REG(PANEL+0x24) &= ~0xFF0000u;
+  REG(PANEL+0x24) = (REG(PANEL+0x24) & ~0xFFu) | 15u;
+  REG(PANEL+0x50) = 0; REG(PANEL+0x50) |= 0x80000000u;
+  REG(PANEL+0x50) = (REG(PANEL+0x50) & ~0x3FFFFFu) | n;
+  REG(SDMA_CH+0x04) = 0;
+  REG(SDMA_CH+0x04) |= 4u; REG(SDMA_CH+0x04) |= 2u;
+  REG(SDMA_CH+0x04) |= 0x2000u; REG(SDMA_CH+0x04) |= 0x80u;
+  REG(SDMA_CH+0x10) = 0;
+  REG(SDMA_CH+0x14) = (REG(SDMA_CH+0x14) & ~0x3FFFFFu) | n;
+  REG(SDMA_CH+0x0C) = PANEL+0x1Cu;
+  REG(SDMA_CH+0x08) = (u32)p;
+  REG(SDMA_CH+0x00) = 0;
+  REG(SDMA_CH+0x00) |= 0x80u; REG(SDMA_CH+0x00) |= 2u;
+  REG(SDMA_CH+0x00) = (REG(SDMA_CH+0x00) & ~(3u<<3)) | (2u<<3);
+  dsb();
+  REG(SDMA_CH+0x00) |= 1u;
+  g_dma_busy = 1;
+}
+/* Until the band has left the SPI, then the controller back as spi_init() left it */
+void hw_px_dma_wait(void){
+  if(!g_dma_busy) return;
+  g_dma_busy = 0;
+  for(u32 g=0; !(REG(SDMA+0x00) & 1u) && g<SDMA_POLLS; g++){}
+  REG(SDMA_CH+0x00) &= ~1u;
+  REG(SDMA+0x08) |= 1u;
+  REG(SDMA+0x10) |= 1u; REG(SDMA+0x10) |= 0x10000u;
+  for(u32 g=0; (SPI_STAT & 0x10u) && g<SPIWAIT; g++){}
+  REG(PANEL+0x50) = 0;
+  REG(PANEL+0x24) |= 0x80000000u; REG(PANEL+0x24) &= ~0xFF0000u;
+  REG(PANEL+0x24) |= 0x80000000u; REG(PANEL+0x24) &= ~0xFFu;
+  SPI_CTRL |= 0xC0u;
+  LCD_DC(0);
+}
+#endif

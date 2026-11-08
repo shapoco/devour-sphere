@@ -105,10 +105,12 @@ alignas(8) uint8_t g_arena[ds::ARENA_SIZE];
 ds::Profiler g_prof;
 render::Benchmark g_bench;
 
-// One band buffer, RGB565_SWAPPED: the bytes are in panel order already, so
-// hw_px_raw streams them as they are. Between frames it is also the 4 KB
-// buffer of the flash write and of the way back.
-alignas(4) uint16_t g_band[ds::SCREEN_W * ds::BAND_H];
+// Two band buffers, RGB565_SWAPPED: the bytes are in panel order already, so
+// the DMA sends them as they are. One is being drawn while the other goes out.
+// Between frames the DMA is idle and the first one is also the 4 KB buffer of
+// the flash write and of the way back.
+alignas(4) uint16_t g_bands[2][ds::SCREEN_W * ds::BAND_H];
+int g_drawBand = 0;
 
 // Frame pacing
 uint32_t g_lastUs = 0;
@@ -340,20 +342,23 @@ void updateProfileClock() {
 // ---- Frames -----------------------------------------------------------------
 g2::Surface bandSurface() {
   return {g2::PixelFormat::RGB565_SWAPPED, (int16_t)ds::SCREEN_W, (int16_t)ds::BAND_H,
-          (uint32_t)(ds::SCREEN_W * 2), g_band};
+          (uint32_t)(ds::SCREEN_W * 2), g_bands[g_drawBand]};
 }
 
-// Push one band (RGB565_SWAPPED, already in panel byte order)
+// Start sending the band just drawn and hand the other buffer to the renderer.
+// Waits only if the previous band is still going out.
 void pushBand(int y) {
+  hw_px_dma_wait();
   hw_px_begin(0, (u32)y, ds::SCREEN_W, (u32)(y + ds::BAND_H));
-  hw_px_raw((const u8 *)g_band, sizeof(g_band));
-  hw_px_end();
+  hw_px_dma_start((const u8 *)g_bands[g_drawBand], sizeof(g_bands[0]));
+  g_drawBand ^= 1;
 }
 
 // A whole screen of band pushes with nothing else running, in microseconds
 uint32_t measureTransfer() {
   const uint32_t t0 = clockUs();
   for (int b = 0; b < ds::BAND_COUNT; b++) pushBand(b * ds::BAND_H);
+  hw_px_dma_wait();
   return clockUs() - t0;
 }
 
@@ -392,7 +397,10 @@ void presentFrame() {
     pushBand(y);
     g_xferUs += clockUs() - t2;
   }
-  g_prof.dmaWaitUs = g_xferUs;  // the push is the CPU's here
+  const uint32_t t3 = clockUs();
+  hw_px_dma_wait();  // the last band: the DMA is idle between frames
+  g_xferUs += clockUs() - t3;
+  g_prof.dmaWaitUs = g_xferUs;  // the time the CPU waited, not the time on the wire
   g_renderer.endFrame();
   g_prof.endFrame(ds::nowUs(), g_renderer.stats());
   ds_frame_mark();
@@ -439,7 +447,7 @@ PRAM_TEXT void leave() {
   irqOff();
   *(volatile uint32_t *)0xE000E010u = 0;  // SysTick off
   *(volatile uint32_t *)0x20000FFCu = 0x4C584D50u;  // "PMXL": back on purpose
-  ds_para_back_fix((u8 *)g_band);  // the Paradise's clock moves on by our time
+  ds_para_back_fix((u8 *)g_bands[0]);  // the Paradise's clock moves on by our time
   hw_bl_pwm_off();
   for (uint32_t t = 0; hw_buttons() && t < 20000000u; t++) {
     if ((t & 0xFFFFu) == 0) hw_wdt_feed();
@@ -453,7 +461,7 @@ PRAM_TEXT void leave() {
 extern "C" __attribute__((noinline, used)) void ds_frame_mark(void) { __asm__ volatile("" ::: "memory"); }
 
 // The 4 KB scratch the flash write borrows (the band buffer, idle between frames)
-extern "C" uint8_t *ds_sector_buffer() { return (uint8_t *)g_band; }
+extern "C" uint8_t *ds_sector_buffer() { return (uint8_t *)g_bands[0]; }
 
 // ---- Start-up -------------------------------------------------------------------
 extern "C" {
@@ -486,7 +494,7 @@ void gameMain() {
   g_bench.setPlatform("TAMAPARA", benchLog);
 
   ds::stackWatchInit();
-  for (uint32_t i = 0; i < ds::SCREEN_W * ds::BAND_H; i++) g_band[i] = 0;
+  for (uint32_t i = 0; i < ds::SCREEN_W * ds::BAND_H; i++) g_bands[0][i] = g_bands[1][i] = 0;
   g_prof.xferUs = measureTransfer();
 
   g_lastUs = (uint32_t)ds::nowUs();

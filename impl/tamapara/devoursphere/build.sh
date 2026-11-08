@@ -69,7 +69,7 @@ COMMON=(-mcpu=cortex-m3 -mthumb -O2 -ffunction-sections -fdata-sections -fno-com
 CXX=(arm-none-eabi-g++ "${COMMON[@]}" -std=gnu++17 -fno-exceptions -fno-rtti
      -fno-threadsafe-statics -fno-use-cxa-atexit)
 CC=(arm-none-eabi-gcc "${COMMON[@]}" -std=gnu11 -Wno-unused-const-variable -Wno-unused-function
-    -DFAST_LCD -DLCD_FASTCLK -DLCD_STREAM -DTONE_FIX -DBL_SLEEP)
+    -DFAST_LCD -DLCD_FASTCLK -DLCD_DMA -DTONE_FIX -DBL_SLEEP)
 
 cxx() { "${CXX[@]}" -c "$1" -o "build/obj/$2.o"; }
 cc()  { "${CC[@]}"  -c "$1" -o "build/obj/$2.o"; }
