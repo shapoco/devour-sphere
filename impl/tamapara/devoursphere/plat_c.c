@@ -1,6 +1,28 @@
-/* The C side of the Paradise front end: UART1, the fault screen, the heap.
- * GPL-3.0-or-later (this directory, see ../hw/NOTICE.md). */
+/* The C side of the Paradise front end: what has to run from PRAM and what
+ * comes from the Paramix headers (the Paradise's clock, the way back), UART1,
+ * the fault screen, the heap. GPL-3.0-or-later (this directory, see ../hw/NOTICE.md). */
 #include "hw.h"
+#include "flash.h"
+
+#define PRAM_TEXT __attribute__((section(".pram_text.plat"), noinline))
+#define PARA_ATTR PRAM_TEXT
+#define PB_ATTR PRAM_TEXT
+#define PB_MARK_ATTR PRAM_TEXT
+#include "paraclock.h"
+#include "paraback.h"
+
+/* Before the SRAM is touched: note the Paradise's clock and the seconds
+ * counter in the mailbox, so the time spent here can be given back */
+PRAM_TEXT void ds_para_mark(void) {
+  const u32 cnt = REG(0x45000304u);
+  u32 t = para_clock(cnt, 0, 0x1F000u, 0, 0);
+  if (!t) t = para_mailbox(cnt);
+  para_leave_mark(cnt, t);
+}
+
+/* On the way back: move the Paradise's "lived up to" date forward by the time
+ * spent here (both copies of its settings page, new CRC). buf: 4 KB. */
+PRAM_TEXT int ds_para_back_fix(u8 *buf) { return para_back_fix(buf); }
 
 /* UART1 at 460800 baud (the dongle's contacts), for the benchmark's lines.
  * The init and the output are the flash app's (Paramix flash/src/fw.c). */

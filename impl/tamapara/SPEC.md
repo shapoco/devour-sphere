@@ -34,7 +34,7 @@ core/ と ShapoGFX は MIT のまま。
 | バックライト | CT32B2 の PWM。`hw_backlight()` |
 | WDT | 2 本 (0x40008000 / 0x40009000)。0x5AFA55AA を +0x0C に書いて餌をやる。SysTick で毎 ms |
 | UART1 | 0x4000B000。本体上部の接点 (ドングル)。460800 bps。ベンチマークの結果行を出す |
-| RTC 秒カウンタ | 0x45000304。乱数シードに使う |
+| RTC 秒カウンタ | 0x45000304。乱数シードと純正の時計の補正に使う |
 
 Core 1 用と思われる 0x20001000〜 の 60KB を DOOM は使っているが、データシートには 4KB のメールボックスしか
 無いので使わない。
@@ -45,7 +45,7 @@ Core 1 用と思われる 0x20001000〜 の 60KB を DOOM は使っているが�
   転送は DMA-SPI0 で、送っている間に CPU は次の帯を描く (帯は 2 枚)。
 - シミュレーションは 30Hz 固定、描画は追いつける範囲で (可変フレームレート)。
 - 効果音は ESPboy 版と同じ 4 音符までのチューン、1 音、優先度付き。音程の切り替えは SysTick から `hw_tone()`。
-- **フラッシュには書き込まない**。ハイスコアはそのセッションの間だけ、ミュートも保存しない。
+- ハイスコアはそのセッションの間だけ、ミュートも保存しない。フラッシュへの書き込みは純正へ戻るときの時刻補正だけ。
 - 動的確保はしない (`_sbrk` は HUD の snprintf 用に 2KB の静的領域を返すだけ)。`Game`、`Renderer`、
   アリーナ、帯は `.bss` (SRAM)。
 - プログラムは**実行アドレス固定** (XIP 部はフラッシュ上で実行)。配置は build.sh の `XIP_FLASH_OFF` で決め、イメージの設定ブロックに書いて mkrom.js が ROM と照合する。
@@ -59,7 +59,7 @@ impl/tamapara/
     io.h hw.h hw.c         クロック・ピン・表示電源・パネル初期化、ボタン、ブザー、バックライト、純正への復帰
     disp_power.h           表示電源のレジスタ列 (純正ファームのトレース)
     flash.h flash.c        セクタ消去と書き込み (SPIFC の DMA)
-    paraclock.h paraback.h 純正の時計を読む / 滞在時間ぶん進める (フラッシュに書くので、今は未使用)
+    paraclock.h paraback.h 純正の時計を読む / 滞在時間ぶん進める
     stub_tpl.bin           ランチャのテンプレート (512B、プレースホルダ入り)
   hello/                   最小プログラム: ボタン・ダイヤル・ブザー・tick・復帰の確認 (PRAM のみ)
   dma_test/                パネル転送の試験: 全画面を CPU / DMA 8 ビット / DMA 16 ビットで送り、時間と結果を画面に出す
@@ -67,7 +67,7 @@ impl/tamapara/
     build.sh               arm-none-eabi-g++ で core + ShapoGFX + ここを -O2 でビルド → build/pram.bin, build/xip.bin, build/ds.elf
     link.ld pram_hot.ld    PRAM 64KB + XIP 窓 + SRAM の配置。pram_hot.ld に PRAM へ置くオブジェクトを列挙
     main.cpp               ベクタ以外の起動、SysTick、入力の割り当て、フレームループ、復帰
-    plat_c.c               ベクタテーブル、UART1、フォルト画面、_sbrk
+    plat_c.c               ベクタテーブル、純正の時計の印と補正、UART1、フォルト画面、_sbrk
     ds_config.hpp          帯の高さ、アリーナ、tick 周期、スタック、ダイヤルの定数、長押しの時間
     ds_platform.hpp/.cpp   時計、乱数シード、スタックの高水位
     tone_player.hpp/.cpp   ブザーのチューン再生 (audio:: の実装)
@@ -118,19 +118,20 @@ A+C が押されているか数え、90 回で `start`: クロックをソース
 
 `Reset_Handler` (PRAM) の順序:
 
-1. UNALIGN_TRP を切る。`hw_init()`: WDT の設定、クロック (PLL)、周辺のイネーブル、XIP ベース 0x60011000、ピン、
+1. `ds_para_mark()`: SRAM を壊す前に純正の時計 (日と秒の基点 + 6 つの表示フィールド) を探し、RTC 秒カウンタと
+   一緒にメールボックス 0x20000FC0 ("PCLK") に残す (paraclock.h / paraback.h)。
+2. UNALIGN_TRP を切る。`hw_init()`: WDT の設定、クロック (PLL)、周辺のイネーブル、XIP ベース 0x60011000、ピン、
    表示電源、パネル初期化、バックライト。
-2. `.data` を PRAM から SRAM にコピー、`.bss` をゼロに。NVIC の割り込みを全部止め、GPIO2 を入力、SysTick 1ms。
-3. A+C が離されるまで待つ (最大 3 秒)。
-4. `gameMain()` (XIP): `.init_array` (静的オブジェクトのコンストラクタ)、UART1、音、`Game::reset(seed)`、
+3. `.data` を PRAM から SRAM にコピー、`.bss` をゼロに。NVIC の割り込みを全部止め、GPIO2 を入力、SysTick 1ms。
+4. A+C が離されるまで待つ (最大 3 秒)。
+5. `gameMain()` (XIP): `.init_array` (静的オブジェクトのコンストラクタ)、UART1、音、`Game::reset(seed)`、
    `Renderer::init()`、転送時間の計測、フレームループ。
 
-復帰 (`leave()`、PRAM): 音を止め、SysTick を止め、0x20000FFC に "PMXL"、バックライトを消し、ボタンが離されるのを
-待って `hw_back_to_paradise()` (ファームのルーチン 0x100FF569: 暗号化された純正 PRAM イメージを読み直して再起動)。
-
-純正の「生きていた時刻」(設定ページ 0xEFE000 / 0xEFF000) は進めない。フラッシュに書かないため、ゲームに費やした
-時間は純正に戻ったときに一気に経過する (空腹や機嫌の低下、世話ミス、長時間なら死亡もありうる)。Paramix 1.6.8 の
-PARA_BACK はこの書き込みで経過を防ぐ方式で、`hw/paraback.h` が残っている。
+復帰 (`leave()`、PRAM): 音を止め、SysTick を止め、0x20000FFC に "PMXL"、`ds_para_back_fix()` で純正の「生きていた時刻」
+(設定ページ 0xEFE000 / 0xEFF000 の +0x1C〜、CRC 付き) を滞在時間ぶん進め (進めないと復帰時にその時間を一気に生きて
+空腹や死亡になる。Paramix 1.6.8 の PARA_BACK と同じ)、バックライトを消し、ボタンが離されるのを待って
+`hw_back_to_paradise()` (ファームのルーチン 0x100FF569: 暗号化された純正 PRAM イメージを読み直して再起動)。
+時刻補正は 60 秒未満の滞在では書かない。4KB の作業領域は 1 枚目の帯 (フレームの間は DMA が止まっている)。
 
 フォルト: 専用スタックに切り替えて `ds_fault_c()` (PRAM): 音を止め、画面を赤く塗り、ダイヤル 2 秒長押しで
 純正へ戻る。sim.py は `ds_fault_c` をシンボルで捕まえて PC / LR / CFSR を表示する。
@@ -189,8 +190,7 @@ DMA の手順は純正 PRAM の 0x3FC8 (開始)、0x3A84 (IRQ 58 の完了処理
 ## ハイスコア
 
 保存しない。`Game::keepHighScore()` がセッション中の最高記録を持つだけで、純正に戻るか電源を切ると消える。
-Xiamocon 版の `high_score_store.hpp` は使わず、ゲームはフラッシュの書き込みコードをリンクしない (`hw/flash.c` は
-hello がリンクするが呼ばない)。
+Xiamocon 版の `high_score_store.hpp` は使わない。
 
 ## フレームループ
 

@@ -11,8 +11,9 @@ the title or the pause screen goes back to the Tamagotchi.
   sphere with 48 enemies, no depth buffer, flat shading, 30 Hz simulation.
 - Two 32-row bands: one goes to the panel by DMA while the next is drawn. The
   hot code runs from the 64 KB program RAM, the rest from the cached flash window.
-- Sound effects are one-voice tunes on the buzzer. Nothing is saved: the
-  program never writes the flash, and the high score lasts until you leave.
+- Sound effects are one-voice tunes on the buzzer. The high score lasts
+  until you leave. The only flash write is on the way back: the Paradise's
+  clock moves on by the time spent here, so it does not live that time at once.
 - No SDK: bare metal, the hardware layer comes from
   [Paramix Studio](https://github.com/mameise/Paramix-Studio) (mameise).
 

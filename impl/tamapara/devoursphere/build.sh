@@ -83,6 +83,7 @@ cxx "$DS_ROOT/impl/xiamocon/devoursphere/src/profiler.cpp" profiler
 cxx ds_platform.cpp ds_platform
 cxx tone_player.cpp tone_player
 cc ../hw/hw.c hw
+cc ../hw/flash.c flash
 cc plat_c.c plat_c
 
 arm-none-eabi-g++ -mcpu=cortex-m3 -mthumb -nostartfiles --specs=nano.specs \

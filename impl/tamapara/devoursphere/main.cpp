@@ -23,6 +23,8 @@
 
 extern "C" {
 #include "hw.h"
+void ds_para_mark(void);
+int ds_para_back_fix(u8 *buf);
 void ds_uart_init(void);
 void ds_uart_puts(const char *s);
 void ds_fault_c(u32 *fr);
@@ -99,6 +101,8 @@ render::Benchmark g_bench;
 
 // Two band buffers, RGB565_SWAPPED: the bytes are in panel order already, so
 // the DMA sends them as they are. One is being drawn while the other goes out.
+// Between frames the DMA is idle and the first one is also the 4 KB buffer of
+// the way back's flash write.
 alignas(4) uint16_t g_bands[2][ds::SCREEN_W * ds::BAND_H];
 int g_drawBand = 0;
 
@@ -418,7 +422,7 @@ void frame() {
   g_prof.ticks = ticks;
   g_prof.core1WaitUs = 0;
   if (ticks == 0) return;
-  g_game.keepHighScore();  // for this session only: nothing goes to the flash
+  g_game.keepHighScore();  // for this session only: it is not saved
   updatePhaseLines(ticks);
   g_bench.beforeFrame(g_game, g_renderer, ds::benchSample(g_prof));
   g_game.resetTickProfile();
@@ -435,6 +439,7 @@ PRAM_TEXT void leave() {
   irqOff();
   *(volatile uint32_t *)0xE000E010u = 0;  // SysTick off
   *(volatile uint32_t *)0x20000FFCu = 0x4C584D50u;  // "PMXL": back on purpose
+  ds_para_back_fix((u8 *)g_bands[0]);  // the Paradise's clock moves on by our time
   hw_bl_pwm_off();
   for (uint32_t t = 0; hw_buttons() && t < 20000000u; t++) {
     if ((t & 0xFFFFu) == 0) hw_wdt_feed();
@@ -489,6 +494,7 @@ void gameMain() {
 
 extern "C" __attribute__((section(".pram_text.main"), noinline, used)) void Reset_Handler(void) {
   irqOff();
+  ds_para_mark();  // the Paradise's clock, before the SRAM is overwritten
   *(volatile uint32_t *)0xE000ED14u &= ~(1u << 3);  // UNALIGN_TRP off
   hw_init();
   {
