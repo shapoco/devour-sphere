@@ -10,7 +10,7 @@
 # they are chosen here and written into the image's settings block, which
 # tools/mkrom.js reads and checks against the ROM. Glacier and Tropical
 # firmware ends at 0xB5E00: launcher 0xB6000, image 0xB7000, flash part
-# 0xC7000, high score sector 0x10D000. Land, Water and Sky have the image at
+# 0xC7000. Land, Water and Sky have the image at
 # 0xA0000 and the launcher at 0xB0000, so the flash part goes to 0xB1000.
 #
 # Needs arm-none-eabi-gcc (13 is what this was built with).
@@ -18,10 +18,10 @@ set -eu
 cd "$(dirname "$0")"
 DS_ROOT="$(cd ../../.. && pwd)"
 XIP_FLASH_OFF="${XIP_FLASH_OFF:-0xC7000}"
-HISCORE_OFF="${HISCORE_OFF:-0x10D000}"
+XIP_END=0x10E000   # the Studio's settings page and what follows stay untouched
 # the window shows the flash from 0x11000 at 0x10000000
 XIP_ORIGIN=$(printf '0x%X' $(( 0x10000000 + XIP_FLASH_OFF - 0x11000 )))
-XIP_LENGTH=$(printf '0x%X' $(( HISCORE_OFF - XIP_FLASH_OFF )))
+XIP_LENGTH=$(printf '0x%X' $(( XIP_END - XIP_FLASH_OFF )))
 mkdir -p build/obj
 rm -f build/obj/*.o
 
@@ -79,11 +79,10 @@ for f in renderer sphere effects upgrades hud benchmark; do cxx "$DS_ROOT/core/s
 for f in graphics2d images shapes; do cxx "$DS_ROOT/submodule/shapo-gfx/src/gfx2d/$f.cpp" "gfx2d_$f"; done
 for f in gfx3d scene shapes; do cxx "$DS_ROOT/submodule/shapo-gfx/src/gfx3d/$f.cpp" "gfx3d_$f"; done
 cxx "$DS_ROOT/impl/xiamocon/devoursphere/src/profiler.cpp" profiler
-"${CXX[@]}" -DDS_XIP_FLASH_OFF="$XIP_FLASH_OFF" -DDS_HISCORE_OFF="$HISCORE_OFF" -c main.cpp -o build/obj/main.o
+"${CXX[@]}" -DDS_XIP_FLASH_OFF="$XIP_FLASH_OFF" -c main.cpp -o build/obj/main.o
 cxx ds_platform.cpp ds_platform
 cxx tone_player.cpp tone_player
 cc ../hw/hw.c hw
-cc ../hw/flash.c flash
 cc plat_c.c plat_c
 
 arm-none-eabi-g++ -mcpu=cortex-m3 -mthumb -nostartfiles --specs=nano.specs \
@@ -91,7 +90,7 @@ arm-none-eabi-g++ -mcpu=cortex-m3 -mthumb -nostartfiles --specs=nano.specs \
   -T link.ld build/obj/*.o -lc -lgcc -o build/ds.elf
 arm-none-eabi-objcopy -O binary -j .pram -j .data build/ds.elf build/pram.bin
 arm-none-eabi-objcopy -O binary -j .xip build/ds.elf build/xip.bin
-echo "XIP part at flash $XIP_FLASH_OFF (window $XIP_ORIGIN), high score sector at $HISCORE_OFF"
+echo "XIP part at flash $XIP_FLASH_OFF (window $XIP_ORIGIN)"
 arm-none-eabi-size -A build/ds.elf | grep -E "^\.(pram|data|xip|bss) "
 ls -l build/pram.bin build/xip.bin
 PRAM_USED=$(stat -c %s build/pram.bin)

@@ -9,10 +9,10 @@ the title or the pause screen goes back to the Tamagotchi.
 
 - The core is built in the ESPboy's reduced configuration: a quarter-size
   sphere with 48 enemies, no depth buffer, flat shading, 30 Hz simulation.
-- One 32-row band, drawn and pushed to the panel by the CPU. The hot code
-  runs from the 64 KB program RAM, the rest from the cached flash window.
-- Sound effects are one-voice tunes on the buzzer. The high score is kept in
-  a flash sector of its own.
+- Two 32-row bands: one goes to the panel by DMA while the next is drawn. The
+  hot code runs from the 64 KB program RAM, the rest from the cached flash window.
+- Sound effects are one-voice tunes on the buzzer. Nothing is saved: the
+  program never writes the flash, and the high score lasts until you leave.
 - No SDK: bare metal, the hardware layer comes from
   [Paramix Studio](https://github.com/mameise/Paramix-Studio) (mameise).
 

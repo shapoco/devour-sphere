@@ -13,10 +13,10 @@ cd "$(dirname "$0")"
 ROM="${1:-roms/golden.bin}"
 
 eval "$(node tools/mkrom.js --rom "$ROM" --place)"
-echo "flash part at $XIP_FLASH_OFF, high score sector at $HISCORE_OFF (from $ROM)"
+echo "flash part at $XIP_FLASH_OFF (from $ROM)"
 
 (cd hello && ./build.sh)
 node tools/mkrom.js --rom "$ROM" --pram hello/build/hello.bin --out roms/hello.bin
 
-(cd devoursphere && XIP_FLASH_OFF="$XIP_FLASH_OFF" HISCORE_OFF="$HISCORE_OFF" ./build.sh)
+(cd devoursphere && XIP_FLASH_OFF="$XIP_FLASH_OFF" ./build.sh)
 node tools/mkrom.js --rom "$ROM" --pram devoursphere/build/pram.bin --xip devoursphere/build/xip.bin --out roms/devoursphere.bin

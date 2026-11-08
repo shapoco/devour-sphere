@@ -33,10 +33,9 @@ for l in subprocess.run(['arm-none-eabi-nm', A.elf], capture_output=True, text=T
     if len(p) == 3: syms[p[2]] = int(p[0], 16)
 pram = open(A.pram, 'rb').read()
 if len(pram) > 0x10000: sys.exit('PRAM image over 64 KB')
-# the settings block: PMXC at 0x140, then ours ("DSPH": xip flash offset, length, high score sector)
+# the settings block: PMXC at 0x140, then ours ("DSPH": xip flash offset, length)
 cfg = struct.unpack('<8I', pram[0x1D8:0x1F8]) if len(pram) >= 0x1F8 else None
 xip_off = cfg[2] if cfg and cfg[0] == 0x48505344 else 0
-hiscore_off = cfg[4] if cfg and cfg[0] == 0x48505344 else 0
 
 fl = bytearray(b'\xff' * 0x1000000)
 if A.rom: fl[:] = open(A.rom, 'rb').read()[:0x1000000].ljust(0x1000000, b'\xff')

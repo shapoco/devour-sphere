@@ -7,7 +7,7 @@
  * handlers of the home screen are pointed at the launcher, which starts the
  * program when A and C are held and otherwise calls the originals.
  *
- *   node mkrom.js --rom backup.bin --pram pram.bin [--xip xip.bin] --out new.bin [--keep-hiscore]
+ *   node mkrom.js --rom backup.bin --pram pram.bin [--xip xip.bin] --out new.bin
  *   node mkrom.js --rom new.bin --remove --out restored.bin     # the stock handlers back, our area erased
  *   node mkrom.js --rom backup.bin --place                      # where a program would go in this dump, as
  *                                                               # shell assignments for build.sh (make_bin.sh)
@@ -16,7 +16,7 @@
  * collide): launcher at 0x0B0000 and image at 0x0A0000 when that area is
  * free (Land, Water, Sky), otherwise the launcher in the first free 4 KB
  * page after the firmware's code (Glacier, Tropical: 0x0B6000) and the
- * image right behind it. The flash part and the high score sector sit where
+ * image right behind it. The flash part sits where
  * the image's settings block says ("DSPH" at 0x1D8: build.sh chose them),
  * and this script refuses when those places are not free.
  *
@@ -33,7 +33,6 @@ const XIP_DEC = 0x11000;                      // the window shows the flash from
 const xip = (off) => 0x10000000 + off - XIP_DEC;
 const APP_OFF_STD = 0xA0000, STUB_OFF_STD = 0xB0000;
 const CODE_END = 0x10F000;                    // the Studio's six-field page; nothing of ours above
-const HISCORE_OFF = 0x10D000;                 // the high score sector (build.sh's default; free on every edition)
 const PMXC = 0x43584D50, DSPH = 0x48505344;
 const PH_APP = 0x1234ABCD, PH_AUTO = 0x66666661, PH_ORIG = [0x22222221, 0x33333331, 0x44444441, 0x55555551];
 const HOOK_OFF = [0x40, 0x46, 0x4C, 0x52];    // the four hooks in the launcher, the originals at 0x94
@@ -45,18 +44,18 @@ const hex = (v) => '0x' + v.toString(16).toUpperCase().padStart(6, '0');
 function isFF(b, off, len) { for (let i = off; i < off + len; i++) if (b[i] !== 0xFF) return false; return true; }
 
 function args() {
-  const a = { keepHiscore: false, remove: false, place: false };
+  const a = { remove: false, place: false };
   const v = process.argv.slice(2);
   for (let i = 0; i < v.length; i++) {
     const k = v[i];
     if (k === '--rom') a.rom = v[++i]; else if (k === '--pram') a.pram = v[++i]; else if (k === '--xip') a.xip = v[++i];
     else if (k === '--out') a.out = v[++i]; else if (k === '--stub') a.stub = v[++i];
-    else if (k === '--keep-hiscore') a.keepHiscore = true; else if (k === '--remove') a.remove = true;
+    else if (k === '--remove') a.remove = true;
     else if (k === '--place') a.place = true;
     else throw new Error('unknown argument ' + k);
   }
   if (!a.rom || (!a.place && (!a.out || (!a.remove && !a.pram)))) {
-    console.error('usage: node mkrom.js --rom backup.bin --pram pram.bin [--xip xip.bin] --out new.bin [--keep-hiscore]\n' +
+    console.error('usage: node mkrom.js --rom backup.bin --pram pram.bin [--xip xip.bin] --out new.bin\n' +
                   '       node mkrom.js --rom new.bin --remove --out restored.bin\n' +
                   '       node mkrom.js --rom backup.bin --place');
     process.exit(2);
@@ -131,7 +130,6 @@ function main() {
     const p = prev || stubPlace(rom);
     console.log('# launcher ' + hex(p.stub) + ', image ' + hex(p.app) + (prev ? ' (a program of ours is installed there)' : ''));
     console.log('XIP_FLASH_OFF=' + hex(xipPlace(p)));
-    console.log('HISCORE_OFF=' + hex(HISCORE_OFF));
     return;
   }
 
@@ -140,7 +138,7 @@ function main() {
     PH_ORIG.forEach((_, k) => w32(out, tab.PSID_HOME + 12 + 4 * k, prev.origs[k]));
     const img = out.subarray(prev.app, prev.app + 0x10000);
     let end = prev.app + 0x10000;
-    if (u32(img, 0x1D8) === DSPH) end = Math.max(end, u32(img, 0x1E8) + 0x1000, u32(img, 0x1E0) + u32(img, 0x1E4));
+    if (u32(img, 0x1D8) === DSPH) end = Math.max(end, u32(img, 0x1E0) + u32(img, 0x1E4));
     out.fill(0xFF, prev.stub, prev.stub + 0x1000); out.fill(0xFF, prev.app, (end + 0xFFF) & ~0xFFF);
     fs.writeFileSync(a.out, out);
     console.log('removed: handlers restored, ' + hex(prev.stub) + '..' + hex((end + 0xFFF) & ~0xFFF) + ' erased -> ' + a.out);
@@ -151,7 +149,7 @@ function main() {
   if (pram.length > 0x10000) throw new Error('the PRAM image is over 64 KB');
   if (u32(pram, 0x140) !== PMXC) throw new Error('the image has no PMXC block at 0x140');
   const hasCfg = u32(pram, 0x1D8) === DSPH;
-  const xipOff = hasCfg ? u32(pram, 0x1E0) : 0, xipLen = hasCfg ? u32(pram, 0x1E4) : 0, hisOff = hasCfg ? u32(pram, 0x1E8) : 0;
+  const xipOff = hasCfg ? u32(pram, 0x1E0) : 0, xipLen = hasCfg ? u32(pram, 0x1E4) : 0;
   const xipBin = a.xip ? new Uint8Array(fs.readFileSync(a.xip)) : null;
   if (xipBin && !hasCfg) throw new Error('an .xip part needs the DSPH block in the image');
   if (xipBin && xipBin.length !== xipLen) throw new Error('xip.bin is ' + xipBin.length + ' bytes, the image expects ' + xipLen);
@@ -164,11 +162,9 @@ function main() {
   if (prev) { clean.fill(0xFF, prev.stub, prev.stub + 0x1000); clean.fill(0xFF, prev.app, prev.app + 0x10000); if (xipOff) clean.fill(0xFF, xipOff, xipOff + Math.max(xipLen, 1)); }
   const need = [[stub, 0x1000, 'launcher'], [app, 0x10000, 'image']];
   if (xipLen) need.push([xipOff, xipLen, 'flash part']);
-  if (hisOff) need.push([hisOff, 0x1000, 'high score sector']);
   for (const [o, n, what] of need) {
     if (o + n > CODE_END) throw new Error(what + ' at ' + hex(o) + ' reaches past ' + hex(CODE_END));
-    if (what === 'high score sector' && a.keepHiscore) continue;
-    if (!isFF(clean, o, n) && !(what === 'high score sector' && prev)) throw new Error(what + ' at ' + hex(o) + ' (' + n + ' bytes): the area is in use');
+    if (!isFF(clean, o, n)) throw new Error(what + ' at ' + hex(o) + ' (' + n + ' bytes): the area is in use');
   }
   if (xipLen && xipOff !== xipPlace(place)) {
     throw new Error('the image was built for its flash part at ' + hex(xipOff) + ', but this ROM puts the image at ' + hex(app) +
@@ -187,13 +183,12 @@ function main() {
   out.fill(0xFF, stub, stub + 0x1000); out.set(st, stub);
   out.fill(0x00, app, app + 0x10000); out.set(pram, app);
   if (xipBin) { out.fill(0xFF, xipOff, xipOff + xipLen); out.set(xipBin, xipOff); }
-  if (hisOff && !a.keepHiscore) out.fill(0xFF, hisOff, hisOff + 0x1000);
   HOOK_OFF.forEach((h, k) => w32(out, tab.PSID_HOME + 12 + 4 * k, (xip(stub) + h) | 1));
 
   fs.writeFileSync(a.out, out);
   let changed = 0; for (let i = 0; i < out.length; i += 0x1000) { for (let j = i; j < i + 0x1000; j++) if (out[j] !== rom[j]) { changed++; break; } }
   console.log('home screen handlers: ' + origs.map((v) => '0x' + v.toString(16)).join(' ') + ' -> launcher at ' + hex(stub));
-  console.log('image ' + hex(app) + ' (' + pram.length + ' B)' + (xipBin ? ', flash part ' + hex(xipOff) + ' (' + xipLen + ' B)' : '') + (hisOff ? ', high score ' + hex(hisOff) : ''));
+  console.log('image ' + hex(app) + ' (' + pram.length + ' B)' + (xipBin ? ', flash part ' + hex(xipOff) + ' (' + xipLen + ' B)' : ''));
   console.log(changed + ' sectors of 4 KB differ from the input -> ' + a.out);
 }
 

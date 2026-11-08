@@ -15,7 +15,7 @@ SECTIONS {
     KEEP(*(.pmxcfg))           /* 0x140: the launcher's block */
     KEEP(*(.dscfg))            /* 0x1D8: ours */
     *(.pram_text*) *(.pram_rodata*) *(.initcode*) *(.initdata*)
-    *hw.o(.text* .rodata*) *flash.o(.text* .rodata*) *plat_c.o(.text* .rodata*)
+    *hw.o(.text* .rodata*) *plat_c.o(.text* .rodata*)
     INCLUDE pram_hot.ld
     *libgcc.a:*(.text* .rodata*)
     *libc_nano.a:*memcpy*(.text*) *libc_nano.a:*memset*(.text*) *libc_nano.a:*memmove*(.text*)

@@ -18,14 +18,11 @@
 #include "devoursphere/profile.hpp"
 #include "ds_config.hpp"
 #include "ds_platform.hpp"
-#include "high_score_store.hpp"
 #include "profiler.hpp"
 #include "tone_player.hpp"
 
 extern "C" {
 #include "hw.h"
-void ds_para_mark(void);
-int ds_para_back_fix(u8 *buf);
 void ds_uart_init(void);
 void ds_uart_puts(const char *s);
 void ds_fault_c(u32 *fr);
@@ -40,8 +37,8 @@ namespace g2 = shapoco::gfx2d;
 
 // ---- The blocks the launcher and mkrom.js read ------------------------------
 // "PMXC" at 0x140 of the image (right after the 80 vectors): the launcher
-// only checks it is there. Then ours, "DSPH": where the flash part and the
-// high score sector sit, so mkrom.js can place the image and check the room.
+// only checks it is there. Then ours, "DSPH": where the flash part sits, so
+// mkrom.js can place the image and check the room.
 struct PmxCfg {
   uint32_t magic, version, guest_off, guest_size, save_off, device;
   uint8_t map[128];
@@ -53,16 +50,12 @@ extern "C" uint32_t __xip_size;  // linker: SIZEOF(.xip) and what follows it
 #ifndef DS_XIP_FLASH_OFF
 #error "DS_XIP_FLASH_OFF (flash offset of the .xip part) must be defined"
 #endif
-#ifndef DS_HISCORE_OFF
-#error "DS_HISCORE_OFF (flash offset of the high score sector) must be defined"
-#endif
 struct DsCfg {
-  uint32_t magic, version, xip_off, xip_len, hiscore_off, detent, flags, reserved;
+  uint32_t magic, version, xip_off, xip_len, detent, flags, reserved;
 };
 __attribute__((section(".dscfg"), used)) volatile const DsCfg g_dscfg = {
-    0x48505344u, 1, DS_XIP_FLASH_OFF, (uint32_t)&__xip_size, DS_HISCORE_OFF,
+    0x48505344u, 1, DS_XIP_FLASH_OFF, (uint32_t)&__xip_size,
     (uint32_t)ds::DETENT_STEPS, 0, 0};
-extern "C" const volatile uint32_t ds_hiscore_off = DS_HISCORE_OFF;
 
 // ---- The millisecond tick ---------------------------------------------------
 extern "C" volatile uint32_t g_ms;
@@ -100,15 +93,12 @@ inline void irqOn() { __asm__ volatile("cpsie i" ::: "memory"); }
 // ---- The game and its memory ------------------------------------------------
 sim::Game g_game;
 render::Renderer g_renderer;
-ds::HighScoreStore g_store;
 alignas(8) uint8_t g_arena[ds::ARENA_SIZE];
 ds::Profiler g_prof;
 render::Benchmark g_bench;
 
 // Two band buffers, RGB565_SWAPPED: the bytes are in panel order already, so
 // the DMA sends them as they are. One is being drawn while the other goes out.
-// Between frames the DMA is idle and the first one is also the 4 KB buffer of
-// the flash write and of the way back.
 alignas(4) uint16_t g_bands[2][ds::SCREEN_W * ds::BAND_H];
 int g_drawBand = 0;
 
@@ -428,8 +418,7 @@ void frame() {
   g_prof.ticks = ticks;
   g_prof.core1WaitUs = 0;
   if (ticks == 0) return;
-  g_game.keepHighScore();
-  g_store.poll(g_game);
+  g_game.keepHighScore();  // for this session only: nothing goes to the flash
   updatePhaseLines(ticks);
   g_bench.beforeFrame(g_game, g_renderer, ds::benchSample(g_prof));
   g_game.resetTickProfile();
@@ -442,12 +431,10 @@ void frame() {
 // Runs from PRAM: it ends by jumping into the firmware's own restart.
 PRAM_TEXT void leave() {
   audio::stop();
-  g_store.flush(g_game);
   hw_tone(0);
   irqOff();
   *(volatile uint32_t *)0xE000E010u = 0;  // SysTick off
   *(volatile uint32_t *)0x20000FFCu = 0x4C584D50u;  // "PMXL": back on purpose
-  ds_para_back_fix((u8 *)g_bands[0]);  // the Paradise's clock moves on by our time
   hw_bl_pwm_off();
   for (uint32_t t = 0; hw_buttons() && t < 20000000u; t++) {
     if ((t & 0xFFFFu) == 0) hw_wdt_feed();
@@ -459,9 +446,6 @@ PRAM_TEXT void leave() {
 
 // The simulator marks a presented frame by this symbol
 extern "C" __attribute__((noinline, used)) void ds_frame_mark(void) { __asm__ volatile("" ::: "memory"); }
-
-// The 4 KB scratch the flash write borrows (the band buffer, idle between frames)
-extern "C" uint8_t *ds_sector_buffer() { return (uint8_t *)g_bands[0]; }
 
 // ---- Start-up -------------------------------------------------------------------
 extern "C" {
@@ -480,7 +464,6 @@ void gameMain() {
   audio::init(audio::Config{0, audio::Pacing::PWM_WRAP, false});
 
   g_game.reset(ds::randomSeed());
-  g_store.load(g_game);
   g_renderer.setControlHints(render::ControlHints{
       "DIAL: TURN   A: FIRE   PUSH DIAL: DODGE",
       "DIAL: TURN  A: FIRE  PUSH: DODGE",
@@ -506,7 +489,6 @@ void gameMain() {
 
 extern "C" __attribute__((section(".pram_text.main"), noinline, used)) void Reset_Handler(void) {
   irqOff();
-  ds_para_mark();  // the Paradise's clock, before the SRAM is overwritten
   *(volatile uint32_t *)0xE000ED14u &= ~(1u << 3);  // UNALIGN_TRP off
   hw_init();
   {
